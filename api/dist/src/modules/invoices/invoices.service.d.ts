@@ -1,0 +1,121 @@
+import { PrismaService } from '../prisma/prisma.service';
+export declare class InvoicesService {
+    private readonly prisma;
+    constructor(prisma: PrismaService);
+    getInvoiceByNumber(invoiceNumber: string): Promise<{
+        order: {
+            customer: {
+                id: string;
+                createdAt: Date;
+                email: string;
+                fullName: string;
+                phone: string;
+                updatedAt: Date;
+                companyName: string | null;
+                gstin: string | null;
+                userId: string | null;
+            };
+            items: {
+                id: string;
+                createdAt: Date;
+                orderId: string;
+                updatedAt: Date;
+                sku: string;
+                quantity: number;
+                unitPrice: import("@prisma/client/runtime/library").Decimal;
+                productId: string;
+                totalPrice: import("@prisma/client/runtime/library").Decimal;
+                productName: string;
+                specifications: import("@prisma/client/runtime/library").JsonValue;
+                approvedArtworkVersionId: string | null;
+                designNotes: string | null;
+            }[];
+            shippingAddress: {
+                id: string;
+                createdAt: Date;
+                phone: string;
+                updatedAt: Date;
+                customerId: string;
+                isDefault: boolean;
+                type: string;
+                postalCode: string;
+                contactName: string;
+                street: string;
+                landmark: string | null;
+                city: string;
+                state: string;
+                country: string;
+            } | null;
+            billingAddress: {
+                id: string;
+                createdAt: Date;
+                phone: string;
+                updatedAt: Date;
+                customerId: string;
+                isDefault: boolean;
+                type: string;
+                postalCode: string;
+                contactName: string;
+                street: string;
+                landmark: string | null;
+                city: string;
+                state: string;
+                country: string;
+            } | null;
+        } & {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            customerId: string;
+            status: import(".prisma/client").$Enums.OrderStatus;
+            subtotal: import("@prisma/client/runtime/library").Decimal;
+            deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+            discountAmount: import("@prisma/client/runtime/library").Decimal;
+            orderNumber: string;
+            sourceChannel: import(".prisma/client").$Enums.OrderChannel;
+            customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+            taxAmount: import("@prisma/client/runtime/library").Decimal;
+            shippingAmount: import("@prisma/client/runtime/library").Decimal;
+            totalAmount: import("@prisma/client/runtime/library").Decimal;
+            paidAmount: import("@prisma/client/runtime/library").Decimal;
+            balanceAmount: import("@prisma/client/runtime/library").Decimal;
+            paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
+            priority: import(".prisma/client").$Enums.Priority;
+            slaStatus: import(".prisma/client").$Enums.SlaStatus;
+            dueAt: Date | null;
+            customerNotes: string | null;
+            internalNotes: string | null;
+            shippingAddressId: string | null;
+            billingAddressId: string | null;
+        };
+    } & {
+        id: string;
+        orderId: string;
+        subtotal: import("@prisma/client/runtime/library").Decimal;
+        cgst: import("@prisma/client/runtime/library").Decimal;
+        sgst: import("@prisma/client/runtime/library").Decimal;
+        igst: import("@prisma/client/runtime/library").Decimal;
+        grandTotal: import("@prisma/client/runtime/library").Decimal;
+        totalTax: import("@prisma/client/runtime/library").Decimal;
+        shippingAmount: import("@prisma/client/runtime/library").Decimal;
+        invoiceNumber: string;
+        customerGstin: string | null;
+        pdfUrl: string | null;
+        issuedAt: Date;
+    }>;
+    getInvoicesForOrder(orderId: string): Promise<{
+        id: string;
+        orderId: string;
+        subtotal: import("@prisma/client/runtime/library").Decimal;
+        cgst: import("@prisma/client/runtime/library").Decimal;
+        sgst: import("@prisma/client/runtime/library").Decimal;
+        igst: import("@prisma/client/runtime/library").Decimal;
+        grandTotal: import("@prisma/client/runtime/library").Decimal;
+        totalTax: import("@prisma/client/runtime/library").Decimal;
+        shippingAmount: import("@prisma/client/runtime/library").Decimal;
+        invoiceNumber: string;
+        customerGstin: string | null;
+        pdfUrl: string | null;
+        issuedAt: Date;
+    }[]>;
+}

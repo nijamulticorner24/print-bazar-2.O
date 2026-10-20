@@ -1,0 +1,450 @@
+/**
+ * PRINT BAZAAR 2.0 — Shared Artwork Rule Resolver & Conflict Validator
+ * 
+ * Provides deterministic artwork slot, design brief, and reference file resolution
+ * across Admin Product Setup Studio, Live Preview, Storefront Configurator, and Validation.
+ */
+
+import { ProductConfigurationRule, ProductOptionGroup, ProductOptionRequirement } from './api';
+
+export interface ArtworkSlotConfig {
+  slotKey: string;
+  label: string;
+  minMegapixels: number;
+  isRequired: boolean;
+  isCustomerSupplied?: boolean;
+}
+
+export interface ResolvedArtworkCondition {
+  artworkStatus: ProductOptionRequirement; // REQUIRED | OPTIONAL | DISABLED
+  slots: ArtworkSlotConfig[];
+  requireDesignBrief: boolean;
+  showDesignBrief: boolean;
+  requireReferenceImage: boolean;
+  showReferenceImage: boolean;
+  maxArtworkFileSizeMb: number;
+  minimumArtworkMegapixels: number;
+  allowedFormats: string[];
+  matchedRuleName?: string;
+  isCombinationRule: boolean;
+  designFee?: number;
+  designScope?: string;
+}
+
+export interface ArtworkConditionConflict {
+  ruleId?: string;
+  ruleName: string;
+  type:
+    | 'ORPHAN_GROUP'
+    | 'ORPHAN_OPTION'
+    | 'CONTRADICTORY_SLOTS'
+    | 'MISSING_SLOTS'
+    | 'UNSATISFIABLE'
+    | 'NEGATIVE_DESIGN_AMOUNT'
+    | 'MISSING_REQUIRED_DESIGN_PRICE'
+    | 'INVALID_DESIGN_SCOPE'
+    | 'INCONSISTENT_DESIGN_SLOTS';
+  message: string;
+  groupCode?: string;
+  optionValue?: string;
+  slotKey?: string;
+}
+
+export interface ResolverDefaultSettings {
+  artworkRequirement?: ProductOptionRequirement;
+  maxArtworkFileSizeMb?: number;
+  minimumArtworkMegapixels?: number;
+  artworkFileFormats?: string[];
+  designServiceRequirement?: ProductOptionRequirement;
+}
+
+const DEFAULT_FORMATS = ['PDF', 'AI', 'PSD', 'CDR', 'TIFF', 'PNG', 'JPG'];
+
+/**
+ * Normalizes an option code / value string for reliable matching
+ */
+export function normalizeKey(str: string | undefined | null): string {
+  if (!str) return '';
+  return String(str).toLowerCase().trim().replace(/[\s-]+/g, '_');
+}
+
+/**
+ * Checks whether a rule condition matches the currently selected option values.
+ * Supports both:
+ * 1. Multi-group combination rules: rule.actionPayload.conditionCombination = { [groupCode]: optionValue }
+ * 2. Single-group rules: rule.conditionGroupCode & rule.conditionOptionValue
+ */
+export function matchesRuleCondition(
+  rule: ProductConfigurationRule,
+  selectedOptions: Record<string, any>
+): boolean {
+  if (!rule.isActive) return false;
+
+  const payload = (rule.actionPayload as any) || {};
+
+  // Case 1: Multi-group combination condition
+  if (payload.conditionCombination && typeof payload.conditionCombination === 'object') {
+    const combo = payload.conditionCombination;
+    const entries = Object.entries(combo);
+    if (entries.length === 0) return false;
+
+    return entries.every(([grpCode, optVal]) => {
+      const userVal = selectedOptions[grpCode];
+      if (userVal === undefined || userVal === null) return false;
+      return normalizeKey(userVal) === normalizeKey(optVal as string);
+    });
+  }
+
+  // Case 2: Single-group condition
+  const userVal = selectedOptions[rule.conditionGroupCode];
+  if (userVal === undefined || userVal === null) return false;
+
+  const normUser = normalizeKey(userVal);
+  const normRule = normalizeKey(rule.conditionOptionValue);
+
+  if (rule.conditionOperator === 'EQUALS') {
+    return normUser === normRule;
+  }
+  if (rule.conditionOperator === 'NOT_EQUALS') {
+    return normUser !== normRule;
+  }
+  if (rule.conditionOperator === 'IN') {
+    const list = Array.isArray(rule.conditionOptionValue)
+      ? rule.conditionOptionValue.map((v) => normalizeKey(String(v)))
+      : String(rule.conditionOptionValue)
+          .split(',')
+          .map((s) => normalizeKey(s));
+    return list.includes(normUser);
+  }
+
+  return normUser === normRule;
+}
+
+/**
+ * Resolves artwork configuration for given selections based on configured rules.
+ */
+export function resolveArtworkConditions(
+  rules: ProductConfigurationRule[] = [],
+  selectedOptions: Record<string, any> = {},
+  defaults: ResolverDefaultSettings = {},
+  availableOptionGroups: ProductOptionGroup[] = []
+): ResolvedArtworkCondition {
+  const baseStatus = defaults.artworkRequirement || 'OPTIONAL';
+  const baseMinMP = Number(defaults.minimumArtworkMegapixels) || 1.5;
+  const baseMaxMB = Number(defaults.maxArtworkFileSizeMb) || 50;
+  const baseFormats = defaults.artworkFileFormats && defaults.artworkFileFormats.length > 0
+    ? defaults.artworkFileFormats
+    : DEFAULT_FORMATS;
+
+  // Find all matching artwork rules
+  const matchingArtworkRules: ProductConfigurationRule[] = [];
+
+  for (const rule of rules) {
+    if (!rule.isActive) continue;
+    if (
+      rule.actionType === 'REQUIRE_ARTWORK_FILES' ||
+      rule.actionType === 'CONFIGURE_ARTWORK' ||
+      rule.actionType === 'ARTWORK_CONDITIONS'
+    ) {
+      if (matchesRuleCondition(rule, selectedOptions)) {
+        matchingArtworkRules.push(rule);
+      }
+    }
+  }
+
+  // Prioritize multi-group combination rules over single-group rules
+  matchingArtworkRules.sort((a, b) => {
+    const aCombo = (a.actionPayload as any)?.conditionCombination;
+    const bCombo = (b.actionPayload as any)?.conditionCombination;
+    const aCount = aCombo && typeof aCombo === 'object' ? Object.keys(aCombo).length : 1;
+    const bCount = bCombo && typeof bCombo === 'object' ? Object.keys(bCombo).length : 1;
+    return bCount - aCount;
+  });
+
+  const bestRule = matchingArtworkRules[0];
+
+  if (bestRule) {
+    const p = (bestRule.actionPayload as any) || {};
+    const status: ProductOptionRequirement = p.artworkStatus || 'REQUIRED';
+    const slotCount = Number(p.slotCount) || (Array.isArray(p.slotLabels) ? p.slotLabels.length : 1);
+    const rawLabels: string[] = Array.isArray(p.slotLabels)
+      ? p.slotLabels
+      : String(p.slotLabels || '').split(',').map((s) => s.trim()).filter(Boolean);
+
+    const labels = rawLabels.length > 0
+      ? rawLabels
+      : slotCount === 2
+      ? ['Front Side', 'Back Side']
+      : Array.from({ length: slotCount }, (_, i) => `Artwork File ${i + 1}`);
+
+    const slots: ArtworkSlotConfig[] = [];
+    if (status !== 'DISABLED') {
+      for (let i = 0; i < slotCount; i++) {
+        const lbl = labels[i] || `Artwork File ${i + 1}`;
+        const key = `slot_${i + 1}_${normalizeKey(lbl)}`;
+        const isHidden = Array.isArray(p.hiddenSlots) && p.hiddenSlots.includes(key);
+        if (isHidden) continue;
+
+        const isRequiredSlot =
+          status === 'REQUIRED' &&
+          (!Array.isArray(p.optionalSlots) || !p.optionalSlots.includes(key));
+
+        slots.push({
+          slotKey: key,
+          label: lbl,
+          minMegapixels: Number(p.minMegapixels) || baseMinMP,
+          isRequired: isRequiredSlot,
+          isCustomerSupplied: p.customerSuppliedSides ? p.customerSuppliedSides.includes(lbl) : true,
+        });
+      }
+    }
+
+    return {
+      artworkStatus: status,
+      slots,
+      requireDesignBrief: Boolean(p.requireDesignBrief || p.designServicePolicy === 'REQUIRE_BRIEF'),
+      showDesignBrief: p.showDesignBrief !== false && (p.requireDesignBrief || p.designServicePolicy === 'REQUIRE_BRIEF'),
+      requireReferenceImage: Boolean(p.requireReferenceImage),
+      showReferenceImage: p.showReferenceImage !== false,
+      maxArtworkFileSizeMb: Number(p.maxFileSizeMb) || baseMaxMB,
+      minimumArtworkMegapixels: Number(p.minMegapixels) || baseMinMP,
+      allowedFormats: Array.isArray(p.acceptedFormats)
+        ? p.acceptedFormats
+        : typeof p.acceptedFormats === 'string'
+        ? p.acceptedFormats.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : baseFormats,
+      matchedRuleName: bestRule.name,
+      isCombinationRule: Boolean(p.conditionCombination),
+      designFee: p.designFee !== undefined ? Number(p.designFee) : undefined,
+      designScope: p.designScope || undefined,
+    };
+  }
+
+  // Fallback heuristic from selected option group option definitions (e.g. printing_side = both)
+  let heuristicSlots: ArtworkSlotConfig[] = [];
+  let detectedCount = 1;
+  let detectedLabels: string[] = ['Production Artwork File'];
+
+  for (const grp of availableOptionGroups) {
+    const val = selectedOptions[grp.code];
+    if (!val) continue;
+    const opt = grp.options?.find((o) => normalizeKey(o.value) === normalizeKey(val));
+    if (opt && opt.fileCount && opt.fileCount > 0) {
+      detectedCount = opt.fileCount;
+      if (opt.fileSlotLabels && opt.fileSlotLabels.length > 0) {
+        detectedLabels = opt.fileSlotLabels;
+      } else if (detectedCount === 2) {
+        detectedLabels = ['Front Side', 'Back Side'];
+      }
+      break;
+    }
+  }
+
+  if (baseStatus !== 'DISABLED') {
+    for (let i = 0; i < detectedCount; i++) {
+      const lbl = detectedLabels[i] || `Artwork File ${i + 1}`;
+      heuristicSlots.push({
+        slotKey: `slot_${i + 1}_${normalizeKey(lbl)}`,
+        label: lbl,
+        minMegapixels: baseMinMP,
+        isRequired: baseStatus === 'REQUIRED',
+        isCustomerSupplied: true,
+      });
+    }
+  }
+
+  return {
+    artworkStatus: baseStatus,
+    slots: heuristicSlots,
+    requireDesignBrief: defaults.designServiceRequirement === 'REQUIRED',
+    showDesignBrief: defaults.designServiceRequirement !== 'DISABLED',
+    requireReferenceImage: false,
+    showReferenceImage: true,
+    maxArtworkFileSizeMb: baseMaxMB,
+    minimumArtworkMegapixels: baseMinMP,
+    allowedFormats: baseFormats,
+    isCombinationRule: false,
+  };
+}
+
+/**
+ * Validates all artwork rules for conflicts, orphan references, or impossible requirements.
+ */
+export function validateArtworkConditions(
+  rules: ProductConfigurationRule[],
+  optionGroups: ProductOptionGroup[]
+): { errors: ArtworkConditionConflict[]; warnings: ArtworkConditionConflict[] } {
+  const errors: ArtworkConditionConflict[] = [];
+  const warnings: ArtworkConditionConflict[] = [];
+
+  const groupMap = new Map<string, Set<string>>();
+  for (const g of optionGroups) {
+    const valSet = new Set<string>();
+    for (const opt of g.options) {
+      valSet.add(normalizeKey(opt.value));
+    }
+    groupMap.set(g.code, valSet);
+  }
+
+  const combinationSignatures = new Set<string>();
+
+  for (const rule of rules) {
+    if (!rule.isActive) continue;
+    const isArtworkRule =
+      rule.actionType === 'REQUIRE_ARTWORK_FILES' ||
+      rule.actionType === 'CONFIGURE_ARTWORK' ||
+      rule.actionType === 'ARTWORK_CONDITIONS';
+
+    if (!isArtworkRule) continue;
+
+    const payload = (rule.actionPayload as any) || {};
+
+    // Check multi-group combination references
+    if (payload.conditionCombination && typeof payload.conditionCombination === 'object') {
+      const combo = payload.conditionCombination;
+      const sortedKeys = Object.keys(combo).sort();
+      const sig = sortedKeys.map((k) => `${k}=${combo[k]}`).join('&');
+
+      if (combinationSignatures.has(sig)) {
+        errors.push({
+          ruleId: rule.id,
+          ruleName: rule.name,
+          type: 'CONTRADICTORY_SLOTS',
+          message: `Duplicate artwork condition detected for combination [${sig}]. Multiple conflicting rules cannot target the same combination.`,
+        });
+      }
+      combinationSignatures.add(sig);
+
+      for (const [grpCode, optVal] of Object.entries(combo)) {
+        if (!groupMap.has(grpCode)) {
+          errors.push({
+            ruleId: rule.id,
+            ruleName: rule.name,
+            type: 'ORPHAN_GROUP',
+            groupCode: grpCode,
+            message: `Artwork rule "${rule.name}" references non-existent option group "${grpCode}".`,
+          });
+        } else {
+          const validVals = groupMap.get(grpCode)!;
+          if (!validVals.has(normalizeKey(optVal as string))) {
+            errors.push({
+              ruleId: rule.id,
+              ruleName: rule.name,
+              type: 'ORPHAN_OPTION',
+              groupCode: grpCode,
+              optionValue: String(optVal),
+              message: `Artwork rule "${rule.name}" references deleted or invalid option choice "${optVal}" in group "${grpCode}".`,
+            });
+          }
+        }
+      }
+    } else {
+      // Check single group reference
+      if (!groupMap.has(rule.conditionGroupCode)) {
+        errors.push({
+          ruleId: rule.id,
+          ruleName: rule.name,
+          type: 'ORPHAN_GROUP',
+          groupCode: rule.conditionGroupCode,
+          message: `Artwork rule "${rule.name}" references non-existent option group "${rule.conditionGroupCode}".`,
+        });
+      } else {
+        const validVals = groupMap.get(rule.conditionGroupCode)!;
+        const list = Array.isArray(rule.conditionOptionValue)
+          ? rule.conditionOptionValue.map((v) => normalizeKey(String(v)))
+          : String(rule.conditionOptionValue)
+              .split(',')
+              .map((s) => normalizeKey(s));
+
+        for (const v of list) {
+          if (!validVals.has(v)) {
+            errors.push({
+              ruleId: rule.id,
+              ruleName: rule.name,
+              type: 'ORPHAN_OPTION',
+              groupCode: rule.conditionGroupCode,
+              optionValue: v,
+              message: `Artwork rule "${rule.name}" references non-existent option value "${v}" in group "${rule.conditionGroupCode}".`,
+            });
+          }
+        }
+      }
+    }
+
+    // Check slot contradictions (e.g. slot simultaneously required and hidden)
+    const requiredSlots: string[] = Array.isArray(payload.requiredSlots) ? payload.requiredSlots : [];
+    const hiddenSlots: string[] = Array.isArray(payload.hiddenSlots) ? payload.hiddenSlots : [];
+    const overlap = requiredSlots.filter((s) => hiddenSlots.includes(s));
+    if (overlap.length > 0) {
+      errors.push({
+        ruleId: rule.id,
+        ruleName: rule.name,
+        type: 'CONTRADICTORY_SLOTS',
+        message: `Rule "${rule.name}" marks slot(s) [${overlap.join(', ')}] as simultaneously REQUIRED and HIDDEN.`,
+      });
+    }
+
+    // Check if artwork is marked REQUIRED but 0 slots configured
+    if (payload.artworkStatus === 'REQUIRED') {
+      const slotCount = Number(payload.slotCount) || (Array.isArray(payload.slotLabels) ? payload.slotLabels.length : 1);
+      if (slotCount <= 0 && !payload.requireDesignBrief) {
+        errors.push({
+          ruleId: rule.id,
+          ruleName: rule.name,
+          type: 'MISSING_SLOTS',
+          message: `Rule "${rule.name}" requires artwork upload but specifies 0 upload slots.`,
+        });
+      }
+    }
+
+    // Check non-negative design amounts
+    if (payload.designFee !== undefined && payload.designFee !== null) {
+      const feeNum = Number(payload.designFee);
+      if (isNaN(feeNum) || feeNum < 0) {
+        errors.push({
+          ruleId: rule.id,
+          ruleName: rule.name,
+          type: 'NEGATIVE_DESIGN_AMOUNT',
+          message: `Rule "${rule.name}" configures a negative or invalid design service amount (₹${payload.designFee}). Amounts must be non-negative.`,
+        });
+      }
+    }
+
+    // Check design scope references if explicitly declared
+    if (payload.designScope) {
+      const scopeVal = normalizeKey(payload.designScope);
+      const isKnownStandardScope = ['front', 'back', 'full', 'both'].includes(scopeVal);
+      let foundInOptions = false;
+
+      for (const [_, valSet] of groupMap.entries()) {
+        if (valSet.has(scopeVal)) {
+          foundInOptions = true;
+          break;
+        }
+      }
+
+      if (!isKnownStandardScope && !foundInOptions) {
+        errors.push({
+          ruleId: rule.id,
+          ruleName: rule.name,
+          type: 'INVALID_DESIGN_SCOPE',
+          message: `Rule "${rule.name}" references unknown design scope "${payload.designScope}".`,
+        });
+      }
+    }
+
+    // Check slot consistency with design scope
+    if (payload.designScope === 'full' || payload.designScope === 'both') {
+      if (payload.artworkStatus === 'REQUIRED' && (payload.slotCount > 0 || (payload.slotLabels && payload.slotLabels.length > 0))) {
+        warnings.push({
+          ruleId: rule.id,
+          ruleName: rule.name,
+          type: 'INCONSISTENT_DESIGN_SLOTS',
+          message: `Rule "${rule.name}" configures Full / Both Sides PB Design but still marks customer production artwork files as REQUIRED.`,
+        });
+      }
+    }
+  }
+
+  return { errors, warnings };
+}
