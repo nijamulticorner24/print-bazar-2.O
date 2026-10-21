@@ -7,7 +7,6 @@ import {
   RiSparklingFill,
   RiCheckLine,
   RiUploadCloud2Line,
-  RiTruckLine,
   RiInformationLine,
 } from 'react-icons/ri';
 import { ProductCategoryItem, ProductImageItem, ProductOptionRequirement, api } from '@/lib/api';
@@ -24,16 +23,16 @@ export interface StudioTabBasicsProps {
   categories: ProductCategoryItem[];
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   setStatus: (v: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED') => void;
-  basePrice: number | string;
-  setBasePrice: (v: number | string) => void;
-  pricingModel: string;
-  setPricingModel: (v: string) => void;
-  minQuantity: number;
-  setMinQuantity: (v: number) => void;
-  quantityStep: number;
-  setQuantityStep: (v: number) => void;
-  maxQuantity: number;
-  setMaxQuantity: (v: number) => void;
+  basePrice?: number | string;
+  setBasePrice?: (v: number | string) => void;
+  pricingModel?: string;
+  setPricingModel?: (v: string) => void;
+  minQuantity?: number;
+  setMinQuantity?: (v: number) => void;
+  quantityStep?: number;
+  setQuantityStep?: (v: number) => void;
+  maxQuantity?: number;
+  setMaxQuantity?: (v: number) => void;
   productionDays: number;
   setProductionDays: (v: number) => void;
   description: string;
@@ -44,16 +43,16 @@ export interface StudioTabBasicsProps {
   setIsFeatured: (v: boolean) => void;
 
   // Logistics
-  shippingChargeType: string;
-  setShippingChargeType: (v: string) => void;
-  courierCharge: number | string;
-  setCourierCharge: (v: number | string) => void;
-  freeShippingThreshold: number | string;
-  setFreeShippingThreshold: (v: number | string) => void;
-  allowCod: boolean;
-  setAllowCod: (v: boolean) => void;
-  codSurcharge: number | string;
-  setCodSurcharge: (v: number | string) => void;
+  shippingChargeType?: string;
+  setShippingChargeType?: (v: string) => void;
+  courierCharge?: number | string;
+  setCourierCharge?: (v: number | string) => void;
+  freeShippingThreshold?: number | string;
+  setFreeShippingThreshold?: (v: number | string) => void;
+  allowCod?: boolean;
+  setAllowCod?: (v: boolean) => void;
+  codSurcharge?: number | string;
+  setCodSurcharge?: (v: number | string) => void;
 
   // Media
   images: ProductImageItem[];
@@ -90,16 +89,6 @@ export function StudioTabBasics({
   categories,
   status,
   setStatus,
-  basePrice,
-  setBasePrice,
-  pricingModel,
-  setPricingModel,
-  minQuantity,
-  setMinQuantity,
-  quantityStep,
-  setQuantityStep,
-  maxQuantity,
-  setMaxQuantity,
   productionDays,
   setProductionDays,
   description,
@@ -108,16 +97,6 @@ export function StudioTabBasics({
   setDefaultSize,
   isFeatured,
   setIsFeatured,
-  shippingChargeType,
-  setShippingChargeType,
-  courierCharge,
-  setCourierCharge,
-  freeShippingThreshold,
-  setFreeShippingThreshold,
-  allowCod,
-  setAllowCod,
-  codSurcharge,
-  setCodSurcharge,
   images,
   setImages,
   isNew,
@@ -298,54 +277,6 @@ export function StudioTabBasics({
               <option value="ARCHIVED">ARCHIVED (Discontinued)</option>
             </select>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Starting Reference Rate (₹)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={basePrice}
-              onChange={(e) => {
-                setBasePrice(e.target.value);
-                onChange?.();
-              }}
-              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono font-bold focus:outline-none focus:border-amber-500 shadow-2xs"
-            />
-            <p className="text-[10px] text-slate-500 mt-1">
-              Total reference amount for MOQ ({minQuantity} pcs). Reference Unit Price: <strong className="text-slate-900 font-mono">₹{(Number(basePrice) / Math.max(1, Number(minQuantity))).toFixed(4)}/pc</strong>.
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Minimum Order Qty (MOQ)</label>
-            <input
-              type="number"
-              value={minQuantity}
-              onChange={(e) => {
-                setMinQuantity(parseInt(e.target.value, 10) || 1);
-                onChange?.();
-              }}
-              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-amber-500 shadow-2xs"
-            />
-            <p className="text-[10px] text-slate-400 mt-1">Starting reference threshold for unit pricing.</p>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Qty Increment Step</label>
-            <input
-              type="number"
-              value={quantityStep}
-              onChange={(e) => {
-                setQuantityStep(parseInt(e.target.value, 10) || 1);
-                onChange?.();
-              }}
-              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-amber-500 shadow-2xs"
-            />
-          </div>
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">Production SLA (Days)</label>
@@ -408,95 +339,7 @@ export function StudioTabBasics({
         </div>
       </div>
 
-      {/* 2. Shipping & Logistics */}
-      <div className="bg-white border border-slate-200/90 rounded-xl p-6 shadow-xs">
-        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <RiTruckLine className="w-4 h-4 text-amber-600" />
-          <span>Fulfillment, Courier Rates & Logistics</span>
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Shipping Charge Model</label>
-            <select
-              value={shippingChargeType}
-              onChange={(e) => {
-                setShippingChargeType(e.target.value);
-                onChange?.();
-              }}
-              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-amber-500 shadow-2xs cursor-pointer"
-            >
-              <option value="DEFAULT">DEFAULT (Calculated based on store rules)</option>
-              <option value="FIXED">FIXED (Explicit per-order charge)</option>
-              <option value="FREE">FREE (Free delivery on this item)</option>
-              <option value="QUANTITY_BASED">QUANTITY_BASED (Scales per item)</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Standard Courier Charge (₹)</label>
-            <input
-              type="number"
-              value={courierCharge}
-              onChange={(e) => {
-                setCourierCharge(e.target.value);
-                onChange?.();
-              }}
-              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-amber-500 shadow-2xs"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Free Shipping Threshold (₹)</label>
-            <input
-              type="number"
-              value={freeShippingThreshold}
-              onChange={(e) => {
-                setFreeShippingThreshold(e.target.value);
-                onChange?.();
-              }}
-              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-amber-500 shadow-2xs"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">COD Handling</label>
-            <div className="flex items-center gap-3 mt-2">
-              <label className="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={allowCod}
-                  onChange={(e) => {
-                    setAllowCod(e.target.checked);
-                    onChange?.();
-                  }}
-                  className="rounded text-amber-500 border-slate-300 focus:ring-amber-500 cursor-pointer"
-                />
-                <span>Allow COD</span>
-              </label>
-
-              {allowCod && (
-                <div className="flex items-center gap-1">
-                  <span className="text-[11px] text-slate-500">+₹</span>
-                  <input
-                    type="number"
-                    value={codSurcharge}
-                    onChange={(e) => {
-                      setCodSurcharge(e.target.value);
-                      onChange?.();
-                    }}
-                    placeholder="50"
-                    className="w-16 bg-white border border-slate-300 rounded px-1.5 py-1 text-xs text-slate-900 font-mono"
-                  />
-                  <span className="text-[10px] text-slate-400">fee</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Media Gallery */}
+      {/* 2. Media Gallery */}
       <div className="bg-white border border-slate-200/90 rounded-xl p-6 shadow-xs">
         <div className="flex items-center justify-between mb-4">
           <div>

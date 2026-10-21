@@ -89,6 +89,9 @@ let PricingService = class PricingService {
                 pricingMatrices: {
                     orderBy: { minQty: 'asc' },
                 },
+                additionalPricings: {
+                    orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
+                },
             },
         });
         if (!product) {
@@ -108,6 +111,9 @@ let PricingService = class PricingService {
                     },
                     pricingMatrices: {
                         orderBy: { minQty: 'asc' },
+                    },
+                    additionalPricings: {
+                        orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
                     },
                 },
             });
@@ -191,15 +197,45 @@ let PricingService = class PricingService {
             }
             const matchedOption = groupOptions.find((o) => (o.value || o.code) === String(activeVal));
             if (matchedOption) {
-                const modVal = Number(matchedOption.priceModifier || 0);
+                const additionalPricings = product.additionalPricings || [];
+                const groupAdditionalPricings = additionalPricings.filter((ap) => ap.groupCode === group.code);
+                let modVal = Number(matchedOption.priceModifier || 0);
+                let modType = matchedOption.priceModifierType || 'FIXED';
+                let isAdditionalTierPricing = false;
+                if (groupAdditionalPricings.length > 0) {
+                    const matchingTier = groupAdditionalPricings.find((ap) => {
+                        const valMatches = String(ap.optionValue).toLowerCase() === String(matchedOption.value).toLowerCase();
+                        const qtyMatches = dto.quantity >= ap.minQty && (ap.maxQty && ap.maxQty >= ap.minQty ? dto.quantity <= ap.maxQty : true);
+                        return valMatches && qtyMatches;
+                    });
+                    if (matchingTier) {
+                        if (matchingTier.isExcluded) {
+                            throw new common_1.BadRequestException(`The selected option '${matchedOption.label || matchedOption.value}' in '${group.name}' is not supported for production at quantity ${dto.quantity}.`);
+                        }
+                        const tierCharge = Number(matchingTier.unitPrice || 0);
+                        if (tierCharge < 0) {
+                            throw new common_1.BadRequestException(`Additional charge for '${matchedOption.label}' in '${group.name}' cannot be negative.`);
+                        }
+                        modVal = tierCharge;
+                        modType = matchingTier.chargeBasis || 'PER_UNIT';
+                        isAdditionalTierPricing = true;
+                    }
+                    else {
+                        const valTiers = groupAdditionalPricings.filter((ap) => String(ap.optionValue).toLowerCase() === String(matchedOption.value).toLowerCase());
+                        if (valTiers.length > 0) {
+                            const availableTiers = Array.from(new Set(valTiers.map((ap) => (ap.minQty === ap.maxQty ? `${ap.minQty}` : `${ap.minQty}–${ap.maxQty}`)))).sort();
+                            throw new common_1.BadRequestException(`Quantity ${dto.quantity} is not supported for option '${matchedOption.label}' in '${group.name}'. Configured quantity tier(s): ${availableTiers.join(', ')}.`);
+                        }
+                    }
+                }
                 if (modVal < 0) {
                     throw new common_1.BadRequestException(`Option charge for '${matchedOption.label || matchedOption.name || group.name}' cannot be negative.`);
                 }
-                groupOptionModifiers.set(group.code, { modVal, type: matchedOption.priceModifierType || 'FIXED' });
-                if (matchedOption.priceModifierType === 'FIXED' || matchedOption.priceModifierType === 'PER_UNIT') {
+                groupOptionModifiers.set(group.code, { modVal, type: modType, isAdditionalTierPricing });
+                if (modType === 'FIXED' || modType === 'PER_UNIT') {
                     optionsUnitModifier += modVal;
                 }
-                else if (matchedOption.priceModifierType === 'PERCENTAGE') {
+                else if (modType === 'PERCENTAGE') {
                     percentageModifierTotal += modVal;
                 }
                 selectedOptionsSummary.push({
@@ -208,12 +244,15 @@ let PricingService = class PricingService {
                     valueName: matchedOption.label || matchedOption.name,
                     valueCode: matchedOption.value || matchedOption.code,
                     priceModifier: modVal,
+                    additionalUnitPrice: isAdditionalTierPricing ? modVal : 0,
+                    additionalChargeTotal: isAdditionalTierPricing ? Math.round(modVal * dto.quantity * 100) / 100 : 0,
                 });
                 specificationsSnapshot[group.code] = {
                     label: group.label || group.name,
                     value: matchedOption.value || matchedOption.code,
                     displayValue: matchedOption.label || matchedOption.name,
                     priceModifier: modVal,
+                    isAdditionalTierPricing,
                 };
             }
             else {

@@ -51,9 +51,9 @@ export declare class PackingController {
             orderId: string;
             updatedAt: Date;
             sku: string;
-            quantity: number;
-            unitPrice: import("@prisma/client/runtime/library").Decimal;
             productId: string;
+            unitPrice: import("@prisma/client/runtime/library").Decimal;
+            quantity: number;
             totalPrice: import("@prisma/client/runtime/library").Decimal;
             productName: string;
             specifications: import("@prisma/client/runtime/library").JsonValue;
@@ -270,9 +270,9 @@ export declare class PackingController {
             orderId: string;
             updatedAt: Date;
             sku: string;
-            quantity: number;
-            unitPrice: import("@prisma/client/runtime/library").Decimal;
             productId: string;
+            unitPrice: import("@prisma/client/runtime/library").Decimal;
+            quantity: number;
             totalPrice: import("@prisma/client/runtime/library").Decimal;
             productName: string;
             specifications: import("@prisma/client/runtime/library").JsonValue;

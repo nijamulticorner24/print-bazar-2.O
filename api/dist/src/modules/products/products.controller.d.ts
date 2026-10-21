@@ -27,11 +27,11 @@ export declare class ProductsController {
             updatedAt: Date;
             sortOrder: number;
             isPrimary: boolean;
-            url: string;
+            productId: string;
             storageKey: string | null;
+            url: string;
             altText: string | null;
             caption: string | null;
-            productId: string;
         }[];
         optionGroups: ({
             options: {
@@ -40,6 +40,7 @@ export declare class ProductsController {
                 isActive: boolean;
                 updatedAt: Date;
                 sortOrder: number;
+                groupId: string;
                 label: string;
                 value: string;
                 priceModifierType: string;
@@ -48,7 +49,6 @@ export declare class ProductsController {
                 fileCount: number | null;
                 fileSlotLabels: string[];
                 minMegapixels: number | null;
-                groupId: string;
             }[];
         } & {
             id: string;
@@ -59,11 +59,12 @@ export declare class ProductsController {
             description: string | null;
             sortOrder: number;
             isCustomerVisible: boolean;
-            code: string;
+            productId: string;
             reusableGroupId: string | null;
+            code: string;
             inputType: string;
             isRequired: boolean;
-            productId: string;
+            enableAdditionalPricing: boolean;
         })[];
         configurationRules: {
             id: string;
@@ -71,6 +72,7 @@ export declare class ProductsController {
             name: string;
             isActive: boolean;
             updatedAt: Date;
+            productId: string;
             conditionGroupCode: string;
             conditionOperator: string;
             conditionOptionValue: string;
@@ -78,19 +80,18 @@ export declare class ProductsController {
             targetGroupCode: string | null;
             targetOptionValue: string | null;
             actionPayload: import("@prisma/client/runtime/library").JsonValue | null;
-            productId: string;
         }[];
         pricingSource: {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            productId: string;
             sourceType: string;
             spreadsheetId: string | null;
             worksheetName: string | null;
             apiKey: string | null;
-            columnMapping: import("@prisma/client/runtime/library").JsonValue | null;
-            productId: string;
             schemaVersion: string;
+            columnMapping: import("@prisma/client/runtime/library").JsonValue | null;
             lastSyncAt: Date | null;
             syncStatus: string;
             syncMessage: string | null;
@@ -185,11 +186,11 @@ export declare class ProductsController {
             updatedAt: Date;
             sortOrder: number;
             isPrimary: boolean;
-            url: string;
+            productId: string;
             storageKey: string | null;
+            url: string;
             altText: string | null;
             caption: string | null;
-            productId: string;
         }[];
         optionGroups: ({
             options: {
@@ -198,6 +199,7 @@ export declare class ProductsController {
                 isActive: boolean;
                 updatedAt: Date;
                 sortOrder: number;
+                groupId: string;
                 label: string;
                 value: string;
                 priceModifierType: string;
@@ -206,7 +208,6 @@ export declare class ProductsController {
                 fileCount: number | null;
                 fileSlotLabels: string[];
                 minMegapixels: number | null;
-                groupId: string;
             }[];
         } & {
             id: string;
@@ -217,11 +218,12 @@ export declare class ProductsController {
             description: string | null;
             sortOrder: number;
             isCustomerVisible: boolean;
-            code: string;
+            productId: string;
             reusableGroupId: string | null;
+            code: string;
             inputType: string;
             isRequired: boolean;
-            productId: string;
+            enableAdditionalPricing: boolean;
         })[];
         configurationRules: {
             id: string;
@@ -229,6 +231,7 @@ export declare class ProductsController {
             name: string;
             isActive: boolean;
             updatedAt: Date;
+            productId: string;
             conditionGroupCode: string;
             conditionOperator: string;
             conditionOptionValue: string;
@@ -236,19 +239,18 @@ export declare class ProductsController {
             targetGroupCode: string | null;
             targetOptionValue: string | null;
             actionPayload: import("@prisma/client/runtime/library").JsonValue | null;
-            productId: string;
         }[];
         pricingSource: {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            productId: string;
             sourceType: string;
             spreadsheetId: string | null;
             worksheetName: string | null;
             apiKey: string | null;
-            columnMapping: import("@prisma/client/runtime/library").JsonValue | null;
-            productId: string;
             schemaVersion: string;
+            columnMapping: import("@prisma/client/runtime/library").JsonValue | null;
             lastSyncAt: Date | null;
             syncStatus: string;
             syncMessage: string | null;
@@ -259,10 +261,10 @@ export declare class ProductsController {
             id: string;
             createdAt: Date;
             minQty: number;
-            maxQty: number;
-            unitPrice: import("@prisma/client/runtime/library").Decimal;
-            attributeCombination: import("@prisma/client/runtime/library").JsonValue;
             productId: string;
+            maxQty: number;
+            attributeCombination: import("@prisma/client/runtime/library").JsonValue;
+            unitPrice: import("@prisma/client/runtime/library").Decimal;
         }[];
     } & {
         id: string;

@@ -230,6 +230,7 @@ export function StudioTabOptions({
         description: lib.description || '',
         isRequired: true,
         isCustomerVisible: true,
+        enableAdditionalPricing: Boolean(lib.enableAdditionalPricing),
         sortOrder: optionGroups.length + idx,
         isActive: true,
         options: finalOpts.map((opt: any, oIdx: number) => ({
@@ -267,6 +268,7 @@ export function StudioTabOptions({
       description: '',
       isRequired: true,
       isCustomerVisible: true,
+      enableAdditionalPricing: false,
       sortOrder: optionGroups.length,
       isActive: true,
       options: [
@@ -546,6 +548,7 @@ export function StudioTabOptions({
       code: matchingLib.code,
       inputType: matchingLib.inputType || 'SELECT',
       description: matchingLib.description || '',
+      enableAdditionalPricing: Boolean(matchingLib.enableAdditionalPricing),
       options: syncedOptions,
     });
     alert(`Option group "${activeGroup.name}" successfully synchronized with latest /admin/option-groups library!`);
@@ -747,6 +750,14 @@ export function StudioTabOptions({
                         </span>
                         <span>•</span>
                         <span>{group.inputType}</span>
+                        {group.enableAdditionalPricing && (
+                          <>
+                            <span>•</span>
+                            <span className="text-[9px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.2 rounded font-sans">
+                              +Pricing
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -860,7 +871,7 @@ export function StudioTabOptions({
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-6 pt-2">
+                <div className="flex flex-wrap items-center gap-4 pt-2">
                   <label className="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
                     <input
                       type="checkbox"
@@ -879,6 +890,16 @@ export function StudioTabOptions({
                       className="rounded text-amber-500 border-slate-300 focus:ring-amber-500"
                     />
                     <span className="font-semibold">Visible to customers on storefront</span>
+                  </label>
+
+                  <label className="inline-flex items-center gap-1.5 text-xs text-amber-950 font-semibold cursor-pointer bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(activeGroup.enableAdditionalPricing)}
+                      onChange={(e) => updateActiveGroup({ enableAdditionalPricing: e.target.checked })}
+                      className="rounded text-amber-600 border-amber-300 focus:ring-amber-500"
+                    />
+                    <span>Eligible for Additional Pricing (Step 4)</span>
                   </label>
                 </div>
               </div>

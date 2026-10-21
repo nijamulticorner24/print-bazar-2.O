@@ -94,6 +94,7 @@ export declare class CreateProductOptionGroupDto {
     isRequired?: boolean;
     isCustomerVisible?: boolean;
     sortOrder?: number;
+    enableAdditionalPricing?: boolean;
     isActive?: boolean;
     options?: CreateProductOptionDto[];
 }
@@ -106,6 +107,7 @@ export declare class UpdateProductOptionGroupDto {
     isRequired?: boolean;
     isCustomerVisible?: boolean;
     sortOrder?: number;
+    enableAdditionalPricing?: boolean;
     isActive?: boolean;
     options?: CreateProductOptionDto[];
 }
@@ -121,6 +123,7 @@ export declare class CreateReusableOptionGroupDto {
     defaultOptions?: any;
     metadata?: any;
     sortOrder?: number;
+    enableAdditionalPricing?: boolean;
     isActive?: boolean;
 }
 export declare class UpdateReusableOptionGroupDto {
@@ -131,6 +134,7 @@ export declare class UpdateReusableOptionGroupDto {
     defaultOptions?: any;
     metadata?: any;
     sortOrder?: number;
+    enableAdditionalPricing?: boolean;
     isActive?: boolean;
 }
 export declare class CreateProductConfigurationRuleDto {
@@ -322,4 +326,16 @@ export declare class UpdatePricingRuleDto {
 }
 export declare class BatchPricingRulesDto {
     rules: CreatePricingRuleDto[];
+}
+export declare class ProductAdditionalPricingTierDto {
+    groupCode: string;
+    optionValue: string;
+    minQty: number;
+    maxQty: number;
+    unitPrice: number;
+    chargeBasis?: string;
+    isExcluded?: boolean;
+}
+export declare class SaveProductAdditionalPricingDto {
+    tiers: ProductAdditionalPricingTierDto[];
 }

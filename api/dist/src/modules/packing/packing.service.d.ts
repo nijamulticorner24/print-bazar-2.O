@@ -93,9 +93,9 @@ export declare class PackingService {
             orderId: string;
             updatedAt: Date;
             sku: string;
-            quantity: number;
-            unitPrice: Prisma.Decimal;
             productId: string;
+            unitPrice: Prisma.Decimal;
+            quantity: number;
             totalPrice: Prisma.Decimal;
             productName: string;
             specifications: Prisma.JsonValue;
@@ -311,9 +311,9 @@ export declare class PackingService {
             orderId: string;
             updatedAt: Date;
             sku: string;
-            quantity: number;
-            unitPrice: Prisma.Decimal;
             productId: string;
+            unitPrice: Prisma.Decimal;
+            quantity: number;
             totalPrice: Prisma.Decimal;
             productName: string;
             specifications: Prisma.JsonValue;

@@ -18,6 +18,7 @@ import {
   ProductConfigurationRule,
   ProductImageItem,
   ProductOptionRequirement,
+  ProductAdditionalPricingTier,
 } from '@/lib/api';
 import { StudioTabBasics } from './studio/StudioTabBasics';
 import { StudioTabOptions } from './studio/StudioTabOptions';
@@ -171,6 +172,25 @@ export function ProductSetupStudio({
     }
   }, [productId, isNew, matrixRows.length]);
 
+  // 6. DYNAMIC GROUP-BASED ADDITIONAL PRICING
+  const [additionalPricingRows, setAdditionalPricingRows] = useState<ProductAdditionalPricingTier[]>(
+    initialProduct?.additionalPricings || []
+  );
+
+  // Load existing additional pricing if not populated
+  useEffect(() => {
+    if (productId && !isNew && additionalPricingRows.length === 0) {
+      api
+        .adminGetAdditionalPricing(productId)
+        .then((tiers) => {
+          if (tiers && tiers.length > 0) {
+            setAdditionalPricingRows(tiers);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [productId, isNew, additionalPricingRows.length]);
+
   // Unsaved changes browser warning
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -258,6 +278,7 @@ export function ProductSetupStudio({
         description: g.description,
         isRequired: g.isRequired,
         isCustomerVisible: g.isCustomerVisible,
+        enableAdditionalPricing: Boolean(g.enableAdditionalPricing),
         sortOrder: idx,
         isActive: g.isActive,
         options: g.options.map((opt, oIdx) => ({
@@ -316,6 +337,21 @@ export function ProductSetupStudio({
             isExcluded: Boolean(r.isExcluded || r.status === 'EXCLUDED'),
             label: r.label,
             discountPercent: r.discountPercent,
+          })),
+        });
+      }
+
+      // Persist Group-Based Dynamic Additional Pricing
+      if (additionalPricingRows.length > 0) {
+        await api.adminSaveAdditionalPricing(saved.id, {
+          tiers: additionalPricingRows.map((t) => ({
+            groupCode: t.groupCode,
+            optionValue: t.optionValue,
+            minQty: Number(t.minQty) || 1,
+            maxQty: Number(t.maxQty) || Number(t.minQty) || 1,
+            unitPrice: Number(t.unitPrice) || 0,
+            chargeBasis: t.chargeBasis || 'PER_UNIT',
+            isExcluded: Boolean(t.isExcluded),
           })),
         });
       }
@@ -584,6 +620,8 @@ export function ProductSetupStudio({
             rules={rules}
             matrixRows={matrixRows}
             setMatrixRows={setMatrixRows}
+            additionalPricingRows={additionalPricingRows}
+            setAdditionalPricingRows={setAdditionalPricingRows}
             designServiceRequirement={designServiceRequirement}
             designServiceFee={designServiceFee}
             artworkRequirement={artworkRequirement}
@@ -614,6 +652,7 @@ export function ProductSetupStudio({
             designServiceRequirement={designServiceRequirement}
             designServiceFee={designServiceFee}
             matrixRows={matrixRows}
+            additionalPricingRows={additionalPricingRows}
             onNavigateToTab={setActiveTab}
             onSaveDraft={() => handleSaveProduct('DRAFT')}
             onPublish={() => handleSaveProduct('PUBLISHED')}

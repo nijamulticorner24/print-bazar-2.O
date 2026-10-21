@@ -393,6 +393,51 @@ describe('PricingService (Authoritative Server Pricing Engine)', () => {
     ],
   };
 
+  const mockAddonProduct = {
+    id: 'prod-addon-001',
+    name: 'Custom Pamphlets',
+    sku: 'SKU-PAMPHLET-001',
+    slug: 'custom-pamphlets',
+    pricingModel: 'MATRIX',
+    basePrice: 500.0,
+    minQuantity: 100,
+    maxQuantity: 10000,
+    productionDays: 3,
+    designServiceRequirement: 'OPTIONAL',
+    designServiceFee: 150,
+    optionGroups: [
+      {
+        id: 'g-paper',
+        code: 'paper_stock',
+        name: 'Paper Stock',
+        enableAdditionalPricing: true,
+        options: [
+          { id: 'o-130', value: '130_gsm', label: '130 GSM Gloss', priceModifier: 0, priceModifierType: 'FIXED' },
+          { id: 'o-170', value: '170_gsm', label: '170 GSM Art Paper', priceModifier: 0.1, priceModifierType: 'FIXED' },
+          { id: 'o-350', value: '350_gsm', label: '350 GSM Board', priceModifier: 0.5, priceModifierType: 'FIXED' },
+          { id: 'o-heavy', value: 'heavy_kraft', label: 'Heavy Kraft', priceModifier: 0, priceModifierType: 'FIXED' },
+        ],
+      },
+    ],
+    pricingMatrices: [
+      { id: 'pm-100', minQty: 100, maxQty: 100, unitPrice: 5.0, attributeCombination: {} },
+      { id: 'pm-200', minQty: 200, maxQty: 200, unitPrice: 4.8, attributeCombination: {} },
+      { id: 'pm-300', minQty: 300, maxQty: 300, unitPrice: 4.5, attributeCombination: {} },
+    ],
+    additionalPricings: [
+      { groupCode: 'paper_stock', optionValue: '130_gsm', minQty: 100, maxQty: 100, unitPrice: 0.0, isExcluded: false },
+      { groupCode: 'paper_stock', optionValue: '130_gsm', minQty: 200, maxQty: 200, unitPrice: 0.0, isExcluded: false },
+      { groupCode: 'paper_stock', optionValue: '130_gsm', minQty: 300, maxQty: 300, unitPrice: 0.0, isExcluded: false },
+      { groupCode: 'paper_stock', optionValue: '170_gsm', minQty: 100, maxQty: 100, unitPrice: 0.2, isExcluded: false },
+      { groupCode: 'paper_stock', optionValue: '170_gsm', minQty: 200, maxQty: 200, unitPrice: 0.35, isExcluded: false },
+      { groupCode: 'paper_stock', optionValue: '170_gsm', minQty: 300, maxQty: 300, unitPrice: 0.5, isExcluded: false },
+      { groupCode: 'paper_stock', optionValue: '350_gsm', minQty: 100, maxQty: 100, unitPrice: 0.8, isExcluded: false },
+      { groupCode: 'paper_stock', optionValue: '350_gsm', minQty: 200, maxQty: 200, unitPrice: 1.2, isExcluded: false },
+      { groupCode: 'paper_stock', optionValue: '350_gsm', minQty: 300, maxQty: 300, unitPrice: 1.5, isExcluded: false },
+      { groupCode: 'paper_stock', optionValue: 'heavy_kraft', minQty: 300, maxQty: 300, unitPrice: 2.0, isExcluded: true },
+    ],
+  };
+
   const mockPrismaService = {
     product: {
       findFirst: jest.fn().mockImplementation(({ where }) => {
@@ -420,6 +465,9 @@ describe('PricingService (Authoritative Server Pricing Engine)', () => {
         if (where?.OR?.some((cond: any) => cond.id === 'prod-manual-001' || cond.slug === 'prod-manual-001' || cond.sku === 'prod-manual-001')) {
           return Promise.resolve(mockManualMatrixProduct);
         }
+        if (where?.OR?.some((cond: any) => cond.id === 'prod-addon-001' || cond.slug === 'prod-addon-001' || cond.sku === 'prod-addon-001')) {
+          return Promise.resolve(mockAddonProduct);
+        }
         return Promise.resolve(null);
       }),
       findUnique: jest.fn().mockImplementation(({ where }) => {
@@ -431,6 +479,7 @@ describe('PricingService (Authoritative Server Pricing Engine)', () => {
         if (where.id === 'prod-base-only-001') return Promise.resolve(mockBaseOnlyProduct);
         if (where.id === 'prod-auto-001') return Promise.resolve(mockAutomaticProduct);
         if (where.id === 'prod-manual-001') return Promise.resolve(mockManualMatrixProduct);
+        if (where.id === 'prod-addon-001') return Promise.resolve(mockAddonProduct);
         return Promise.resolve(null);
       }),
     },
@@ -2085,6 +2134,123 @@ describe('PricingService (Authoritative Server Pricing Engine)', () => {
       expect(liveQuote.subtotal).toBe(1250);
     });
   });
+
+  describe('Dynamic Group-Based Additional Pricing (Acceptance Tests)', () => {
+    beforeEach(() => {
+      jest.spyOn((service as any).prisma.product, 'findFirst').mockImplementation(({ where }: any) => {
+        if (where?.OR?.some((cond: any) => cond.id === 'prod-addon-001' || cond.slug === 'prod-addon-001' || cond.sku === 'prod-addon-001')) {
+          return Promise.resolve(mockAddonProduct);
+        }
+        return Promise.resolve(null);
+      });
+    });
+
+    it('1. Calculates quote for 100 pcs with additional pricing tier (₹0.20/pc on 170 GSM)', async () => {
+      const quote = await service.calculateQuote({
+        productId: 'prod-addon-001',
+        quantity: 100,
+        options: [{ optionCode: 'paper_stock', valueCode: '170_gsm' }],
+      });
+
+      // Matrix: 100 pcs * 5.0 = 500. Addon: 100 * 0.20 = 20. Subtotal: 520.
+      expect(quote.effectiveBasePrice).toBe(5);
+      expect(quote.baseSubtotal).toBe(500);
+      expect(quote.optionsCost).toBe(20); // 100 * 0.20
+      expect(quote.subtotal).toBe(520);
+      expect(quote.selectedOptionsSummary).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            optionCode: 'paper_stock',
+            valueCode: '170_gsm',
+            additionalUnitPrice: 0.2,
+            additionalChargeTotal: 20,
+          }),
+        ]),
+      );
+    });
+
+    it('2. Calculates quote for 200 pcs with additional pricing tier (₹0.35/pc on 170 GSM)', async () => {
+      const quote = await service.calculateQuote({
+        productId: 'prod-addon-001',
+        quantity: 200,
+        options: [{ optionCode: 'paper_stock', valueCode: '170_gsm' }],
+      });
+
+      // Matrix: 200 pcs * 4.80 = 960. Addon: 200 * 0.35 = 70. Subtotal: 1030.
+      expect(quote.effectiveBasePrice).toBe(4.8);
+      expect(quote.optionsCost).toBe(70);
+      expect(quote.subtotal).toBe(1030);
+      expect(quote.unitPrice).toBe(5.15); // (4.80 + 0.35) = 5.15
+    });
+
+    it('3. Calculates quote for 300 pcs with heavy tier (₹1.50/pc on 350 GSM)', async () => {
+      const quote = await service.calculateQuote({
+        productId: 'prod-addon-001',
+        quantity: 300,
+        options: [{ optionCode: 'paper_stock', valueCode: '350_gsm' }],
+      });
+
+      // Matrix: 300 pcs * 4.50 = 1350. Addon: 300 * 1.50 = 450. Subtotal: 1800.
+      expect(quote.effectiveBasePrice).toBe(4.5);
+      expect(quote.optionsCost).toBe(450);
+      expect(quote.subtotal).toBe(1800);
+      expect(quote.unitPrice).toBe(6.0); // (4.50 + 1.50) = 6.00
+    });
+
+    it('4. Free/baseline option (130 GSM) incurs ₹0.00 additional charge', async () => {
+      const quote = await service.calculateQuote({
+        productId: 'prod-addon-001',
+        quantity: 100,
+        options: [{ optionCode: 'paper_stock', valueCode: '130_gsm' }],
+      });
+
+      expect(quote.baseSubtotal).toBe(500);
+      expect(quote.optionsCost).toBe(0);
+      expect(quote.subtotal).toBe(500);
+      expect(quote.selectedOptionsSummary[0].additionalUnitPrice).toBe(0);
+      expect(quote.selectedOptionsSummary[0].additionalChargeTotal).toBe(0);
+    });
+
+    it('5. Rejects quote when quantity is outside any configured additional pricing tier', async () => {
+      await expect(
+        service.calculateQuote({
+          productId: 'prod-addon-001',
+          quantity: 250, // Only 100, 200, 300 are configured
+          options: [{ optionCode: 'paper_stock', valueCode: '170_gsm' }],
+        }),
+      ).rejects.toThrow('is not supported for option');
+    });
+
+    it('6. Rejects quote when option value is marked as excluded for that quantity tier', async () => {
+      await expect(
+        service.calculateQuote({
+          productId: 'prod-addon-001',
+          quantity: 300,
+          options: [{ optionCode: 'paper_stock', valueCode: 'heavy_kraft' }],
+        }),
+      ).rejects.toThrow('is not supported for production at quantity 300');
+    });
+
+    it('7. Correctly calculates GST, Shipping, and optional Design Fee with additional charges', async () => {
+      const quote = await service.calculateQuote({
+        productId: 'prod-addon-001',
+        quantity: 100,
+        options: [{ optionCode: 'paper_stock', valueCode: '170_gsm' }],
+        hasDesignService: true,
+      });
+
+      // Subtotal = Base 500 + Addon 20 + Design 150 = 670
+      expect(quote.subtotal).toBe(670);
+      expect(quote.designServiceFee).toBe(150);
+      // Shipping: 670 < 1000 => 100
+      expect(quote.estimatedShipping).toBe(100);
+      // GST: 670 * 18% = 120.60
+      expect(quote.totalTax).toBe(120.6);
+      // Grand total = 670 + 120.60 + 100 = 890.60
+      expect(quote.grandTotal).toBe(890.6);
+    });
+  });
 });
+
 
 

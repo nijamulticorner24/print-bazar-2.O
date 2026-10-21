@@ -1,6 +1,6 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { CreateCategoryDto, UpdateCategoryDto, CreateProductDto, UpdateProductDto, CreateProductOptionGroupDto, UpdateProductOptionGroupDto, CreateReusableOptionGroupDto, UpdateReusableOptionGroupDto, CreateProductOptionDto, UpdateProductOptionDto, BulkOptionsDto, CreateProductConfigurationRuleDto, ConfigurePricingSourceDto, SyncPricingSheetDto, CreateProductImageDto, CreateInventoryItemDto, UpdateInventoryItemDto, RecordStockMovementDto, CreatePricingRuleDto, UpdatePricingRuleDto, BatchPricingRulesDto } from './dto/catalogue.dto';
+import { CreateCategoryDto, UpdateCategoryDto, CreateProductDto, UpdateProductDto, CreateProductOptionGroupDto, UpdateProductOptionGroupDto, CreateReusableOptionGroupDto, UpdateReusableOptionGroupDto, CreateProductOptionDto, UpdateProductOptionDto, BulkOptionsDto, CreateProductConfigurationRuleDto, ConfigurePricingSourceDto, SyncPricingSheetDto, CreateProductImageDto, CreateInventoryItemDto, UpdateInventoryItemDto, RecordStockMovementDto, CreatePricingRuleDto, UpdatePricingRuleDto, BatchPricingRulesDto, SaveProductAdditionalPricingDto } from './dto/catalogue.dto';
 import { Prisma } from '@prisma/client';
 export declare class AdminCatalogueService {
     private readonly prisma;
@@ -102,11 +102,11 @@ export declare class AdminCatalogueService {
                 updatedAt: Date;
                 sortOrder: number;
                 isPrimary: boolean;
-                url: string;
+                productId: string;
                 storageKey: string | null;
+                url: string;
                 altText: string | null;
                 caption: string | null;
-                productId: string;
             }[];
             optionGroups: ({
                 options: {
@@ -115,6 +115,7 @@ export declare class AdminCatalogueService {
                     isActive: boolean;
                     updatedAt: Date;
                     sortOrder: number;
+                    groupId: string;
                     label: string;
                     value: string;
                     priceModifierType: string;
@@ -123,7 +124,6 @@ export declare class AdminCatalogueService {
                     fileCount: number | null;
                     fileSlotLabels: string[];
                     minMegapixels: number | null;
-                    groupId: string;
                 }[];
             } & {
                 id: string;
@@ -134,11 +134,12 @@ export declare class AdminCatalogueService {
                 description: string | null;
                 sortOrder: number;
                 isCustomerVisible: boolean;
-                code: string;
+                productId: string;
                 reusableGroupId: string | null;
+                code: string;
                 inputType: string;
                 isRequired: boolean;
-                productId: string;
+                enableAdditionalPricing: boolean;
             })[];
             configurationRules: {
                 id: string;
@@ -146,6 +147,7 @@ export declare class AdminCatalogueService {
                 name: string;
                 isActive: boolean;
                 updatedAt: Date;
+                productId: string;
                 conditionGroupCode: string;
                 conditionOperator: string;
                 conditionOptionValue: string;
@@ -153,19 +155,18 @@ export declare class AdminCatalogueService {
                 targetGroupCode: string | null;
                 targetOptionValue: string | null;
                 actionPayload: Prisma.JsonValue | null;
-                productId: string;
             }[];
             pricingSource: {
                 id: string;
                 createdAt: Date;
                 updatedAt: Date;
+                productId: string;
                 sourceType: string;
                 spreadsheetId: string | null;
                 worksheetName: string | null;
                 apiKey: string | null;
-                columnMapping: Prisma.JsonValue | null;
-                productId: string;
                 schemaVersion: string;
+                columnMapping: Prisma.JsonValue | null;
                 lastSyncAt: Date | null;
                 syncStatus: string;
                 syncMessage: string | null;
@@ -245,11 +246,11 @@ export declare class AdminCatalogueService {
             updatedAt: Date;
             sortOrder: number;
             isPrimary: boolean;
-            url: string;
+            productId: string;
             storageKey: string | null;
+            url: string;
             altText: string | null;
             caption: string | null;
-            productId: string;
         }[];
         optionGroups: ({
             options: {
@@ -258,6 +259,7 @@ export declare class AdminCatalogueService {
                 isActive: boolean;
                 updatedAt: Date;
                 sortOrder: number;
+                groupId: string;
                 label: string;
                 value: string;
                 priceModifierType: string;
@@ -266,7 +268,6 @@ export declare class AdminCatalogueService {
                 fileCount: number | null;
                 fileSlotLabels: string[];
                 minMegapixels: number | null;
-                groupId: string;
             }[];
         } & {
             id: string;
@@ -277,11 +278,12 @@ export declare class AdminCatalogueService {
             description: string | null;
             sortOrder: number;
             isCustomerVisible: boolean;
-            code: string;
+            productId: string;
             reusableGroupId: string | null;
+            code: string;
             inputType: string;
             isRequired: boolean;
-            productId: string;
+            enableAdditionalPricing: boolean;
         })[];
         configurationRules: {
             id: string;
@@ -289,6 +291,7 @@ export declare class AdminCatalogueService {
             name: string;
             isActive: boolean;
             updatedAt: Date;
+            productId: string;
             conditionGroupCode: string;
             conditionOperator: string;
             conditionOptionValue: string;
@@ -296,7 +299,6 @@ export declare class AdminCatalogueService {
             targetGroupCode: string | null;
             targetOptionValue: string | null;
             actionPayload: Prisma.JsonValue | null;
-            productId: string;
         }[];
         pricingSource: ({
             syncLogs: {
@@ -314,13 +316,13 @@ export declare class AdminCatalogueService {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            productId: string;
             sourceType: string;
             spreadsheetId: string | null;
             worksheetName: string | null;
             apiKey: string | null;
-            columnMapping: Prisma.JsonValue | null;
-            productId: string;
             schemaVersion: string;
+            columnMapping: Prisma.JsonValue | null;
             lastSyncAt: Date | null;
             syncStatus: string;
             syncMessage: string | null;
@@ -331,10 +333,23 @@ export declare class AdminCatalogueService {
             id: string;
             createdAt: Date;
             minQty: number;
+            productId: string;
+            maxQty: number;
+            attributeCombination: Prisma.JsonValue;
+            unitPrice: Prisma.Decimal;
+        }[];
+        additionalPricings: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            minQty: number;
+            productId: string;
             maxQty: number;
             unitPrice: Prisma.Decimal;
-            attributeCombination: Prisma.JsonValue;
-            productId: string;
+            groupCode: string;
+            optionValue: string;
+            chargeBasis: string;
+            isExcluded: boolean;
         }[];
     } & {
         id: string;
@@ -402,11 +417,11 @@ export declare class AdminCatalogueService {
             updatedAt: Date;
             sortOrder: number;
             isPrimary: boolean;
-            url: string;
+            productId: string;
             storageKey: string | null;
+            url: string;
             altText: string | null;
             caption: string | null;
-            productId: string;
         }[];
         optionGroups: ({
             options: {
@@ -415,6 +430,7 @@ export declare class AdminCatalogueService {
                 isActive: boolean;
                 updatedAt: Date;
                 sortOrder: number;
+                groupId: string;
                 label: string;
                 value: string;
                 priceModifierType: string;
@@ -423,7 +439,6 @@ export declare class AdminCatalogueService {
                 fileCount: number | null;
                 fileSlotLabels: string[];
                 minMegapixels: number | null;
-                groupId: string;
             }[];
         } & {
             id: string;
@@ -434,11 +449,12 @@ export declare class AdminCatalogueService {
             description: string | null;
             sortOrder: number;
             isCustomerVisible: boolean;
-            code: string;
+            productId: string;
             reusableGroupId: string | null;
+            code: string;
             inputType: string;
             isRequired: boolean;
-            productId: string;
+            enableAdditionalPricing: boolean;
         })[];
         configurationRules: {
             id: string;
@@ -446,6 +462,7 @@ export declare class AdminCatalogueService {
             name: string;
             isActive: boolean;
             updatedAt: Date;
+            productId: string;
             conditionGroupCode: string;
             conditionOperator: string;
             conditionOptionValue: string;
@@ -453,7 +470,6 @@ export declare class AdminCatalogueService {
             targetGroupCode: string | null;
             targetOptionValue: string | null;
             actionPayload: Prisma.JsonValue | null;
-            productId: string;
         }[];
         pricingSource: ({
             syncLogs: {
@@ -471,13 +487,13 @@ export declare class AdminCatalogueService {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            productId: string;
             sourceType: string;
             spreadsheetId: string | null;
             worksheetName: string | null;
             apiKey: string | null;
-            columnMapping: Prisma.JsonValue | null;
-            productId: string;
             schemaVersion: string;
+            columnMapping: Prisma.JsonValue | null;
             lastSyncAt: Date | null;
             syncStatus: string;
             syncMessage: string | null;
@@ -488,10 +504,23 @@ export declare class AdminCatalogueService {
             id: string;
             createdAt: Date;
             minQty: number;
+            productId: string;
+            maxQty: number;
+            attributeCombination: Prisma.JsonValue;
+            unitPrice: Prisma.Decimal;
+        }[];
+        additionalPricings: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            minQty: number;
+            productId: string;
             maxQty: number;
             unitPrice: Prisma.Decimal;
-            attributeCombination: Prisma.JsonValue;
-            productId: string;
+            groupCode: string;
+            optionValue: string;
+            chargeBasis: string;
+            isExcluded: boolean;
         }[];
     } & {
         id: string;
@@ -559,11 +588,11 @@ export declare class AdminCatalogueService {
             updatedAt: Date;
             sortOrder: number;
             isPrimary: boolean;
-            url: string;
+            productId: string;
             storageKey: string | null;
+            url: string;
             altText: string | null;
             caption: string | null;
-            productId: string;
         }[];
         optionGroups: ({
             options: {
@@ -572,6 +601,7 @@ export declare class AdminCatalogueService {
                 isActive: boolean;
                 updatedAt: Date;
                 sortOrder: number;
+                groupId: string;
                 label: string;
                 value: string;
                 priceModifierType: string;
@@ -580,7 +610,6 @@ export declare class AdminCatalogueService {
                 fileCount: number | null;
                 fileSlotLabels: string[];
                 minMegapixels: number | null;
-                groupId: string;
             }[];
         } & {
             id: string;
@@ -591,11 +620,12 @@ export declare class AdminCatalogueService {
             description: string | null;
             sortOrder: number;
             isCustomerVisible: boolean;
-            code: string;
+            productId: string;
             reusableGroupId: string | null;
+            code: string;
             inputType: string;
             isRequired: boolean;
-            productId: string;
+            enableAdditionalPricing: boolean;
         })[];
         configurationRules: {
             id: string;
@@ -603,6 +633,7 @@ export declare class AdminCatalogueService {
             name: string;
             isActive: boolean;
             updatedAt: Date;
+            productId: string;
             conditionGroupCode: string;
             conditionOperator: string;
             conditionOptionValue: string;
@@ -610,7 +641,6 @@ export declare class AdminCatalogueService {
             targetGroupCode: string | null;
             targetOptionValue: string | null;
             actionPayload: Prisma.JsonValue | null;
-            productId: string;
         }[];
         pricingSource: ({
             syncLogs: {
@@ -628,13 +658,13 @@ export declare class AdminCatalogueService {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            productId: string;
             sourceType: string;
             spreadsheetId: string | null;
             worksheetName: string | null;
             apiKey: string | null;
-            columnMapping: Prisma.JsonValue | null;
-            productId: string;
             schemaVersion: string;
+            columnMapping: Prisma.JsonValue | null;
             lastSyncAt: Date | null;
             syncStatus: string;
             syncMessage: string | null;
@@ -645,10 +675,23 @@ export declare class AdminCatalogueService {
             id: string;
             createdAt: Date;
             minQty: number;
+            productId: string;
+            maxQty: number;
+            attributeCombination: Prisma.JsonValue;
+            unitPrice: Prisma.Decimal;
+        }[];
+        additionalPricings: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            minQty: number;
+            productId: string;
             maxQty: number;
             unitPrice: Prisma.Decimal;
-            attributeCombination: Prisma.JsonValue;
-            productId: string;
+            groupCode: string;
+            optionValue: string;
+            chargeBasis: string;
+            isExcluded: boolean;
         }[];
     } & {
         id: string;
@@ -716,11 +759,11 @@ export declare class AdminCatalogueService {
             updatedAt: Date;
             sortOrder: number;
             isPrimary: boolean;
-            url: string;
+            productId: string;
             storageKey: string | null;
+            url: string;
             altText: string | null;
             caption: string | null;
-            productId: string;
         }[];
         optionGroups: ({
             options: {
@@ -729,6 +772,7 @@ export declare class AdminCatalogueService {
                 isActive: boolean;
                 updatedAt: Date;
                 sortOrder: number;
+                groupId: string;
                 label: string;
                 value: string;
                 priceModifierType: string;
@@ -737,7 +781,6 @@ export declare class AdminCatalogueService {
                 fileCount: number | null;
                 fileSlotLabels: string[];
                 minMegapixels: number | null;
-                groupId: string;
             }[];
         } & {
             id: string;
@@ -748,11 +791,12 @@ export declare class AdminCatalogueService {
             description: string | null;
             sortOrder: number;
             isCustomerVisible: boolean;
-            code: string;
+            productId: string;
             reusableGroupId: string | null;
+            code: string;
             inputType: string;
             isRequired: boolean;
-            productId: string;
+            enableAdditionalPricing: boolean;
         })[];
         configurationRules: {
             id: string;
@@ -760,6 +804,7 @@ export declare class AdminCatalogueService {
             name: string;
             isActive: boolean;
             updatedAt: Date;
+            productId: string;
             conditionGroupCode: string;
             conditionOperator: string;
             conditionOptionValue: string;
@@ -767,7 +812,6 @@ export declare class AdminCatalogueService {
             targetGroupCode: string | null;
             targetOptionValue: string | null;
             actionPayload: Prisma.JsonValue | null;
-            productId: string;
         }[];
         pricingSource: ({
             syncLogs: {
@@ -785,13 +829,13 @@ export declare class AdminCatalogueService {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            productId: string;
             sourceType: string;
             spreadsheetId: string | null;
             worksheetName: string | null;
             apiKey: string | null;
-            columnMapping: Prisma.JsonValue | null;
-            productId: string;
             schemaVersion: string;
+            columnMapping: Prisma.JsonValue | null;
             lastSyncAt: Date | null;
             syncStatus: string;
             syncMessage: string | null;
@@ -802,10 +846,23 @@ export declare class AdminCatalogueService {
             id: string;
             createdAt: Date;
             minQty: number;
+            productId: string;
+            maxQty: number;
+            attributeCombination: Prisma.JsonValue;
+            unitPrice: Prisma.Decimal;
+        }[];
+        additionalPricings: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            minQty: number;
+            productId: string;
             maxQty: number;
             unitPrice: Prisma.Decimal;
-            attributeCombination: Prisma.JsonValue;
-            productId: string;
+            groupCode: string;
+            optionValue: string;
+            chargeBasis: string;
+            isExcluded: boolean;
         }[];
     } & {
         id: string;
@@ -1008,6 +1065,7 @@ export declare class AdminCatalogueService {
         sortOrder: number;
         code: string;
         inputType: string;
+        enableAdditionalPricing: boolean;
         defaultOptions: Prisma.JsonValue | null;
         metadata: Prisma.JsonValue | null;
     }[]>;
@@ -1021,6 +1079,7 @@ export declare class AdminCatalogueService {
         sortOrder: number;
         code: string;
         inputType: string;
+        enableAdditionalPricing: boolean;
         defaultOptions: Prisma.JsonValue | null;
         metadata: Prisma.JsonValue | null;
     }>;
@@ -1034,6 +1093,7 @@ export declare class AdminCatalogueService {
         sortOrder: number;
         code: string;
         inputType: string;
+        enableAdditionalPricing: boolean;
         defaultOptions: Prisma.JsonValue | null;
         metadata: Prisma.JsonValue | null;
     }>;
@@ -1048,6 +1108,7 @@ export declare class AdminCatalogueService {
         sortOrder: number;
         code: string;
         inputType: string;
+        enableAdditionalPricing: boolean;
         defaultOptions: Prisma.JsonValue | null;
         metadata: Prisma.JsonValue | null;
     }>;
@@ -1063,6 +1124,7 @@ export declare class AdminCatalogueService {
             isActive: boolean;
             updatedAt: Date;
             sortOrder: number;
+            groupId: string;
             label: string;
             value: string;
             priceModifierType: string;
@@ -1071,7 +1133,6 @@ export declare class AdminCatalogueService {
             fileCount: number | null;
             fileSlotLabels: string[];
             minMegapixels: number | null;
-            groupId: string;
         }[];
     } & {
         id: string;
@@ -1082,11 +1143,12 @@ export declare class AdminCatalogueService {
         description: string | null;
         sortOrder: number;
         isCustomerVisible: boolean;
-        code: string;
+        productId: string;
         reusableGroupId: string | null;
+        code: string;
         inputType: string;
         isRequired: boolean;
-        productId: string;
+        enableAdditionalPricing: boolean;
     }) | null>;
     updateOptionGroup(groupId: string, dto: UpdateProductOptionGroupDto, actorId?: string): Promise<{
         options: {
@@ -1095,6 +1157,7 @@ export declare class AdminCatalogueService {
             isActive: boolean;
             updatedAt: Date;
             sortOrder: number;
+            groupId: string;
             label: string;
             value: string;
             priceModifierType: string;
@@ -1103,7 +1166,6 @@ export declare class AdminCatalogueService {
             fileCount: number | null;
             fileSlotLabels: string[];
             minMegapixels: number | null;
-            groupId: string;
         }[];
     } & {
         id: string;
@@ -1114,11 +1176,12 @@ export declare class AdminCatalogueService {
         description: string | null;
         sortOrder: number;
         isCustomerVisible: boolean;
-        code: string;
+        productId: string;
         reusableGroupId: string | null;
+        code: string;
         inputType: string;
         isRequired: boolean;
-        productId: string;
+        enableAdditionalPricing: boolean;
     }>;
     deleteOptionGroup(groupId: string, actorId?: string): Promise<{
         success: boolean;
@@ -1134,6 +1197,7 @@ export declare class AdminCatalogueService {
         isActive: boolean;
         updatedAt: Date;
         sortOrder: number;
+        groupId: string;
         label: string;
         value: string;
         priceModifierType: string;
@@ -1142,7 +1206,6 @@ export declare class AdminCatalogueService {
         fileCount: number | null;
         fileSlotLabels: string[];
         minMegapixels: number | null;
-        groupId: string;
     }>;
     updateOption(optionId: string, dto: UpdateProductOptionDto, actorId?: string): Promise<{
         id: string;
@@ -1150,6 +1213,7 @@ export declare class AdminCatalogueService {
         isActive: boolean;
         updatedAt: Date;
         sortOrder: number;
+        groupId: string;
         label: string;
         value: string;
         priceModifierType: string;
@@ -1158,7 +1222,6 @@ export declare class AdminCatalogueService {
         fileCount: number | null;
         fileSlotLabels: string[];
         minMegapixels: number | null;
-        groupId: string;
     }>;
     deleteOption(optionId: string, actorId?: string): Promise<{
         success: boolean;
@@ -1170,6 +1233,7 @@ export declare class AdminCatalogueService {
         isActive: boolean;
         updatedAt: Date;
         sortOrder: number;
+        groupId: string;
         label: string;
         value: string;
         priceModifierType: string;
@@ -1178,7 +1242,6 @@ export declare class AdminCatalogueService {
         fileCount: number | null;
         fileSlotLabels: string[];
         minMegapixels: number | null;
-        groupId: string;
     }[]>;
     reorderOptions(groupId: string, orderedOptionIds: string[], actorId?: string): Promise<{
         success: boolean;
@@ -1191,6 +1254,7 @@ export declare class AdminCatalogueService {
         name: string;
         isActive: boolean;
         updatedAt: Date;
+        productId: string;
         conditionGroupCode: string;
         conditionOperator: string;
         conditionOptionValue: string;
@@ -1198,7 +1262,6 @@ export declare class AdminCatalogueService {
         targetGroupCode: string | null;
         targetOptionValue: string | null;
         actionPayload: Prisma.JsonValue | null;
-        productId: string;
     }[]>;
     deleteConfigurationRule(ruleId: string, actorId?: string): Promise<{
         success: boolean;
@@ -1208,13 +1271,13 @@ export declare class AdminCatalogueService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        productId: string;
         sourceType: string;
         spreadsheetId: string | null;
         worksheetName: string | null;
         apiKey: string | null;
-        columnMapping: Prisma.JsonValue | null;
-        productId: string;
         schemaVersion: string;
+        columnMapping: Prisma.JsonValue | null;
         lastSyncAt: Date | null;
         syncStatus: string;
         syncMessage: string | null;
@@ -1249,11 +1312,11 @@ export declare class AdminCatalogueService {
         updatedAt: Date;
         sortOrder: number;
         isPrimary: boolean;
-        url: string;
+        productId: string;
         storageKey: string | null;
+        url: string;
         altText: string | null;
         caption: string | null;
-        productId: string;
     }>;
     addProductImage(productId: string, dto: CreateProductImageDto, actorId?: string): Promise<{
         id: string;
@@ -1261,11 +1324,11 @@ export declare class AdminCatalogueService {
         updatedAt: Date;
         sortOrder: number;
         isPrimary: boolean;
-        url: string;
+        productId: string;
         storageKey: string | null;
+        url: string;
         altText: string | null;
         caption: string | null;
-        productId: string;
     }>;
     setPrimaryImage(productId: string, imageId: string, actorId?: string): Promise<{
         success: boolean;
@@ -1397,28 +1460,28 @@ export declare class AdminCatalogueService {
         id: string;
         createdAt: Date;
         minQty: number;
-        maxQty: number;
-        unitPrice: Prisma.Decimal;
-        attributeCombination: Prisma.JsonValue;
         productId: string;
+        maxQty: number;
+        attributeCombination: Prisma.JsonValue;
+        unitPrice: Prisma.Decimal;
     }[]>;
     addPricingRule(productId: string, dto: CreatePricingRuleDto, actorId?: string): Promise<{
         id: string;
         createdAt: Date;
         minQty: number;
-        maxQty: number;
-        unitPrice: Prisma.Decimal;
-        attributeCombination: Prisma.JsonValue;
         productId: string;
+        maxQty: number;
+        attributeCombination: Prisma.JsonValue;
+        unitPrice: Prisma.Decimal;
     }>;
     updatePricingRule(ruleId: string, dto: UpdatePricingRuleDto, actorId?: string): Promise<{
         id: string;
         createdAt: Date;
         minQty: number;
-        maxQty: number;
-        unitPrice: Prisma.Decimal;
-        attributeCombination: Prisma.JsonValue;
         productId: string;
+        maxQty: number;
+        attributeCombination: Prisma.JsonValue;
+        unitPrice: Prisma.Decimal;
     }>;
     deletePricingRule(ruleId: string, actorId?: string): Promise<{
         success: boolean;
@@ -1428,19 +1491,19 @@ export declare class AdminCatalogueService {
         id: string;
         createdAt: Date;
         minQty: number;
-        maxQty: number;
-        unitPrice: Prisma.Decimal;
-        attributeCombination: Prisma.JsonValue;
         productId: string;
+        maxQty: number;
+        attributeCombination: Prisma.JsonValue;
+        unitPrice: Prisma.Decimal;
     }[]>;
     getPricingMatrix(productId: string): Promise<{
         id: string;
         createdAt: Date;
         minQty: number;
-        maxQty: number;
-        unitPrice: Prisma.Decimal;
-        attributeCombination: Prisma.JsonValue;
         productId: string;
+        maxQty: number;
+        attributeCombination: Prisma.JsonValue;
+        unitPrice: Prisma.Decimal;
     }[]>;
     savePricingMatrix(productId: string, dto: {
         rows: any[];
@@ -1448,10 +1511,10 @@ export declare class AdminCatalogueService {
         id: string;
         createdAt: Date;
         minQty: number;
-        maxQty: number;
-        unitPrice: Prisma.Decimal;
-        attributeCombination: Prisma.JsonValue;
         productId: string;
+        maxQty: number;
+        attributeCombination: Prisma.JsonValue;
+        unitPrice: Prisma.Decimal;
     }[]>;
     generateMatrixCombinations(productId: string): Promise<{
         combinations: never[];
@@ -1467,4 +1530,30 @@ export declare class AdminCatalogueService {
             maxQty: number;
         }[];
     }>;
+    getAdditionalPricing(productId: string): Promise<{
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        minQty: number;
+        productId: string;
+        maxQty: number;
+        unitPrice: Prisma.Decimal;
+        groupCode: string;
+        optionValue: string;
+        chargeBasis: string;
+        isExcluded: boolean;
+    }[]>;
+    saveAdditionalPricing(productId: string, dto: SaveProductAdditionalPricingDto, actorId?: string): Promise<{
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        minQty: number;
+        productId: string;
+        maxQty: number;
+        unitPrice: Prisma.Decimal;
+        groupCode: string;
+        optionValue: string;
+        chargeBasis: string;
+        isExcluded: boolean;
+    }[]>;
 }

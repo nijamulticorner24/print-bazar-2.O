@@ -125,9 +125,9 @@ export declare class OrdersService {
             orderId: string;
             updatedAt: Date;
             sku: string;
-            quantity: number;
-            unitPrice: Prisma.Decimal;
             productId: string;
+            unitPrice: Prisma.Decimal;
+            quantity: number;
             totalPrice: Prisma.Decimal;
             productName: string;
             specifications: Prisma.JsonValue;
@@ -219,9 +219,9 @@ export declare class OrdersService {
                 orderId: string;
                 updatedAt: Date;
                 sku: string;
-                quantity: number;
-                unitPrice: Prisma.Decimal;
                 productId: string;
+                unitPrice: Prisma.Decimal;
+                quantity: number;
                 totalPrice: Prisma.Decimal;
                 productName: string;
                 specifications: Prisma.JsonValue;
@@ -315,9 +315,9 @@ export declare class OrdersService {
                     createdAt: Date;
                     description: string;
                     jobCardId: string;
-                    isResolved: boolean;
                     reasonCode: string;
                     reportedBy: string;
+                    isResolved: boolean;
                     resolvedBy: string | null;
                     resolvedAt: Date | null;
                 }[];
@@ -379,9 +379,9 @@ export declare class OrdersService {
             orderId: string;
             updatedAt: Date;
             sku: string;
-            quantity: number;
-            unitPrice: Prisma.Decimal;
             productId: string;
+            unitPrice: Prisma.Decimal;
+            quantity: number;
             totalPrice: Prisma.Decimal;
             productName: string;
             specifications: Prisma.JsonValue;

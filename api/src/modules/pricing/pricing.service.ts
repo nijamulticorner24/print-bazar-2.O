@@ -88,6 +88,8 @@ export interface QuoteItemBreakdown {
     valueName: string;
     valueCode: string;
     priceModifier: number;
+    additionalUnitPrice?: number;
+    additionalChargeTotal?: number;
   }>;
   specificationsSnapshot: Record<string, any>;
 }
@@ -171,6 +173,9 @@ export class PricingService {
         pricingMatrices: {
           orderBy: { minQty: 'asc' },
         },
+        additionalPricings: {
+          orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
+        },
       },
     });
 
@@ -191,6 +196,9 @@ export class PricingService {
           },
           pricingMatrices: {
             orderBy: { minQty: 'asc' },
+          },
+          additionalPricings: {
+            orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
           },
         },
       });
@@ -220,7 +228,7 @@ export class PricingService {
 
     let optionsUnitModifier = 0;
     let percentageModifierTotal = 0;
-    const groupOptionModifiers = new Map<string, { modVal: number; type: string }>();
+    const groupOptionModifiers = new Map<string, { modVal: number; type: string; isAdditionalTierPricing?: boolean }>();
     const selectedOptionsSummary: QuoteItemBreakdown['selectedOptionsSummary'] = [];
     const specificationsSnapshot: Record<string, any> = {};
 
@@ -293,15 +301,63 @@ export class PricingService {
       );
 
       if (matchedOption) {
-        const modVal = Number(matchedOption.priceModifier || 0);
+        // Check if group has dynamic group-based additional pricing configured
+        const additionalPricings: any[] = (product as any).additionalPricings || [];
+        const groupAdditionalPricings = additionalPricings.filter(
+          (ap) => ap.groupCode === group.code
+        );
+
+        let modVal = Number(matchedOption.priceModifier || 0);
+        let modType = matchedOption.priceModifierType || 'FIXED';
+        let isAdditionalTierPricing = false;
+
+        if (groupAdditionalPricings.length > 0) {
+          // Look for tier matching value and order quantity
+          const matchingTier = groupAdditionalPricings.find((ap) => {
+            const valMatches = String(ap.optionValue).toLowerCase() === String(matchedOption.value).toLowerCase();
+            const qtyMatches = dto.quantity >= ap.minQty && (ap.maxQty && ap.maxQty >= ap.minQty ? dto.quantity <= ap.maxQty : true);
+            return valMatches && qtyMatches;
+          });
+
+          if (matchingTier) {
+            if (matchingTier.isExcluded) {
+              throw new BadRequestException(
+                `The selected option '${matchedOption.label || matchedOption.value}' in '${group.name}' is not supported for production at quantity ${dto.quantity}.`,
+              );
+            }
+            const tierCharge = Number(matchingTier.unitPrice || 0);
+            if (tierCharge < 0) {
+              throw new BadRequestException(
+                `Additional charge for '${matchedOption.label}' in '${group.name}' cannot be negative.`,
+              );
+            }
+            modVal = tierCharge;
+            modType = matchingTier.chargeBasis || 'PER_UNIT';
+            isAdditionalTierPricing = true;
+          } else {
+            // Check if there are tiers configured for this option value at other quantities
+            const valTiers = groupAdditionalPricings.filter(
+              (ap) => String(ap.optionValue).toLowerCase() === String(matchedOption.value).toLowerCase()
+            );
+            if (valTiers.length > 0) {
+              const availableTiers = Array.from(
+                new Set(valTiers.map((ap) => (ap.minQty === ap.maxQty ? `${ap.minQty}` : `${ap.minQty}–${ap.maxQty}`)))
+              ).sort();
+              throw new BadRequestException(
+                `Quantity ${dto.quantity} is not supported for option '${matchedOption.label}' in '${group.name}'. Configured quantity tier(s): ${availableTiers.join(', ')}.`,
+              );
+            }
+          }
+        }
+
         if (modVal < 0) {
           throw new BadRequestException(`Option charge for '${matchedOption.label || matchedOption.name || group.name}' cannot be negative.`);
         }
-        groupOptionModifiers.set(group.code, { modVal, type: matchedOption.priceModifierType || 'FIXED' });
+        groupOptionModifiers.set(group.code, { modVal, type: modType, isAdditionalTierPricing });
 
-        if (matchedOption.priceModifierType === 'FIXED' || matchedOption.priceModifierType === 'PER_UNIT') {
+        if (modType === 'FIXED' || modType === 'PER_UNIT') {
           optionsUnitModifier += modVal;
-        } else if (matchedOption.priceModifierType === 'PERCENTAGE') {
+        } else if (modType === 'PERCENTAGE') {
           percentageModifierTotal += modVal;
         }
 
@@ -311,6 +367,8 @@ export class PricingService {
           valueName: matchedOption.label || matchedOption.name,
           valueCode: matchedOption.value || matchedOption.code,
           priceModifier: modVal,
+          additionalUnitPrice: isAdditionalTierPricing ? modVal : 0,
+          additionalChargeTotal: isAdditionalTierPricing ? Math.round(modVal * dto.quantity * 100) / 100 : 0,
         });
 
         specificationsSnapshot[group.code] = {
@@ -318,6 +376,7 @@ export class PricingService {
           value: matchedOption.value || matchedOption.code,
           displayValue: matchedOption.label || matchedOption.name,
           priceModifier: modVal,
+          isAdditionalTierPricing,
         };
       } else {
         specificationsSnapshot[group.code] = {

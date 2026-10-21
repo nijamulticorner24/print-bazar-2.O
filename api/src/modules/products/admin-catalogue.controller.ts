@@ -43,6 +43,7 @@ import {
   CreatePricingRuleDto,
   UpdatePricingRuleDto,
   BatchPricingRulesDto,
+  SaveProductAdditionalPricingDto,
 } from './dto/catalogue.dto';
 
 const productImageStorage = diskStorage({
@@ -603,4 +604,24 @@ export class AdminCatalogueController {
   ) {
     return this.catalogueService.generateMatrixCombinations(productId);
   }
+
+  // ==========================================
+  // DYNAMIC GROUP-BASED ADDITIONAL PRICING
+  // ==========================================
+
+  @Get('catalogue/products/:productId/additional-pricing')
+  async getAdditionalPricing(@Param('productId') productId: string) {
+    return this.catalogueService.getAdditionalPricing(productId);
+  }
+
+  @Put('catalogue/products/:productId/additional-pricing')
+  @Roles(UserRole.ADMIN_MANAGER)
+  async saveAdditionalPricing(
+    @Param('productId') productId: string,
+    @Body() dto: SaveProductAdditionalPricingDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.catalogueService.saveAdditionalPricing(productId, dto, user?.sub);
+  }
 }
+

@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BatchPricingRulesDto = exports.UpdatePricingRuleDto = exports.CreatePricingRuleDto = exports.RecordStockMovementDto = exports.UpdateInventoryItemDto = exports.CreateInventoryItemDto = exports.UpdateProductDto = exports.CreateProductDto = exports.UpdateProductImageDto = exports.CreateProductImageDto = exports.SyncPricingSheetDto = exports.ConfigurePricingSourceDto = exports.UpdateProductConfigurationRuleDto = exports.CreateProductConfigurationRuleDto = exports.UpdateReusableOptionGroupDto = exports.CreateReusableOptionGroupDto = exports.BulkOptionsDto = exports.UpdateProductOptionGroupDto = exports.CreateProductOptionGroupDto = exports.UpdateProductOptionDto = exports.CreateProductOptionDto = exports.UpdateCategoryDto = exports.CreateCategoryDto = exports.StockMovementTypeDto = exports.InventoryCategoryDto = exports.ProductOptionInputTypeDto = exports.ProductOptionRequirementDto = exports.ProductStatusDto = void 0;
+exports.SaveProductAdditionalPricingDto = exports.ProductAdditionalPricingTierDto = exports.BatchPricingRulesDto = exports.UpdatePricingRuleDto = exports.CreatePricingRuleDto = exports.RecordStockMovementDto = exports.UpdateInventoryItemDto = exports.CreateInventoryItemDto = exports.UpdateProductDto = exports.CreateProductDto = exports.UpdateProductImageDto = exports.CreateProductImageDto = exports.SyncPricingSheetDto = exports.ConfigurePricingSourceDto = exports.UpdateProductConfigurationRuleDto = exports.CreateProductConfigurationRuleDto = exports.UpdateReusableOptionGroupDto = exports.CreateReusableOptionGroupDto = exports.BulkOptionsDto = exports.UpdateProductOptionGroupDto = exports.CreateProductOptionGroupDto = exports.UpdateProductOptionDto = exports.CreateProductOptionDto = exports.UpdateCategoryDto = exports.CreateCategoryDto = exports.StockMovementTypeDto = exports.InventoryCategoryDto = exports.ProductOptionInputTypeDto = exports.ProductOptionRequirementDto = exports.ProductStatusDto = void 0;
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
 var ProductStatusDto;
@@ -289,6 +289,7 @@ class CreateProductOptionGroupDto {
     isRequired;
     isCustomerVisible;
     sortOrder;
+    enableAdditionalPricing;
     isActive;
     options;
 }
@@ -337,6 +338,11 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Boolean)
+], CreateProductOptionGroupDto.prototype, "enableAdditionalPricing", void 0);
+__decorate([
+    (0, class_validator_1.IsBoolean)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
 ], CreateProductOptionGroupDto.prototype, "isActive", void 0);
 __decorate([
     (0, class_validator_1.IsArray)(),
@@ -354,6 +360,7 @@ class UpdateProductOptionGroupDto {
     isRequired;
     isCustomerVisible;
     sortOrder;
+    enableAdditionalPricing;
     isActive;
     options;
 }
@@ -402,6 +409,11 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Boolean)
+], UpdateProductOptionGroupDto.prototype, "enableAdditionalPricing", void 0);
+__decorate([
+    (0, class_validator_1.IsBoolean)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
 ], UpdateProductOptionGroupDto.prototype, "isActive", void 0);
 __decorate([
     (0, class_validator_1.IsArray)(),
@@ -434,6 +446,7 @@ class CreateReusableOptionGroupDto {
     defaultOptions;
     metadata;
     sortOrder;
+    enableAdditionalPricing;
     isActive;
 }
 exports.CreateReusableOptionGroupDto = CreateReusableOptionGroupDto;
@@ -474,6 +487,11 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Boolean)
+], CreateReusableOptionGroupDto.prototype, "enableAdditionalPricing", void 0);
+__decorate([
+    (0, class_validator_1.IsBoolean)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
 ], CreateReusableOptionGroupDto.prototype, "isActive", void 0);
 class UpdateReusableOptionGroupDto {
     name;
@@ -483,6 +501,7 @@ class UpdateReusableOptionGroupDto {
     defaultOptions;
     metadata;
     sortOrder;
+    enableAdditionalPricing;
     isActive;
 }
 exports.UpdateReusableOptionGroupDto = UpdateReusableOptionGroupDto;
@@ -519,6 +538,11 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Number)
 ], UpdateReusableOptionGroupDto.prototype, "sortOrder", void 0);
+__decorate([
+    (0, class_validator_1.IsBoolean)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
+], UpdateReusableOptionGroupDto.prototype, "enableAdditionalPricing", void 0);
 __decorate([
     (0, class_validator_1.IsBoolean)(),
     (0, class_validator_1.IsOptional)(),
@@ -1548,4 +1572,59 @@ __decorate([
     (0, class_transformer_1.Type)(() => CreatePricingRuleDto),
     __metadata("design:type", Array)
 ], BatchPricingRulesDto.prototype, "rules", void 0);
+class ProductAdditionalPricingTierDto {
+    groupCode;
+    optionValue;
+    minQty;
+    maxQty;
+    unitPrice;
+    chargeBasis;
+    isExcluded;
+}
+exports.ProductAdditionalPricingTierDto = ProductAdditionalPricingTierDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], ProductAdditionalPricingTierDto.prototype, "groupCode", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], ProductAdditionalPricingTierDto.prototype, "optionValue", void 0);
+__decorate([
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(1),
+    __metadata("design:type", Number)
+], ProductAdditionalPricingTierDto.prototype, "minQty", void 0);
+__decorate([
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(1),
+    __metadata("design:type", Number)
+], ProductAdditionalPricingTierDto.prototype, "maxQty", void 0);
+__decorate([
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Number)
+], ProductAdditionalPricingTierDto.prototype, "unitPrice", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], ProductAdditionalPricingTierDto.prototype, "chargeBasis", void 0);
+__decorate([
+    (0, class_validator_1.IsBoolean)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
+], ProductAdditionalPricingTierDto.prototype, "isExcluded", void 0);
+class SaveProductAdditionalPricingDto {
+    tiers;
+}
+exports.SaveProductAdditionalPricingDto = SaveProductAdditionalPricingDto;
+__decorate([
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.ValidateNested)({ each: true }),
+    (0, class_transformer_1.Type)(() => ProductAdditionalPricingTierDto),
+    __metadata("design:type", Array)
+], SaveProductAdditionalPricingDto.prototype, "tiers", void 0);
 //# sourceMappingURL=catalogue.dto.js.map

@@ -251,6 +251,10 @@ export class CreateProductOptionGroupDto {
 
   @IsBoolean()
   @IsOptional()
+  enableAdditionalPricing?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
   isActive?: boolean;
 
   @IsArray()
@@ -292,6 +296,10 @@ export class UpdateProductOptionGroupDto {
   @IsNumber()
   @IsOptional()
   sortOrder?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  enableAdditionalPricing?: boolean;
 
   @IsBoolean()
   @IsOptional()
@@ -348,6 +356,10 @@ export class CreateReusableOptionGroupDto {
 
   @IsBoolean()
   @IsOptional()
+  enableAdditionalPricing?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
   isActive?: boolean;
 }
 
@@ -377,6 +389,10 @@ export class UpdateReusableOptionGroupDto {
   @IsNumber()
   @IsOptional()
   sortOrder?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  enableAdditionalPricing?: boolean;
 
   @IsBoolean()
   @IsOptional()
@@ -1110,6 +1126,47 @@ export class BatchPricingRulesDto {
   @ValidateNested({ each: true })
   @Type(() => CreatePricingRuleDto)
   rules: CreatePricingRuleDto[];
+}
+
+// ==========================================
+// DYNAMIC GROUP-BASED ADDITIONAL PRICING DTOS
+// ==========================================
+
+export class ProductAdditionalPricingTierDto {
+  @IsString()
+  @IsNotEmpty()
+  groupCode: string;
+
+  @IsString()
+  @IsNotEmpty()
+  optionValue: string;
+
+  @IsNumber()
+  @Min(1)
+  minQty: number;
+
+  @IsNumber()
+  @Min(1)
+  maxQty: number;
+
+  @IsNumber()
+  @Min(0)
+  unitPrice: number;
+
+  @IsString()
+  @IsOptional()
+  chargeBasis?: string; // PER_UNIT
+
+  @IsBoolean()
+  @IsOptional()
+  isExcluded?: boolean;
+}
+
+export class SaveProductAdditionalPricingDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductAdditionalPricingTierDto)
+  tiers: ProductAdditionalPricingTierDto[];
 }
 
 

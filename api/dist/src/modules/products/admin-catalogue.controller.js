@@ -220,6 +220,12 @@ let AdminCatalogueController = class AdminCatalogueController {
     async generateMatrixCombinations(productId) {
         return this.catalogueService.generateMatrixCombinations(productId);
     }
+    async getAdditionalPricing(productId) {
+        return this.catalogueService.getAdditionalPricing(productId);
+    }
+    async saveAdditionalPricing(productId, dto, user) {
+        return this.catalogueService.saveAdditionalPricing(productId, dto, user?.sub);
+    }
 };
 exports.AdminCatalogueController = AdminCatalogueController;
 __decorate([
@@ -698,6 +704,23 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], AdminCatalogueController.prototype, "generateMatrixCombinations", null);
+__decorate([
+    (0, common_1.Get)('catalogue/products/:productId/additional-pricing'),
+    __param(0, (0, common_1.Param)('productId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], AdminCatalogueController.prototype, "getAdditionalPricing", null);
+__decorate([
+    (0, common_1.Put)('catalogue/products/:productId/additional-pricing'),
+    (0, auth_decorator_1.Roles)(roles_1.UserRole.ADMIN_MANAGER),
+    __param(0, (0, common_1.Param)('productId')),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, auth_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, catalogue_dto_1.SaveProductAdditionalPricingDto, Object]),
+    __metadata("design:returntype", Promise)
+], AdminCatalogueController.prototype, "saveAdditionalPricing", null);
 exports.AdminCatalogueController = AdminCatalogueController = __decorate([
     (0, common_1.Controller)('admin'),
     (0, common_1.UseGuards)(auth_guard_1.JwtAuthGuard, auth_guard_1.RolesGuard),

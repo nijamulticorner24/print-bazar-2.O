@@ -89,6 +89,8 @@ export interface QuoteItemBreakdown {
         valueName: string;
         valueCode: string;
         priceModifier: number;
+        additionalUnitPrice?: number;
+        additionalChargeTotal?: number;
     }>;
     specificationsSnapshot: Record<string, any>;
 }

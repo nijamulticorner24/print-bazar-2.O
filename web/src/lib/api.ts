@@ -147,6 +147,7 @@ export interface ProductOptionGroup {
   isRequired: boolean;
   isCustomerVisible: boolean;
   sortOrder: number;
+  enableAdditionalPricing?: boolean;
   isActive: boolean;
   options: ProductOption[];
 }
@@ -167,9 +168,22 @@ export interface ReusableOptionGroup {
   }>;
   metadata?: any;
   sortOrder: number;
+  enableAdditionalPricing?: boolean;
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface ProductAdditionalPricingTier {
+  id?: string;
+  productId?: string;
+  groupCode: string;
+  optionValue: string;
+  minQty: number;
+  maxQty: number;
+  unitPrice: number;
+  chargeBasis?: 'PER_UNIT' | 'FIXED' | string;
+  isExcluded?: boolean;
 }
 
 export interface ProductConfigurationRule {
@@ -419,6 +433,7 @@ export interface DynamicProduct {
   pricingSource?: ProductPricingSource | null;
   fields?: DynamicField[];
   pricingMatrices?: PricingRule[];
+  additionalPricings?: ProductAdditionalPricingTier[];
   isStudioConfigured?: boolean;
   configVersion?: number;
   artworkFileFormats?: string[];
@@ -684,6 +699,15 @@ export const api = {
       `/admin/catalogue/products/${productId}/pricing-matrix/generate-combinations`,
       { method: 'POST' },
     ),
+
+  // Product Setup Studio: Dynamic Group-Based Additional Pricing
+  adminGetAdditionalPricing: (productId: string) =>
+    fetchApi<ProductAdditionalPricingTier[]>(`/admin/catalogue/products/${productId}/additional-pricing`),
+  adminSaveAdditionalPricing: (productId: string, data: { tiers: ProductAdditionalPricingTier[] }) =>
+    fetchApi<ProductAdditionalPricingTier[]>(`/admin/catalogue/products/${productId}/additional-pricing`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
 
   // Product Setup Studio: Google Sheets Pricing Source & Sync (Deprecated / Retained for compatibility)
   adminConfigurePricingSource: (productId: string, data: any) =>

@@ -368,9 +368,9 @@ export declare class OperationsService {
                     createdAt: Date;
                     description: string;
                     jobCardId: string;
-                    isResolved: boolean;
                     reasonCode: string;
                     reportedBy: string;
+                    isResolved: boolean;
                     resolvedBy: string | null;
                     resolvedAt: Date | null;
                 }[];
@@ -433,9 +433,9 @@ export declare class OperationsService {
             orderId: string;
             updatedAt: Date;
             sku: string;
-            quantity: number;
-            unitPrice: Prisma.Decimal;
             productId: string;
+            unitPrice: Prisma.Decimal;
+            quantity: number;
             totalPrice: Prisma.Decimal;
             productName: string;
             specifications: Prisma.JsonValue;

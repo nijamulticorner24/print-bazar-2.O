@@ -27,7 +27,7 @@ import {
   RiStackLine,
   RiCheckDoubleLine,
 } from 'react-icons/ri';
-import { ProductOptionGroup, ProductOption, api } from '@/lib/api';
+import { ProductOptionGroup, ProductOption, ProductAdditionalPricingTier, api } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { resolveArtworkConditions } from '@/lib/artwork-rule-resolver';
 import { Modal } from '@/components/ui';
@@ -40,9 +40,48 @@ export interface MatrixRowItem {
   attributeCombination: Record<string, any>;
   isExcluded?: boolean;
   status?: 'ACTIVE' | 'EXCLUDED';
+  exclusionReason?: string;
   label?: string;
   discountPercent?: number;
-  exclusionReason?: string;
+}
+
+export interface AddonQuantityTierItem {
+  id: string; // e.g. "1-10" or "100"
+  minQty: number;
+  maxQty: number;
+  label: string; // e.g. "1–10 pcs" or "100 pcs"
+}
+
+export function parseQuantityTier(input: string): AddonQuantityTierItem | null {
+  const clean = input.trim();
+  if (!clean) return null;
+
+  // Range patterns: "1-10", "1 - 10", "1 to 10", "1..10"
+  const rangeMatch = clean.match(/^(\d+)\s*(?:-|–|\.\.|to)\s*(\d+)$/i);
+  if (rangeMatch) {
+    const min = parseInt(rangeMatch[1], 10);
+    const max = parseInt(rangeMatch[2], 10);
+    if (min <= 0 || max <= 0 || min > max) return null;
+    return {
+      minQty: min,
+      maxQty: max,
+      id: min === max ? `${min}` : `${min}-${max}`,
+      label: min === max ? `${min} pcs` : `${min}–${max} pcs`,
+    };
+  }
+
+  // Single integer number: "100"
+  const singleNum = parseInt(clean, 10);
+  if (!isNaN(singleNum) && singleNum > 0) {
+    return {
+      minQty: singleNum,
+      maxQty: singleNum,
+      id: `${singleNum}`,
+      label: `${singleNum} pcs`,
+    };
+  }
+
+  return null;
 }
 
 export interface StudioTabPricingProps {
@@ -59,6 +98,8 @@ export interface StudioTabPricingProps {
   rules: any[];
   matrixRows: MatrixRowItem[];
   setMatrixRows: React.Dispatch<React.SetStateAction<MatrixRowItem[]>>;
+  additionalPricingRows?: ProductAdditionalPricingTier[];
+  setAdditionalPricingRows?: React.Dispatch<React.SetStateAction<ProductAdditionalPricingTier[]>>;
 
   // Step 3 Design Pricing & Artwork (read-only reference in Step 4)
   designServiceRequirement?: string;
@@ -96,6 +137,8 @@ export function StudioTabPricing({
   rules = [],
   matrixRows,
   setMatrixRows,
+  additionalPricingRows = [],
+  setAdditionalPricingRows,
   designServiceRequirement = 'OPTIONAL',
   designServiceFee = 150,
   artworkRequirement = 'OPTIONAL',
@@ -108,8 +151,8 @@ export function StudioTabPricing({
   const moq = Math.max(1, Number(minQuantity) || 1);
   const referenceUnitPrice = Math.round((startingReferenceRate / moq) * 10000) / 10000;
 
-  // View toggle: Combination Pricing Table (primary) vs Option Surcharges
-  const [activePricingView, setActivePricingView] = useState<'MATRIX' | 'OPTIONS'>('MATRIX');
+  // View toggle: Combination Pricing Table vs Additional Pricing vs Option Surcharges
+  const [activePricingView, setActivePricingView] = useState<'MATRIX' | 'ADDITIONAL_PRICING' | 'OPTIONS'>('MATRIX');
 
   // ---------------------------------------------------------------------------
   // 1. ACTIVE GROUP SELECTION (LEFT PANEL)
@@ -128,6 +171,415 @@ export function StudioTabPricing({
   const activeGroup = useMemo(() => {
     return optionGroups.find((g) => g.id === selectedGroupId) || optionGroups[0] || null;
   }, [optionGroups, selectedGroupId]);
+
+  // ---------------------------------------------------------------------------
+  // 1.5 DYNAMIC ADDITIONAL PRICING WORKSPACE STATE & HELPERS
+  // ---------------------------------------------------------------------------
+  const eligibleAdditionalGroups = useMemo(() => {
+    return optionGroups.filter((g) => Boolean(g.enableAdditionalPricing));
+  }, [optionGroups]);
+
+  const [selectedAddonGroupId, setSelectedAddonGroupId] = useState<string>(() => {
+    return optionGroups.find((g) => Boolean(g.enableAdditionalPricing))?.id || '';
+  });
+
+  useEffect(() => {
+    if (eligibleAdditionalGroups.length > 0 && !eligibleAdditionalGroups.some((g) => g.id === selectedAddonGroupId)) {
+      setSelectedAddonGroupId(eligibleAdditionalGroups[0].id);
+    }
+  }, [eligibleAdditionalGroups, selectedAddonGroupId]);
+
+  const activeAddonGroup = useMemo(() => {
+    return eligibleAdditionalGroups.find((g) => g.id === selectedAddonGroupId) || eligibleAdditionalGroups[0] || null;
+  }, [eligibleAdditionalGroups, selectedAddonGroupId]);
+
+  // Dynamic Quantity Tiers for Product Base Pricing & Additional Pricing (Positive Integers & Brackets like 1-10)
+  const [addonQuantityTiers, setAddonQuantityTiers] = useState<AddonQuantityTierItem[]>(() => {
+    const tierMap = new Map<string, AddonQuantityTierItem>();
+
+    // 1. Scan from matrixRows (Base Tiers)
+    if (matrixRows && matrixRows.length > 0) {
+      for (const row of matrixRows) {
+        const combo = (row.attributeCombination as any) || {};
+        const isBase =
+          combo.isBasePrice === true ||
+          combo.type === 'BASE' ||
+          Object.keys(combo).filter(
+            (k) => !['label', 'rangeLabel', 'discountPercent', 'isBasePrice', 'type'].includes(k)
+          ).length === 0;
+
+        if (isBase && row.minQty > 0) {
+          const max = row.maxQty && row.maxQty >= row.minQty ? row.maxQty : row.minQty;
+          const id = row.minQty === max ? `${row.minQty}` : `${row.minQty}-${max}`;
+          const label = row.minQty === max ? `${row.minQty} pcs` : `${row.minQty}–${max} pcs`;
+          if (!tierMap.has(id)) {
+            tierMap.set(id, { id, minQty: row.minQty, maxQty: max, label });
+          }
+        }
+      }
+    }
+
+    // 2. Scan from additionalPricingRows
+    if (additionalPricingRows && additionalPricingRows.length > 0) {
+      for (const row of additionalPricingRows) {
+        if (row.minQty > 0) {
+          const max = row.maxQty && row.maxQty >= row.minQty ? row.maxQty : row.minQty;
+          const id = row.minQty === max ? `${row.minQty}` : `${row.minQty}-${max}`;
+          const label = row.minQty === max ? `${row.minQty} pcs` : `${row.minQty}–${max} pcs`;
+          if (!tierMap.has(id)) {
+            tierMap.set(id, { id, minQty: row.minQty, maxQty: max, label });
+          }
+        }
+      }
+    }
+
+    if (tierMap.size > 0) {
+      return Array.from(tierMap.values()).sort((a, b) => a.minQty - b.minQty);
+    }
+
+    return [
+      { id: '1-10', minQty: 1, maxQty: 10, label: '1–10 pcs' },
+      { id: '100', minQty: 100, maxQty: 100, label: '100 pcs' },
+      { id: '200', minQty: 200, maxQty: 200, label: '200 pcs' },
+      { id: '300', minQty: 300, maxQty: 300, label: '300 pcs' },
+    ];
+  });
+
+  // Modals for Quantity Tiers
+  const [isAddAddonTierModalOpen, setIsAddAddonTierModalOpen] = useState(false);
+  const [newAddonTierInput, setNewAddonTierInput] = useState('');
+  const [addonTierError, setAddonTierError] = useState<string | null>(null);
+
+  const [editingAddonTier, setEditingAddonTier] = useState<AddonQuantityTierItem | null>(null);
+  const [editAddonTierInput, setEditAddonTierInput] = useState('');
+
+  const handleAddAddonTier = () => {
+    const parsed = parseQuantityTier(newAddonTierInput);
+    if (!parsed) {
+      setAddonTierError('Enter a valid quantity number (e.g. 100) or range (e.g. 1-10).');
+      return;
+    }
+    if (addonQuantityTiers.some((t) => t.id === parsed.id)) {
+      setAddonTierError(`Quantity tier "${parsed.id}" already exists.`);
+      return;
+    }
+    setAddonQuantityTiers((prev) => [...prev, parsed].sort((a, b) => a.minQty - b.minQty));
+    setNewAddonTierInput('');
+    setAddonTierError(null);
+    setIsAddAddonTierModalOpen(false);
+    onChange?.();
+  };
+
+  const handleRemoveAddonTier = (tier: AddonQuantityTierItem) => {
+    if (addonQuantityTiers.length <= 1) {
+      alert('At least one quantity tier must remain.');
+      return;
+    }
+    setAddonQuantityTiers((prev) => prev.filter((t) => t.id !== tier.id));
+    setAdditionalPricingRows?.((prev) =>
+      prev.filter(
+        (r) =>
+          !(
+            r.minQty === tier.minQty &&
+            (r.maxQty === tier.maxQty || (!r.maxQty && tier.minQty === tier.maxQty))
+          )
+      )
+    );
+    // Also remove corresponding base tier from matrixRows
+    setMatrixRows((prev) =>
+      prev.filter((r) => {
+        const combo = (r.attributeCombination as any) || {};
+        const isBase =
+          combo.isBasePrice === true ||
+          combo.type === 'BASE' ||
+          Object.keys(combo).filter(
+            (k) => !['label', 'rangeLabel', 'discountPercent', 'isBasePrice', 'type'].includes(k)
+          ).length === 0;
+
+        if (
+          isBase &&
+          r.minQty === tier.minQty &&
+          (r.maxQty === tier.maxQty || (!r.maxQty && tier.minQty === tier.maxQty))
+        ) {
+          return false;
+        }
+        return true;
+      })
+    );
+    onChange?.();
+  };
+
+  const handleSaveEditAddonTier = () => {
+    if (!editingAddonTier) return;
+    const parsed = parseQuantityTier(editAddonTierInput);
+    if (!parsed) {
+      setAddonTierError('Enter a valid quantity number (e.g. 100) or range (e.g. 1-10).');
+      return;
+    }
+    if (parsed.id !== editingAddonTier.id && addonQuantityTiers.some((t) => t.id === parsed.id)) {
+      setAddonTierError(`Quantity tier "${parsed.id}" already exists.`);
+      return;
+    }
+    const oldTier = editingAddonTier;
+    setAddonQuantityTiers((prev) =>
+      prev.map((t) => (t.id === oldTier.id ? parsed : t)).sort((a, b) => a.minQty - b.minQty)
+    );
+    setAdditionalPricingRows?.((prev) =>
+      prev.map((r) =>
+        r.minQty === oldTier.minQty && (r.maxQty === oldTier.maxQty || (!r.maxQty && oldTier.minQty === oldTier.maxQty))
+          ? { ...r, minQty: parsed.minQty, maxQty: parsed.maxQty }
+          : r
+      )
+    );
+    // Also update base tier row in matrixRows
+    setMatrixRows((prev) =>
+      prev.map((r) => {
+        const combo = (r.attributeCombination as any) || {};
+        const isBase =
+          combo.isBasePrice === true ||
+          combo.type === 'BASE' ||
+          Object.keys(combo).filter(
+            (k) => !['label', 'rangeLabel', 'discountPercent', 'isBasePrice', 'type'].includes(k)
+          ).length === 0;
+
+        if (
+          isBase &&
+          r.minQty === oldTier.minQty &&
+          (r.maxQty === oldTier.maxQty || (!r.maxQty && oldTier.minQty === oldTier.maxQty))
+        ) {
+          return {
+            ...r,
+            minQty: parsed.minQty,
+            maxQty: parsed.maxQty,
+            label: parsed.label,
+            attributeCombination: {
+              ...combo,
+              isBasePrice: true,
+              type: 'BASE',
+              label: parsed.label,
+            },
+          };
+        }
+        return r;
+      })
+    );
+    setEditingAddonTier(null);
+    setEditAddonTierInput('');
+    setAddonTierError(null);
+    onChange?.();
+  };
+
+  const handleSortAddonTiers = () => {
+    setAddonQuantityTiers((prev) => [...prev].sort((a, b) => a.minQty - b.minQty));
+  };
+
+  // ---------------------------------------------------------------------------
+  // 1.6 PRODUCT BASE PRICING BY QUANTITY HELPERS
+  // ---------------------------------------------------------------------------
+  const getBaseTierPrice = (tier: AddonQuantityTierItem): number | '' => {
+    if (!matrixRows || matrixRows.length === 0) {
+      if (tier.minQty === 1 && Number(basePrice) > 0) {
+        return Number(basePrice);
+      }
+      return '';
+    }
+    const match = matrixRows.find((r) => {
+      const combo = (r.attributeCombination as any) || {};
+      const isBase =
+        combo.isBasePrice === true ||
+        combo.type === 'BASE' ||
+        Object.keys(combo).filter(
+          (k) => !['label', 'rangeLabel', 'discountPercent', 'isBasePrice', 'type'].includes(k)
+        ).length === 0;
+
+      return (
+        isBase &&
+        r.minQty === tier.minQty &&
+        (r.maxQty === tier.maxQty || (!r.maxQty && tier.minQty === tier.maxQty))
+      );
+    });
+
+    if (match && match.unitPrice !== undefined && match.unitPrice !== null && match.unitPrice !== '') {
+      return Number(match.unitPrice);
+    }
+
+    if (tier.minQty === 1 && Number(basePrice) > 0) {
+      return Number(basePrice);
+    }
+
+    return '';
+  };
+
+  const handleBaseTierPriceChange = (tier: AddonQuantityTierItem, newRate: number) => {
+    if (isNaN(newRate) || newRate < 0) return;
+
+    setMatrixRows((prev) => {
+      const existingIdx = prev.findIndex((r) => {
+        const combo = (r.attributeCombination as any) || {};
+        const isBase =
+          combo.isBasePrice === true ||
+          combo.type === 'BASE' ||
+          Object.keys(combo).filter(
+            (k) => !['label', 'rangeLabel', 'discountPercent', 'isBasePrice', 'type'].includes(k)
+          ).length === 0;
+
+        return (
+          isBase &&
+          r.minQty === tier.minQty &&
+          (r.maxQty === tier.maxQty || (!r.maxQty && tier.minQty === tier.maxQty))
+        );
+      });
+
+      if (existingIdx >= 0) {
+        const copy = [...prev];
+        copy[existingIdx] = {
+          ...copy[existingIdx],
+          unitPrice: newRate,
+          attributeCombination: {
+            ...((copy[existingIdx].attributeCombination as any) || {}),
+            isBasePrice: true,
+            type: 'BASE',
+            label: tier.label,
+          },
+          label: tier.label,
+        };
+        return copy;
+      } else {
+        const newBaseRow: MatrixRowItem = {
+          minQty: tier.minQty,
+          maxQty: tier.maxQty,
+          unitPrice: newRate,
+          attributeCombination: {
+            isBasePrice: true,
+            type: 'BASE',
+            label: tier.label,
+          },
+          status: 'ACTIVE',
+          isExcluded: false,
+          label: tier.label,
+        };
+        return [...prev, newBaseRow];
+      }
+    });
+
+    // Sync basePrice and minQuantity for lowest tier
+    const sorted = [...addonQuantityTiers].sort((a, b) => a.minQty - b.minQty);
+    if (sorted[0]?.id === tier.id) {
+      setBasePrice?.(newRate);
+      setMinQuantity?.(tier.minQty);
+    }
+
+    onChange?.();
+  };
+
+  const getAddonTierPrice = (groupCode: string, optionValue: string, tier: AddonQuantityTierItem): number | '' => {
+    if (!additionalPricingRows) return '';
+    const match = additionalPricingRows.find(
+      (r) =>
+        r.groupCode === groupCode &&
+        r.optionValue === optionValue &&
+        r.minQty === tier.minQty &&
+        (r.maxQty === tier.maxQty || (!r.maxQty && tier.minQty === tier.maxQty))
+    );
+    if (!match || match.unitPrice === undefined || match.unitPrice === null) return '';
+    return Number(match.unitPrice);
+  };
+
+  const isAddonOptionExcluded = (groupCode: string, optionValue: string): boolean => {
+    if (!additionalPricingRows) return false;
+    const match = additionalPricingRows.find(
+      (r) => r.groupCode === groupCode && r.optionValue === optionValue
+    );
+    return Boolean(match?.isExcluded);
+  };
+
+  const handleAddonTierPriceChange = (
+    groupCode: string,
+    optionValue: string,
+    tier: AddonQuantityTierItem,
+    newRate: number
+  ) => {
+    if (isNaN(newRate) || newRate < 0) return;
+    setAdditionalPricingRows?.((prev) => {
+      const existingIdx = prev.findIndex(
+        (r) =>
+          r.groupCode === groupCode &&
+          r.optionValue === optionValue &&
+          r.minQty === tier.minQty &&
+          (r.maxQty === tier.maxQty || (!r.maxQty && tier.minQty === tier.maxQty))
+      );
+      if (existingIdx >= 0) {
+        const copy = [...prev];
+        copy[existingIdx] = {
+          ...copy[existingIdx],
+          unitPrice: newRate,
+        };
+        return copy;
+      } else {
+        const wasExcluded = prev.some((r) => r.groupCode === groupCode && r.optionValue === optionValue && r.isExcluded);
+        const newRow: ProductAdditionalPricingTier = {
+          productId,
+          groupCode,
+          optionValue,
+          minQty: tier.minQty,
+          maxQty: tier.maxQty,
+          unitPrice: newRate,
+          chargeBasis: 'PER_UNIT',
+          isExcluded: wasExcluded,
+        };
+        return [...prev, newRow];
+      }
+    });
+    onChange?.();
+  };
+
+  const handleToggleAddonOptionExcluded = (groupCode: string, optionValue: string) => {
+    setAdditionalPricingRows?.((prev) => {
+      const match = prev.find((r) => r.groupCode === groupCode && r.optionValue === optionValue);
+      const nextExcluded = !match?.isExcluded;
+
+      const updated = prev.map((r) => {
+        if (r.groupCode === groupCode && r.optionValue === optionValue) {
+          return { ...r, isExcluded: nextExcluded };
+        }
+        return r;
+      });
+
+      if (!match) {
+        for (const tier of addonQuantityTiers) {
+          updated.push({
+            productId,
+            groupCode,
+            optionValue,
+            minQty: tier.minQty,
+            maxQty: tier.maxQty,
+            unitPrice: 0,
+            chargeBasis: 'PER_UNIT',
+            isExcluded: true,
+          });
+        }
+      }
+
+      return updated;
+    });
+    onChange?.();
+  };
+
+  const handleRemoveGroupFromAddonPricing = (groupId: string) => {
+    const target = optionGroups.find((g) => g.id === groupId);
+    if (!target) return;
+    if (
+      confirm(
+        `Remove option group "${target.name}" from additional pricing eligibility? Existing custom additional pricing tiers for this group will be detached.`
+      )
+    ) {
+      setOptionGroups?.((prev) =>
+        prev.map((g) => (g.id === groupId ? { ...g, enableAdditionalPricing: false } : g))
+      );
+      setAdditionalPricingRows?.((prev) => prev.filter((r) => r.groupCode !== target.code));
+      onChange?.();
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // 2. DETECT PRICING STATUS FOR EACH OPTION GROUP
@@ -601,8 +1053,58 @@ export function StudioTabPricing({
       }
     }
 
+    // 5. Additional Pricing by Group & Quantity Diagnostics
+    for (const group of eligibleAdditionalGroups) {
+      const groupTiers = (additionalPricingRows || []).filter((r) => r.groupCode === group.code);
+      if (groupTiers.length === 0) {
+        list.push({
+          id: `addon-missing-${group.id}`,
+          type: 'warning',
+          title: `Additional Pricing Not Configured: "${group.name}"`,
+          message: `Option group "${group.name}" is marked eligible for additional pricing, but has no quantity tiers configured in "Additional Pricing by Group & Quantity". Switch views to configure tiers or disable eligibility in Step 2.`,
+        });
+      } else {
+        const activeChoices = group.options.filter((o) => o.isActive !== false);
+        let unpricedCount = 0;
+        for (const opt of activeChoices) {
+          const optTiers = groupTiers.filter((t) => t.optionValue === opt.value);
+          const isExcluded = optTiers.some((t) => t.isExcluded);
+          if (!isExcluded) {
+            for (const tier of addonQuantityTiers) {
+              const match = optTiers.find(
+                (t) =>
+                  t.minQty === tier.minQty &&
+                  (t.maxQty === tier.maxQty || (!t.maxQty && tier.minQty === tier.maxQty))
+              );
+              if (!match || Number(match.unitPrice) <= 0) {
+                unpricedCount++;
+              }
+            }
+          }
+        }
+        if (unpricedCount > 0) {
+          list.push({
+            id: `addon-unpriced-${group.id}`,
+            type: 'warning',
+            title: `Unpriced Tier Choices in "${group.name}"`,
+            message: `${unpricedCount} option choice tier(s) in "${group.name}" have ₹0.00 additional rates. Customers ordering this choice will receive ₹0 additional charge for those tiers unless priced.`,
+          });
+        }
+      }
+    }
+
     return list;
-  }, [startingReferenceRate, pricingModel, sellableCombinations, quantityColumns, matrixRows, optionGroups]);
+  }, [
+    startingReferenceRate,
+    pricingModel,
+    sellableCombinations,
+    quantityColumns,
+    matrixRows,
+    optionGroups,
+    eligibleAdditionalGroups,
+    additionalPricingRows,
+    addonQuantityTiers,
+  ]);
 
   // Inline Price Change
   const handleCellPriceChange = (combo: SellableCombination, qty: number, newPriceVal: number) => {
@@ -904,23 +1406,63 @@ export function StudioTabPricing({
           if (active) setPreviewQuote(q);
         } else {
           // Local fallback simulator when product ID is pending save
-          const startingRef = Number(basePrice) || 0;
+          const matchedBaseTier = matrixRows.find((r) => {
+            const combo = (r.attributeCombination as any) || {};
+            const isBase =
+              combo.isBasePrice === true ||
+              combo.type === 'BASE' ||
+              Object.keys(combo).filter(
+                (k) => !['label', 'rangeLabel', 'discountPercent', 'isBasePrice', 'type'].includes(k)
+              ).length === 0;
+
+            return isBase && previewQty >= r.minQty && (r.maxQty ? previewQty <= r.maxQty : true);
+          });
+
           const currentMoq = Math.max(1, Number(minQuantity) || 1);
-          const refUnitPrice = Math.round((startingRef / currentMoq) * 10000) / 10000;
+          const refUnitPrice =
+            matchedBaseTier && Number(matchedBaseTier.unitPrice) > 0
+              ? Number(matchedBaseTier.unitPrice)
+              : Number(basePrice) > 0
+              ? Number(basePrice)
+              : 0;
+          const startingRef = Math.round(refUnitPrice * currentMoq * 100) / 100;
           let optAddons = 0;
           const activeOptBreakdown: Array<{ groupCode: string; optionCode: string; priceModifier: number; subtotal: number }> = [];
 
           for (const g of optionGroups) {
             const chosen = g.options.find((o) => o.value === previewSelections[g.code]);
-            if (chosen && Number(chosen.priceModifier) > 0) {
-              const modifier = Number(chosen.priceModifier);
-              optAddons += modifier;
-              activeOptBreakdown.push({
-                groupCode: g.code,
-                optionCode: chosen.value,
-                priceModifier: modifier,
-                subtotal: Math.round(modifier * previewQty * 100) / 100,
-              });
+            if (chosen) {
+              let matchedAddonTier: ProductAdditionalPricingTier | undefined;
+              if (g.enableAdditionalPricing && additionalPricingRows) {
+                matchedAddonTier = additionalPricingRows.find(
+                  (t) =>
+                    t.groupCode === g.code &&
+                    t.optionValue === chosen.value &&
+                    !t.isExcluded &&
+                    previewQty >= t.minQty &&
+                    previewQty <= t.maxQty
+                );
+              }
+
+              if (matchedAddonTier && Number(matchedAddonTier.unitPrice) > 0) {
+                const addPrice = Number(matchedAddonTier.unitPrice);
+                optAddons += addPrice;
+                activeOptBreakdown.push({
+                  groupCode: g.code,
+                  optionCode: `${chosen.label} (Tier ${matchedAddonTier.minQty} pcs)`,
+                  priceModifier: addPrice,
+                  subtotal: Math.round(addPrice * previewQty * 100) / 100,
+                });
+              } else if (Number(chosen.priceModifier) > 0) {
+                const modifier = Number(chosen.priceModifier);
+                optAddons += modifier;
+                activeOptBreakdown.push({
+                  groupCode: g.code,
+                  optionCode: chosen.label,
+                  priceModifier: modifier,
+                  subtotal: Math.round(modifier * previewQty * 100) / 100,
+                });
+              }
             }
           }
 
@@ -999,7 +1541,7 @@ export function StudioTabPricing({
   return (
     <div className="w-full space-y-6">
       {/* ================================================================== */}
-      {/* SECTION 1: STUDIO HEADER & VIEW SWITCHER                           */}
+      {/* SECTION 1: STUDIO HEADER                                            */}
       {/* ================================================================== */}
       <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-card space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1010,48 +1552,15 @@ export function StudioTabPricing({
               </span>
               <span className="text-slate-300">•</span>
               <h2 className="text-xl font-black text-slate-900 tracking-tight font-display">
-                Commercial Pricing Matrix
+                Product Base Pricing & Additional Group Pricing
               </h2>
             </div>
             <p className="text-xs text-slate-500 mt-0.5 max-w-3xl">
-              Configure sellable combination rates across quantity volume runs. You can auto-generate starter combinations or add and edit exact rates manually.
+              Configure product base prices based on quantity tiers, and define per-unit additive rates for eligible option groups and choices.
             </p>
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
-            {/* View Switcher: Matrix Table vs Option Surcharges */}
-            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200">
-              <button
-                type="button"
-                onClick={() => setActivePricingView('MATRIX')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-                  activePricingView === 'MATRIX'
-                    ? 'bg-white text-slate-950 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <RiTableLine className="w-4 h-4 text-amber-600" />
-                <span>Combination Pricing Table</span>
-                {sellableCombinations.length > 0 && (
-                  <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-900 px-1.5 py-0.2 rounded-full">
-                    {sellableCombinations.length}
-                  </span>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setActivePricingView('OPTIONS')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-                  activePricingView === 'OPTIONS'
-                    ? 'bg-white text-slate-950 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <RiPriceTag3Line className="w-4 h-4 text-blue-600" />
-                <span>Option Surcharges (+₹)</span>
-              </button>
-            </div>
-
             {/* Design Pricing from Step 3 Notice */}
             <div className="p-2.5 bg-amber-50/80 border border-amber-200 rounded-xl flex items-center gap-2 text-xs text-amber-950 font-medium shrink-0">
               <RiPaletteLine className="w-4 h-4 text-amber-700 shrink-0" />
@@ -1071,536 +1580,547 @@ export function StudioTabPricing({
       </div>
 
       {/* ================================================================== */}
-      {/* SECTION 2: COMBINATION PRICING TABLE (PRIMARY VIEW)                 */}
+      {/* SECTION 2: PRODUCT BASE PRICE BY QUANTITY                          */}
       {/* ================================================================== */}
-      {activePricingView === 'MATRIX' && (
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-card space-y-5">
-          {/* 1. Combination Groups Selection */}
-          <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <RiStackLine className="w-4 h-4 text-slate-700" />
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
-                  Select Combination Groups:
-                </span>
-              </div>
-              <span className="text-[11px] text-slate-500 font-mono">
-                {participatingGroupCodes.length} of {optionGroups.length} groups selected
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-card space-y-6">
+        {/* Header & Guidance */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <RiPriceTag3Line className="w-5 h-5 text-indigo-600" />
+              <h3 className="text-base font-black text-slate-900 font-display">
+                Product Base Price by Quantity
+              </h3>
+              <span className="text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full border border-indigo-200">
+                Core Printing Rates
               </span>
             </div>
-            <div className="flex flex-wrap gap-2 pt-1">
-              {optionGroups.length === 0 ? (
-                <span className="text-xs text-slate-400 italic">
-                  No option groups configured yet. Configure groups in Step 2 first.
-                </span>
-              ) : (
-                optionGroups.map((g) => {
-                  const isPart = participatingGroupCodes.includes(g.code);
-                  return (
-                    <button
-                      key={g.id}
-                      type="button"
-                      onClick={() => toggleParticipatingGroup(g.code)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-                        isPart
-                          ? 'bg-amber-100 text-amber-950 border border-amber-300 shadow-2xs'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isPart}
-                        readOnly
-                        className="w-3.5 h-3.5 rounded border-amber-400 text-amber-600 pointer-events-none"
-                      />
-                      <span>{g.name}</span>
-                      <span className="text-[10px] font-mono text-slate-400">({g.code})</span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
+            <p className="text-xs text-slate-500 mt-1 max-w-3xl">
+              Manually define the foundational product base price (<strong>₹ per printed unit</strong>) for each configured quantity tier or range (e.g., 1–10 pcs, 100 pcs, 200 pcs). Quotation requests will automatically look up the matching tier base rate.
+            </p>
           </div>
 
-          {/* 2. Quantity Tiers & Action Toolbar */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-            {/* Quantity Tiers Chips */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-mono font-bold text-slate-600 uppercase">
-                Quantity Tiers:
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {quantityColumns.map((q) => (
-                  <span
-                    key={q}
-                    className="inline-flex items-center gap-1 bg-white border border-slate-300 text-slate-800 font-mono text-xs font-bold px-2.5 py-1 rounded-lg shadow-2xs"
-                  >
-                    <span>{q.toLocaleString()} pcs</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveQuantityColumn(q)}
-                      className="text-slate-400 hover:text-rose-600 p-0.5 cursor-pointer"
-                      title="Remove Tier"
-                    >
-                      <RiCloseLine className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setIsAddQtyModalOpen(true)}
-                  className="px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                >
-                  <RiAddLine className="w-3.5 h-3.5" />
-                  <span>Add Tier</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Right Toolbar: Search, Auto-Config, Add Manual Entry */}
-            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-              <div className="relative min-w-[180px]">
-                <RiSearch2Line className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search combinations..."
-                  value={comboSearchQuery}
-                  onChange={(e) => setComboSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:border-amber-500 shadow-2xs"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={() => handleGenerateStarterCombinations()}
-                className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-2xs shrink-0"
-                title="Automatically calculate combinations and tiered rates from reference rate and volume discounts"
-              >
-                <RiSparklingFill className="w-4 h-4 text-indigo-600" />
-                <span>Auto-Config Rates</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleOpenAddComboModal}
-                className="px-4 py-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-slate-950 text-xs font-black rounded-lg shadow-2xs border border-amber-300 transition cursor-pointer flex items-center gap-1.5 shrink-0"
-              >
-                <RiAddLine className="w-4 h-4" />
-                <span>+ Add Manual Entry</span>
-              </button>
-            </div>
-          </div>
-
-          {/* 3. Combinations Table */}
-          <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-2xs">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-100/90 border-b border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-600 font-mono">
-                  {optionGroups
-                    .filter((g) => participatingGroupCodes.includes(g.code))
-                    .map((g) => (
-                      <th key={g.id} className="py-3 px-3.5 whitespace-nowrap">
-                        {g.name}
-                      </th>
-                    ))}
-                  {quantityColumns.map((q) => (
-                    <th key={q} className="py-3 px-3.5 text-right whitespace-nowrap">
-                      <div>{q.toLocaleString()} pcs</div>
-                      <span className="text-[9px] font-normal text-slate-400 lowercase">total ₹</span>
-                    </th>
-                  ))}
-                  <th className="py-3 px-3.5 text-right whitespace-nowrap">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs">
-                {filteredCombinations.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={participatingGroupCodes.length + quantityColumns.length + 1}
-                      className="p-12 text-center text-slate-400 italic space-y-2"
-                    >
-                      <p className="text-sm font-semibold text-slate-600">No combinations in table yet.</p>
-                      <p className="text-xs text-slate-400">
-                        Click <strong className="text-indigo-600">&quot;Auto-Config Rates&quot;</strong> to automatically generate combinations with tiered prices, or <strong className="text-amber-800">&quot;+ Add Manual Entry&quot;</strong> to add rows manually.
-                      </p>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredCombinations.map((combo) => (
-                    <tr key={combo.id} className="hover:bg-slate-50/70 transition-colors">
-                      {optionGroups
-                        .filter((g) => participatingGroupCodes.includes(g.code))
-                        .map((g) => {
-                          const val = combo.attributes[g.code];
-                          const opt = g.options.find((o) => o.value === val);
-                          return (
-                            <td key={g.id} className="py-2.5 px-3.5 whitespace-nowrap">
-                              <span className="font-bold text-slate-900">
-                                {opt?.label || val || '—'}
-                              </span>
-                            </td>
-                          );
-                        })}
-
-                      {quantityColumns.map((q) => {
-                        const priceVal = combo.pricesByQty[q];
-                        const isMissing = priceVal === undefined || priceVal <= 0;
-                        const unitRate = priceVal > 0 ? (priceVal / q).toFixed(2) : '—';
-
-                        return (
-                          <td key={q} className="py-2 px-3.5 text-right">
-                            <div className="inline-flex flex-col items-end">
-                              <div className="relative">
-                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-[11px]">
-                                  ₹
-                                </span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="any"
-                                  value={priceVal !== undefined ? priceVal : ''}
-                                  onChange={(e) =>
-                                    handleCellPriceChange(
-                                      combo,
-                                      q,
-                                      parseFloat(e.target.value) || 0
-                                    )
-                                  }
-                                  className={`w-28 pl-6 pr-2.5 py-1 text-right font-mono font-bold text-xs rounded-lg border focus:outline-none ${
-                                    isMissing
-                                      ? 'border-amber-300 bg-amber-50 text-amber-900 focus:border-amber-500'
-                                      : 'border-slate-300 bg-white text-slate-900 focus:border-slate-900'
-                                  }`}
-                                  placeholder="0.00"
-                                />
-                              </div>
-                              {!isMissing && (
-                                <span className="text-[9px] font-mono text-slate-500 mt-0.5">
-                                  ₹{unitRate}/pc
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                        );
-                      })}
-
-                      <td className="py-2.5 px-3.5 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenDuplicateModal(combo)}
-                            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md transition cursor-pointer"
-                            title="Duplicate Combination"
-                          >
-                            <RiFileCopyLine className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteCombination(combo)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer"
-                            title="Delete Combination"
-                          >
-                            <RiDeleteBin7Line className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+          <div className="text-right">
+            <span className="text-[11px] font-mono text-slate-400 block">Base Formula:</span>
+            <span className="text-xs font-mono font-bold text-slate-800">
+              Order Qty × Base Rate (₹/pc)
+            </span>
           </div>
         </div>
-      )}
 
-      {/* ================================================================== */}
-      {/* SECTION 3: OPTION-BASED SURCHARGES (SECONDARY VIEW)                */}
-      {/* ================================================================== */}
-      {activePricingView === 'OPTIONS' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left: Product Option Groups List */}
-          <div className="lg:col-span-4 bg-white border border-slate-200/90 rounded-2xl p-4 shadow-card space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-              <div className="flex items-center gap-2">
-                <RiStackLine className="w-4 h-4 text-slate-700" />
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 font-display">
-                  Product Option Groups
-                </h3>
-              </div>
-              <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
-                {optionGroups.length} Groups
-              </span>
-            </div>
+        {/* Quantity Tiers Toolbar & Chips */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-mono font-bold text-slate-600 uppercase">
+              Configured Quantity Tiers:
+            </span>
+            <div className="flex flex-wrap gap-1.5 items-center">
+              {addonQuantityTiers.map((tier) => (
+                <span
+                  key={tier.id}
+                  className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-800 font-mono text-xs font-bold px-2.5 py-1 rounded-lg shadow-2xs"
+                >
+                  <span>{tier.label}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingAddonTier(tier);
+                      setEditAddonTierInput(
+                        tier.minQty === tier.maxQty ? String(tier.minQty) : `${tier.minQty}-${tier.maxQty}`
+                      );
+                      setAddonTierError(null);
+                    }}
+                    className="text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
+                    title="Edit tier quantity"
+                  >
+                    <RiEditLine className="w-3 h-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAddonTier(tier)}
+                    className="text-slate-400 hover:text-rose-600 p-0.5 cursor-pointer"
+                    title="Remove Tier"
+                  >
+                    <RiCloseLine className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
 
-            <div className="space-y-2">
-              {optionGroups.length === 0 ? (
-                <div className="p-6 text-center text-slate-400 text-xs italic">
-                  No option groups configured. Configure groups in Step 2 first.
-                </div>
-              ) : (
-                optionGroups.map((grp) => {
-                  const isSelected = activeGroup?.id === grp.id;
-                  const status = groupStatusMap.get(grp.id);
+              <button
+                type="button"
+                onClick={() => {
+                  setNewAddonTierInput('');
+                  setAddonTierError(null);
+                  setIsAddAddonTierModalOpen(true);
+                }}
+                className="px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
+              >
+                <RiAddLine className="w-3.5 h-3.5" />
+                <span>Add Tier</span>
+              </button>
 
-                  return (
-                    <button
-                      key={grp.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedGroupId(grp.id);
-                        setActiveMethodOverride(null);
-                      }}
-                      className={`w-full text-left p-3.5 rounded-xl border transition-all cursor-pointer ${
-                        isSelected
-                          ? 'border-amber-400 bg-amber-50/70 shadow-sm ring-2 ring-amber-400/20'
-                          : 'border-slate-200/90 bg-white hover:bg-slate-50/80 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <span className="text-xs font-bold text-slate-900 block font-display">
-                            {grp.name}
-                          </span>
-                          <span className="text-[10px] font-mono text-slate-400 block">
-                            {grp.code} • {grp.options.length} choice{grp.options.length !== 1 ? 's' : ''}
-                          </span>
-                        </div>
-
-                        {status && (
-                          <span
-                            className={`text-[9px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap ${status.badgeClass}`}
-                          >
-                            {status.label}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="mt-2 text-[11px] text-slate-500 flex items-center justify-between">
-                        <span className="truncate">{status?.description}</span>
-                        <RiArrowRightLine
-                          className={`w-3.5 h-3.5 shrink-0 transition-transform ${
-                            isSelected ? 'text-amber-700 translate-x-0.5' : 'text-slate-300'
-                          }`}
-                        />
-                      </div>
-                    </button>
-                  );
-                })
-              )}
+              <button
+                type="button"
+                onClick={handleSortAddonTiers}
+                className="px-2 py-1 text-slate-500 hover:text-slate-800 text-[11px] font-semibold transition cursor-pointer"
+                title="Sort tiers in ascending order"
+              >
+                Sort Ascending
+              </button>
             </div>
           </div>
 
-          {/* Right: Selected Group Option Surcharges Workspace */}
-          <div className="lg:col-span-8 bg-white border border-slate-200/90 rounded-2xl p-6 shadow-card space-y-6">
-            {!activeGroup ? (
-              <div className="p-12 text-center text-slate-400 text-xs">
-                Select an option group from the left panel to configure its option charges.
+          <span className="text-[11px] font-mono text-slate-500">
+            {addonQuantityTiers.length} tier{addonQuantityTiers.length !== 1 ? 's' : ''} configured
+          </span>
+        </div>
+
+        {/* Base Pricing Table */}
+        <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-2xs">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-100/90 border-b border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-600 font-mono">
+                <th className="py-3 px-4 whitespace-nowrap min-w-[220px]">
+                  Base Pricing Component
+                </th>
+                <th className="py-3 px-3.5 whitespace-nowrap min-w-[140px]">
+                  Status
+                </th>
+                {addonQuantityTiers.map((tier) => (
+                  <th key={tier.id} className="py-3 px-3.5 text-right whitespace-nowrap min-w-[140px]">
+                    <div>{tier.label}</div>
+                    <span className="text-[9px] font-normal text-slate-400 lowercase block font-sans">
+                      ₹ / pc (Base Rate)
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-xs">
+              <tr className="hover:bg-slate-50/80 transition-colors">
+                <td className="py-3 px-4">
+                  <div className="font-bold text-slate-900">Standard Product Base Rate</div>
+                  <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                    Foundational printing cost across quantity tiers
+                  </div>
+                </td>
+                <td className="py-3 px-3.5">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    <span>Active Base Rate</span>
+                  </span>
+                </td>
+                {addonQuantityTiers.map((tier) => {
+                  const currentRate = getBaseTierPrice(tier);
+                  const numRate = typeof currentRate === 'number' ? currentRate : 0;
+                  const isBracket = tier.minQty !== tier.maxQty;
+                  const minTotal = Math.round(numRate * tier.minQty * 100) / 100;
+                  const maxTotal = Math.round(numRate * tier.maxQty * 100) / 100;
+
+                  return (
+                    <td key={tier.id} className="py-2.5 px-3.5 text-right">
+                      <div className="inline-flex flex-col items-end">
+                        <div className="relative">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-[11px]">
+                            ₹
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={currentRate !== '' ? currentRate : ''}
+                            onChange={(e) => {
+                              const parsed = parseFloat(e.target.value);
+                              handleBaseTierPriceChange(
+                                tier,
+                                isNaN(parsed) || e.target.value === '' ? 0 : parsed
+                              );
+                            }}
+                            placeholder="0.00"
+                            className="w-28 pl-6 pr-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-right font-mono text-xs font-bold text-slate-900 focus:outline-none focus:border-slate-900"
+                          />
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-500 mt-0.5">
+                          {numRate > 0 ? (
+                            isBracket ? (
+                              `= ₹${minTotal}–₹${maxTotal} total`
+                            ) : (
+                              `= ₹${minTotal} for ${tier.minQty} pcs`
+                            )
+                          ) : (
+                            'Set base rate'
+                          )}
+                        </span>
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Guidance Footer */}
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs text-slate-600">
+          <div className="flex items-center gap-2">
+            <RiShieldCheckLine className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>
+              Base rates defined per tier serve as the starting unit price in customer quotations before option add-ons and design fees.
+            </span>
+          </div>
+          <span className="font-mono text-[11px] text-slate-500">
+            Authoritative Pricing Matrix Tier
+          </span>
+        </div>
+      </div>
+
+      {/* ================================================================== */}
+      {/* SECTION 3: ADDITIONAL PRICING BY GROUP & QUANTITY                  */}
+      {/* ================================================================== */}
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-card space-y-6">
+          {/* Header & Guidance */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <RiStackLine className="w-5 h-5 text-amber-600" />
+                <h3 className="text-base font-black text-slate-900 font-display">
+                  Additional Pricing by Group & Quantity
+                </h3>
+                <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
+                  Per-Unit Additive Matrix
+                </span>
               </div>
-            ) : (
-              <div className="space-y-6">
-                {/* Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
-                  <div>
+              <p className="text-xs text-slate-500 mt-1 max-w-3xl">
+                Configure quantity-bracket additional charges (<strong>₹ per printed unit</strong>) for option choices belonging to eligible option groups. Rates are dynamically multiplied by the total order quantity at quotation time.
+              </p>
+            </div>
+
+            <div className="text-right">
+              <span className="text-[11px] font-mono text-slate-400 block">Pricing Formula:</span>
+              <span className="text-xs font-mono font-bold text-slate-800">
+                Order Qty × Tier Rate (₹/pc)
+              </span>
+            </div>
+          </div>
+
+          {/* Group Selector Bar */}
+          {eligibleAdditionalGroups.length === 0 ? (
+            <div className="p-8 bg-amber-50/70 border border-amber-200/90 rounded-xl text-center space-y-3">
+              <RiInformationLine className="w-8 h-8 mx-auto text-amber-600" />
+              <div className="max-w-md mx-auto space-y-1">
+                <h4 className="text-sm font-bold text-amber-950">
+                  No Option Groups are Eligible for Additional Pricing
+                </h4>
+                <p className="text-xs text-amber-900/80 leading-relaxed">
+                  To configure additional pricing for attributes like Paper Stock, Finishing, or Material, go to <strong>Step 2 (Groups & Combinations)</strong> or the <strong>Option Groups Library (/admin/option-groups)</strong> and enable <em>&quot;Enable Additional Pricing&quot;</em>.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Group Selection Tabs */}
+              <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <RiStackLine className="w-4 h-4 text-slate-700" />
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
+                      Select Eligible Option Group:
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    {eligibleAdditionalGroups.length} eligible group{eligibleAdditionalGroups.length !== 1 ? 's' : ''} available
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {eligibleAdditionalGroups.map((g) => {
+                    const isSel = activeAddonGroup?.id === g.id;
+                    const choiceCount = g.options.filter((o) => o.isActive !== false).length;
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => setSelectedAddonGroupId(g.id)}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border ${
+                          isSel
+                            ? 'bg-amber-100 text-amber-950 border-amber-300 shadow-2xs ring-2 ring-amber-400/20'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <span>{g.name}</span>
+                        <span className="text-[10px] font-mono text-slate-500">({g.code})</span>
+                        <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-mono">
+                          {choiceCount} choice{choiceCount !== 1 ? 's' : ''}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {activeAddonGroup && (
+                <div className="space-y-4">
+                  {/* Quantity Tiers Bar & Toolbar */}
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                    {/* Quantity Tiers Chips */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] font-mono font-bold text-slate-600 uppercase">
+                        Configured Quantity Tiers:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        {addonQuantityTiers.map((tier) => (
+                          <span
+                            key={tier.id}
+                            className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-800 font-mono text-xs font-bold px-2.5 py-1 rounded-lg shadow-2xs"
+                          >
+                            <span>{tier.label}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingAddonTier(tier);
+                                setEditAddonTierInput(tier.minQty === tier.maxQty ? String(tier.minQty) : `${tier.minQty}-${tier.maxQty}`);
+                                setAddonTierError(null);
+                              }}
+                              className="text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
+                              title="Edit tier quantity"
+                            >
+                              <RiEditLine className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveAddonTier(tier)}
+                              className="text-slate-400 hover:text-rose-600 p-0.5 cursor-pointer"
+                              title="Remove Tier"
+                            >
+                              <RiCloseLine className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewAddonTierInput('');
+                            setAddonTierError(null);
+                            setIsAddAddonTierModalOpen(true);
+                          }}
+                          className="px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                        >
+                          <RiAddLine className="w-3.5 h-3.5" />
+                          <span>Add Tier</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleSortAddonTiers}
+                          className="px-2 py-1 text-slate-500 hover:text-slate-800 text-[11px] font-semibold transition cursor-pointer"
+                          title="Sort tiers in ascending order"
+                        >
+                          Sort Ascending
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Right side: Remove Group Action */}
                     <div className="flex items-center gap-2">
-                      <span className="text-base font-black text-slate-900 font-display">
-                        {activeGroup.name}
-                      </span>
-                      <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                        {activeGroup.code}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveGroupFromAddonPricing(activeAddonGroup.id)}
+                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg flex items-center gap-1 transition cursor-pointer"
+                        title="Disable additional pricing for this group on this product"
+                      >
+                        <RiDeleteBin7Line className="w-3.5 h-3.5" />
+                        <span>Remove Group from Additional Pricing</span>
+                      </button>
                     </div>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Configure additive surcharges (+₹) or mark this group as included in the base rate.
-                    </p>
                   </div>
 
-                  {activeGroupStatus?.hasError && (
-                    <div className="p-2 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs font-bold flex items-center gap-1.5">
-                      <RiAlertFill className="w-4 h-4 text-rose-600" />
-                      <span>{activeGroupStatus.errorMessage}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Method Switcher between Option Surcharges & Included in Base */}
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setActiveMethodOverride('OPTION')}
-                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-                      currentMethod === 'OPTION'
-                        ? 'border-blue-500 bg-blue-50/70 shadow-2xs ring-2 ring-blue-500/20'
-                        : 'border-slate-200 bg-white hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900 block font-display">
-                        Option-Based (+₹ Surcharge)
-                      </span>
-                      {currentMethod === 'OPTION' && <RiCheckLine className="w-4 h-4 text-blue-600" />}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Independent additive surcharge per choice.
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveMethodOverride('INCLUDED')}
-                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-                      currentMethod === 'INCLUDED'
-                        ? 'border-emerald-500 bg-emerald-50/70 shadow-2xs ring-2 ring-emerald-500/20'
-                        : 'border-slate-200 bg-white hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900 block font-display">
-                        Included in Base (₹0.00)
-                      </span>
-                      {currentMethod === 'INCLUDED' && <RiCheckLine className="w-4 h-4 text-emerald-600" />}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      No separate charge; covered by base printing rate.
-                    </p>
-                  </button>
-                </div>
-
-                {/* Feedback Alert */}
-                {optionSuccessMsg && (
-                  <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-2">
-                    <RiCheckLine className="w-4 h-4 text-emerald-600" />
-                    <span>{optionSuccessMsg}</span>
-                  </div>
-                )}
-
-                {/* Option-Based Table */}
-                {currentMethod === 'OPTION' && (
-                  <div className="space-y-4 pt-2 border-t border-slate-100">
-                    <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-100/80 border-b border-slate-200 text-slate-600 uppercase font-mono text-[10px]">
+                  {/* Pricing Matrix Table */}
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-2xs">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100/90 border-b border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-600 font-mono">
+                          <th className="py-3 px-4 whitespace-nowrap min-w-[200px]">
+                            Option Choice ({activeAddonGroup.name})
+                          </th>
+                          <th className="py-3 px-3.5 whitespace-nowrap min-w-[140px]">
+                            Pricing Status
+                          </th>
+                          {addonQuantityTiers.map((tier) => (
+                            <th key={tier.id} className="py-3 px-3.5 text-right whitespace-nowrap min-w-[130px]">
+                              <div>{tier.label}</div>
+                              <span className="text-[9px] font-normal text-slate-400 lowercase block font-sans">
+                                ₹ / printed unit
+                              </span>
+                            </th>
+                          ))}
+                          <th className="py-3 px-3.5 text-center whitespace-nowrap">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs">
+                        {activeAddonGroup.options.length === 0 ? (
                           <tr>
-                            <th className="py-2.5 px-3">Option Choice</th>
-                            <th className="py-2.5 px-3">Code Value</th>
-                            <th className="py-2.5 px-3">Default</th>
-                            <th className="py-2.5 px-3 w-44">Additional Surcharge (₹)</th>
-                            <th className="py-2.5 px-3 w-36">Calculation Type</th>
+                            <td
+                              colSpan={addonQuantityTiers.length + 3}
+                              className="p-8 text-center text-slate-400 italic"
+                            >
+                              No option choices configured in group &quot;{activeAddonGroup.name}&quot;. Configure choices in Step 2.
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {activeGroup.options
-                            .filter((opt) => opt.isActive !== false)
-                            .map((opt) => {
-                              const draft = optionChargesDraft[opt.id] || { amount: '0', type: 'FIXED' };
-                              const isInvalid = parseFloat(draft.amount) < 0;
+                        ) : (
+                          activeAddonGroup.options.map((opt) => {
+                            const isExcluded = isAddonOptionExcluded(activeAddonGroup.code, opt.value);
+                            const isActiveChoice = opt.isActive !== false;
 
-                              return (
-                                <tr key={opt.id} className="hover:bg-slate-50/60 transition-colors">
-                                  <td className="py-2.5 px-3 font-bold text-slate-900">{opt.label}</td>
-                                  <td className="py-2.5 px-3 font-mono text-slate-500">{opt.value}</td>
-                                  <td className="py-2.5 px-3">
-                                    {opt.isDefault ? (
-                                      <span className="text-[9px] font-bold px-1.5 py-0.2 bg-amber-100 text-amber-900 rounded">
+                            return (
+                              <tr
+                                key={opt.id}
+                                className={`transition-colors ${
+                                  isExcluded
+                                    ? 'bg-slate-50/70 text-slate-400'
+                                    : 'hover:bg-slate-50/80 text-slate-900'
+                                }`}
+                              >
+                                {/* Option Label & Code */}
+                                <td className="py-3 px-4">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`font-bold ${isExcluded ? 'line-through text-slate-400' : 'text-slate-900'}`}>
+                                      {opt.label}
+                                    </span>
+                                    {opt.isDefault && (
+                                      <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-mono">
                                         Default
                                       </span>
-                                    ) : (
-                                      <span className="text-[9px] text-slate-400">—</span>
                                     )}
-                                  </td>
-                                  <td className="py-2.5 px-3">
-                                    <div className="relative">
-                                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">
-                                        +₹
+                                    {!isActiveChoice && (
+                                      <span className="text-[9px] bg-rose-50 text-rose-700 px-1.5 py-0.2 rounded font-mono">
+                                        Inactive
                                       </span>
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        step="any"
-                                        value={draft.amount}
-                                        onChange={(e) =>
-                                          handleOptionChargeChange(opt.id, 'amount', e.target.value)
-                                        }
-                                        className={`w-full pl-8 pr-2.5 py-1 bg-white border rounded-lg font-mono font-bold text-xs ${
-                                          isInvalid
-                                            ? 'border-rose-400 text-rose-700 bg-rose-50'
-                                            : 'border-slate-300 text-slate-900 focus:border-blue-500'
-                                        }`}
-                                      />
-                                    </div>
-                                  </td>
-                                  <td className="py-2.5 px-3">
-                                    <select
-                                      value={draft.type}
-                                      onChange={(e) =>
-                                        handleOptionChargeChange(opt.id, 'type', e.target.value)
-                                      }
-                                      className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer"
-                                    >
-                                      <option value="FIXED">Flat (per unit)</option>
-                                      <option value="PERCENTAGE">% of Base</option>
-                                    </select>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                        </tbody>
-                      </table>
-                    </div>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                                    /{opt.value}
+                                  </div>
+                                </td>
 
-                    <div className="flex items-center justify-end gap-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={handleSaveOptionCharges}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer flex items-center gap-1.5"
-                      >
-                        <RiCheckLine className="w-4 h-4" />
-                        <span>Save Option-Based Rates</span>
-                      </button>
-                    </div>
+                                {/* Inclusion / Exclusion Toggle */}
+                                <td className="py-3 px-3.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleAddonOptionExcluded(activeAddonGroup.code, opt.value)}
+                                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+                                      isExcluded
+                                        ? 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                                        : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                                    }`}
+                                  >
+                                    <span
+                                      className={`w-1.5 h-1.5 rounded-full ${
+                                        isExcluded ? 'bg-slate-400' : 'bg-emerald-500'
+                                      }`}
+                                    />
+                                    <span>{isExcluded ? 'Excluded' : 'Active Rate'}</span>
+                                  </button>
+                                </td>
+
+                                {/* Tier Price Inputs */}
+                                {addonQuantityTiers.map((tier) => {
+                                  const currentRate = getAddonTierPrice(activeAddonGroup.code, opt.value, tier);
+                                  const numRate = typeof currentRate === 'number' ? currentRate : 0;
+                                  const tierTotal = Math.round(numRate * tier.minQty * 100) / 100;
+                                  const isMissing = !isExcluded && isActiveChoice && (currentRate === '' || currentRate === 0);
+
+                                  return (
+                                    <td key={tier.id} className="py-2.5 px-3.5 text-right">
+                                      <div className="inline-flex flex-col items-end">
+                                        <div className="relative">
+                                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-[11px]">
+                                            ₹
+                                          </span>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            disabled={isExcluded}
+                                            value={currentRate !== '' ? currentRate : ''}
+                                            onChange={(e) => {
+                                              const parsed = parseFloat(e.target.value);
+                                              handleAddonTierPriceChange(
+                                                activeAddonGroup.code,
+                                                opt.value,
+                                                tier,
+                                                isNaN(parsed) ? 0 : parsed
+                                              );
+                                            }}
+                                            className={`w-28 pl-6 pr-2 py-1 text-right font-mono text-xs font-bold rounded-lg border transition ${
+                                              isExcluded
+                                                ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                                                : isMissing
+                                                ? 'bg-amber-50/50 border-amber-300 text-slate-900 focus:border-amber-500'
+                                                : 'bg-white text-slate-900 border-slate-300 focus:border-slate-900 shadow-2xs'
+                                            }`}
+                                            placeholder="0.00"
+                                          />
+                                        </div>
+
+                                        {/* Helper showing total tier addition */}
+                                        <div className="text-[10px] font-mono text-slate-400 mt-0.5 flex items-center gap-1">
+                                          {isMissing ? (
+                                            <span className="text-amber-700 font-semibold flex items-center gap-0.5">
+                                              <RiInformationLine className="w-2.5 h-2.5" />
+                                              <span>₹0 / pc</span>
+                                            </span>
+                                          ) : (
+                                            <span>
+                                              = ₹{tierTotal.toLocaleString()} for {tier.label}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+
+                                {/* Actions */}
+                                <td className="py-3 px-3.5 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleAddonOptionExcluded(activeAddonGroup.code, opt.value)}
+                                    className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition cursor-pointer text-xs"
+                                    title={isExcluded ? 'Include choice in additional pricing' : 'Exclude choice from additional pricing'}
+                                  >
+                                    {isExcluded ? 'Include' : 'Exclude'}
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
                   </div>
-                )}
 
-                {/* Included in Base UI */}
-                {currentMethod === 'INCLUDED' && (
-                  <div className="space-y-4 pt-2 border-t border-slate-100">
-                    <div className="p-4 bg-slate-50/80 rounded-xl border border-slate-200 space-y-2">
-                      <span className="text-[11px] font-bold text-slate-700 uppercase font-mono block">
-                        Active Choices in &quot;{activeGroup.name}&quot; (+₹0.00 each):
+                  {/* Bottom Guidance Footer */}
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs text-slate-600">
+                    <div className="flex items-center gap-2">
+                      <RiCheckboxCircleLine className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>
+                        Values configured here will be evaluated automatically during customer quote calculation (<code>POST /pricing/calculate-quote</code>).
                       </span>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {activeGroup.options
-                          .filter((opt) => opt.isActive !== false)
-                          .map((opt) => (
-                            <div
-                              key={opt.id}
-                              className="p-2.5 bg-white border border-slate-200 rounded-lg flex items-center justify-between text-xs"
-                            >
-                              <span className="font-bold text-slate-800">{opt.label}</span>
-                              <span className="text-[10px] font-mono text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">
-                                ₹0.00
-                              </span>
-                            </div>
-                          ))}
-                      </div>
                     </div>
-
-                    <div className="flex items-center justify-end gap-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={handleMarkIncludedInBase}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer flex items-center gap-1.5"
-                      >
-                        <RiCheckLine className="w-4 h-4" />
-                        <span>Confirm Included in Base Price</span>
-                      </button>
-                    </div>
+                    <span className="font-mono text-[11px] text-slate-500">
+                      Tier match: minQty ≤ Order Quantity ≤ maxQty
+                    </span>
                   </div>
-                )}
-              </div>
-            )}
-          </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
-      )}
+
+
 
       {/* ============================================================== */}
       {/* SECTION 8: LIVE STOREFRONT PRICING SIMULATOR PREVIEW           */}
@@ -1656,18 +2176,18 @@ export function StudioTabPricing({
                 Quantity Run Size
               </label>
               <div className="flex flex-wrap gap-1.5">
-                {quantityColumns.map((q) => (
+                {addonQuantityTiers.map((tier) => (
                   <button
-                    key={q}
+                    key={tier.id}
                     type="button"
-                    onClick={() => setPreviewQty(q)}
+                    onClick={() => setPreviewQty(tier.minQty)}
                     className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition cursor-pointer ${
-                      previewQty === q
+                      previewQty === tier.minQty
                         ? 'bg-slate-950 text-white shadow-2xs'
                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                     }`}
                   >
-                    {q.toLocaleString()} pcs
+                    {tier.label}
                   </button>
                 ))}
               </div>
@@ -1736,16 +2256,16 @@ export function StudioTabPricing({
 
                 return (
                   <div className="space-y-2.5 text-xs">
-                    {/* Reference Base Rate */}
+                    {/* Base Rate by Quantity Tier */}
                     <div className="flex justify-between text-slate-700">
                       <div>
-                        <span className="font-semibold block">Reference Base Rate</span>
+                        <span className="font-semibold block">Base Printing Rate</span>
                         <span className="text-[10px] text-slate-400 font-mono">
-                          Starting Ref: ₹{startingReferenceRate} ÷ MOQ {moq}
+                          Tier rate for {previewQty} pcs
                         </span>
                       </div>
                       <span className="font-mono font-bold text-slate-900">
-                        ₹{refRate.toFixed(4)} / pc
+                        ₹{baseUnit.toFixed(4)} / pc
                       </span>
                     </div>
 
@@ -1853,148 +2373,133 @@ export function StudioTabPricing({
       {/* ================================================================== */}
       {/* MODALS: ADD COMBINATION & ADD QUANTITY TIER                        */}
       {/* ================================================================== */}
-      {/* Modal 1: Add/Duplicate Combination */}
-      {isAddComboModalOpen && (
+      {/* ================================================================== */}
+      {/* MODALS: ADDITIONAL PRICING QUANTITY TIERS (ADD & EDIT)              */}
+      {/* ================================================================== */}
+      {/* Modal 3: Add Additional Pricing Quantity Tier */}
+      {isAddAddonTierModalOpen && (
         <Modal
-          isOpen={isAddComboModalOpen}
-          onClose={() => setIsAddComboModalOpen(false)}
-          title="Add Manual Combination Entry"
+          isOpen={isAddAddonTierModalOpen}
+          onClose={() => {
+            setIsAddAddonTierModalOpen(false);
+            setAddonTierError(null);
+          }}
+          title="Add Additional Pricing Quantity Tier"
         >
           <div className="space-y-4">
             <p className="text-xs text-slate-500">
-              Select option choices for the participating groups and enter manual total prices for each quantity run.
+              Define a single quantity size (e.g. 100, 200, 500) or a quantity range (e.g. 1-10, 11-50, 51-100 pieces).
             </p>
 
-            {comboFormError && (
-              <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs font-bold flex items-center gap-2">
+            {addonTierError && (
+              <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg font-bold flex items-center gap-1.5">
                 <RiAlertFill className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{comboFormError}</span>
+                <span>{addonTierError}</span>
               </div>
             )}
 
-            {/* Participating groups selects */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {optionGroups
-                .filter((g) => participatingGroupCodes.includes(g.code))
-                .map((grp) => (
-                  <div key={grp.id} className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700 block">{grp.name}</label>
-                    <select
-                      value={newComboSelections[grp.code] || ''}
-                      onChange={(e) =>
-                        setNewComboSelections((prev) => ({ ...prev, [grp.code]: e.target.value }))
-                      }
-                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-slate-900 cursor-pointer"
-                    >
-                      {grp.options
-                        .filter((opt) => opt.isActive !== false)
-                        .map((opt) => (
-                        <option key={opt.id} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
-            </div>
-
-            {/* Quantity price inputs */}
-            <div className="pt-2 border-t border-slate-100 space-y-2">
-              <span className="text-xs font-bold text-slate-800 block">
-                Prices per Quantity Run Size (Total Amount in ₹):
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700 block">
+                Quantity Tier or Range (pieces) <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={newAddonTierInput}
+                onChange={(e) => {
+                  setNewAddonTierInput(e.target.value);
+                  setAddonTierError(null);
+                }}
+                placeholder="e.g. 1-10 or 250"
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-slate-900"
+                autoFocus
+              />
+              <span className="text-[11px] text-slate-400 block">
+                Supports ranges like <code>1-10</code>, <code>11-50</code>, or single quantities like <code>100</code>.
               </span>
-              <div className="grid grid-cols-2 gap-2.5">
-                {quantityColumns.map((q) => (
-                  <div key={q} className="space-y-1">
-                    <label className="text-[11px] font-mono text-slate-600 block">
-                      {q.toLocaleString()} pcs
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">
-                        ₹
-                      </span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={newComboPrices[q] || ''}
-                        onChange={(e) =>
-                          setNewComboPrices((prev) => ({ ...prev, [q]: e.target.value }))
-                        }
-                        className="w-full pl-7 pr-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-slate-900"
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
-                onClick={() => setIsAddComboModalOpen(false)}
-                className="px-3.5 py-1.5 border border-slate-300 text-slate-700 text-xs font-bold rounded-lg hover:bg-slate-50 transition"
+                onClick={() => {
+                  setIsAddAddonTierModalOpen(false);
+                  setAddonTierError(null);
+                }}
+                className="px-3.5 py-1.5 border border-slate-300 text-slate-700 text-xs font-bold rounded-lg hover:bg-slate-50 transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleSaveNewCombination}
-                className="px-4 py-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-slate-950 text-xs font-black rounded-lg shadow-xs transition"
+                onClick={handleAddAddonTier}
+                className="px-4 py-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-slate-950 text-xs font-black rounded-lg shadow-xs transition cursor-pointer"
               >
-                Add Combination Entry
+                Add Tier
               </button>
             </div>
           </div>
         </Modal>
       )}
 
-      {/* Modal 2: Add Quantity Tier */}
-      {isAddQtyModalOpen && (
+      {/* Modal 4: Edit Additional Pricing Quantity Tier */}
+      {editingAddonTier !== null && (
         <Modal
-          isOpen={isAddQtyModalOpen}
-          onClose={() => setIsAddQtyModalOpen(false)}
-          title="Add Quantity Tier"
+          isOpen={editingAddonTier !== null}
+          onClose={() => {
+            setEditingAddonTier(null);
+            setAddonTierError(null);
+          }}
+          title={`Edit Quantity Tier (${editingAddonTier.label})`}
         >
           <div className="space-y-4">
             <p className="text-xs text-slate-500">
-              Add a new quantity column across all sellable combinations in the matrix (e.g. 2000, 5000).
+              Update the quantity threshold or range for this tier. Configured rates for this tier will be preserved.
             </p>
 
-            {tierError && (
-              <div className="p-2 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg font-bold">
-                {tierError}
+            {addonTierError && (
+              <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg font-bold flex items-center gap-1.5">
+                <RiAlertFill className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{addonTierError}</span>
               </div>
             )}
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700 block">Quantity Run (pcs)</label>
+              <label className="text-xs font-bold text-slate-700 block">
+                New Quantity Tier or Range (pieces) <span className="text-rose-500">*</span>
+              </label>
               <input
-                type="number"
-                min="1"
-                step="1"
-                value={newTierQty}
-                onChange={(e) => setNewTierQty(e.target.value)}
-                placeholder="e.g. 2000"
+                type="text"
+                value={editAddonTierInput}
+                onChange={(e) => {
+                  setEditAddonTierInput(e.target.value);
+                  setAddonTierError(null);
+                }}
+                placeholder="e.g. 1-10 or 250"
                 className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-slate-900"
+                autoFocus
               />
+              <span className="text-[11px] text-slate-400 block">
+                Supports ranges like <code>1-10</code>, <code>11-50</code>, or single quantities like <code>100</code>.
+              </span>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
-                onClick={() => setIsAddQtyModalOpen(false)}
-                className="px-3.5 py-1.5 border border-slate-300 text-slate-700 text-xs font-bold rounded-lg hover:bg-slate-50 transition"
+                onClick={() => {
+                  setEditingAddonTier(null);
+                  setAddonTierError(null);
+                }}
+                className="px-3.5 py-1.5 border border-slate-300 text-slate-700 text-xs font-bold rounded-lg hover:bg-slate-50 transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleAddQuantityTier}
-                className="px-4 py-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-slate-950 text-xs font-black rounded-lg shadow-xs transition"
+                onClick={handleSaveEditAddonTier}
+                className="px-4 py-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-slate-950 text-xs font-black rounded-lg shadow-xs transition cursor-pointer"
               >
-                Add Tier Column
+                Save Changes
               </button>
             </div>
           </div>

@@ -46,6 +46,7 @@ export default function OptionGroupsLibraryPage() {
   const [formInputType, setFormInputType] = useState('SELECT');
   const [formDescription, setFormDescription] = useState('');
   const [formIsActive, setFormIsActive] = useState(true);
+  const [formEnableAdditionalPricing, setFormEnableAdditionalPricing] = useState(false);
   const [formOptions, setFormOptions] = useState<OptionValueItem[]>([]);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
 
@@ -92,6 +93,7 @@ export default function OptionGroupsLibraryPage() {
     setFormInputType(group.inputType || 'SELECT');
     setFormDescription(group.description || '');
     setFormIsActive(group.isActive);
+    setFormEnableAdditionalPricing(Boolean(group.enableAdditionalPricing));
 
     const opts: OptionValueItem[] = Array.isArray(group.defaultOptions)
       ? group.defaultOptions.map((o: any, idx: number) => ({
@@ -112,6 +114,7 @@ export default function OptionGroupsLibraryPage() {
     setFormInputType('SELECT');
     setFormDescription('');
     setFormIsActive(true);
+    setFormEnableAdditionalPricing(false);
     setFormOptions([]);
   };
 
@@ -188,6 +191,7 @@ export default function OptionGroupsLibraryPage() {
       inputType: formInputType,
       description: formDescription.trim() || null,
       isActive: formIsActive,
+      enableAdditionalPricing: formEnableAdditionalPricing,
       defaultOptions: formOptions.map((opt, idx) => ({
         label: opt.label.trim(),
         value: opt.value.trim(),
@@ -389,7 +393,7 @@ export default function OptionGroupsLibraryPage() {
       {/* Main Container */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         {/* Banner Quick Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
             <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
               Total Library Groups
@@ -406,6 +410,16 @@ export default function OptionGroupsLibraryPage() {
               {groups.filter((g) => g.isActive).length}
             </div>
             <span className="text-[11px] text-slate-600">Ready to attach to products</span>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+              Additional Pricing
+            </span>
+            <div className="text-2xl font-black text-amber-600 mt-1">
+              {groups.filter((g) => g.enableAdditionalPricing).length}
+            </div>
+            <span className="text-[11px] text-slate-600">Step 4 eligible templates</span>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
@@ -564,6 +578,14 @@ export default function OptionGroupsLibraryPage() {
                           <span className="font-sans font-semibold text-slate-600">
                             {group.inputType}
                           </span>
+                          {group.enableAdditionalPricing && (
+                            <>
+                              <span>•</span>
+                              <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-sans">
+                                +Pricing
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
 
@@ -712,6 +734,40 @@ export default function OptionGroupsLibraryPage() {
                         <span className="ml-2.5 text-xs font-semibold text-slate-800">
                           {formIsActive ? 'Active in Library' : 'Inactive / Draft'}
                         </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Enable Additional Pricing (Eligibility Setting) */}
+                  <div className="md:col-span-2 p-3.5 bg-amber-50/80 border border-amber-200/90 rounded-xl">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-bold text-amber-950">
+                            Enable Additional Pricing (Step 4 Pricing Eligibility)
+                          </label>
+                          <span
+                            className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider ${
+                              formEnableAdditionalPricing
+                                ? 'bg-amber-600 text-white'
+                                : 'bg-slate-200 text-slate-600'
+                            }`}
+                          >
+                            {formEnableAdditionalPricing ? 'ELIGIBLE' : 'DISABLED'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-amber-900/80 leading-relaxed">
+                          When enabled, this option group becomes eligible to have dynamic additional quantity-tier pricing (e.g. 100, 200, 300 pieces) configured in <strong>Step 4 Pricing</strong> when attached to any product. Controls eligibility only; exact rates are configured per product.
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-0.5">
+                        <input
+                          type="checkbox"
+                          checked={formEnableAdditionalPricing}
+                          onChange={(e) => setFormEnableAdditionalPricing(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
                       </label>
                     </div>
                   </div>

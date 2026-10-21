@@ -401,6 +401,7 @@ model Product {
   configurationRules ProductConfigurationRule[]
   pricingSource      ProductPricingSource?
   pricingMatrices    PricingMatrix[]
+  additionalPricings ProductAdditionalPricing[]
   orderItems         OrderItem[]
 
   @@index([slug])
@@ -477,6 +478,7 @@ model ReusableOptionGroup {
   defaultOptions Json?                // Suggested starter option templates
   metadata       Json?
   sortOrder      Int                  @default(0)
+  enableAdditionalPricing Boolean   @default(false)
   isActive       Boolean              @default(true)
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
@@ -500,6 +502,7 @@ model ProductOptionGroup {
   isRequired        Boolean              @default(true)
   isCustomerVisible Boolean              @default(true)
   sortOrder         Int                  @default(0)
+  enableAdditionalPricing Boolean      @default(false)
   isActive          Boolean              @default(true)
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
@@ -600,6 +603,25 @@ model PricingMatrix {
   unitPrice            Decimal  @db.Decimal(12, 4)
   createdAt            DateTime @default(now())
 
+  @@index([productId, minQty, maxQty])
+}
+
+model ProductAdditionalPricing {
+  id          String   @id @default(uuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  groupCode   String   // Option group code (e.g. "paper_stock", "lamination")
+  optionValue String   // Option value code (e.g. "170_gsm", "velvet_matte")
+  minQty      Int
+  maxQty      Int
+  unitPrice   Decimal  @db.Decimal(12, 4) // Additional unit charge per piece (₹/pc)
+  chargeBasis String   @default("PER_UNIT") // PER_UNIT, FIXED
+  isExcluded  Boolean  @default(false) // Option excluded/unsupported at this quantity tier
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([productId, groupCode, optionValue, minQty, maxQty])
+  @@index([productId, groupCode])
   @@index([productId, minQty, maxQty])
 }
 

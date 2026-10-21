@@ -15,7 +15,7 @@ import {
   RiPriceTag3Line,
   RiRefreshLine,
 } from 'react-icons/ri';
-import { ProductOptionGroup, ProductConfigurationRule, ProductCategoryItem } from '@/lib/api';
+import { ProductOptionGroup, ProductConfigurationRule, ProductCategoryItem, ProductAdditionalPricingTier } from '@/lib/api';
 import { MatrixRowItem } from './StudioTabPricing';
 import { formatCurrency } from '@/lib/utils';
 import { validateArtworkConditions } from '@/lib/artwork-rule-resolver';
@@ -49,6 +49,7 @@ export interface StudioTabReviewProps {
   designServiceRequirement: string;
   designServiceFee: number | string;
   matrixRows: MatrixRowItem[];
+  additionalPricingRows?: ProductAdditionalPricingTier[];
   onNavigateToTab: (tab: StudioTab) => void;
   onSaveDraft: () => void;
   onPublish: () => void;
@@ -75,6 +76,7 @@ export function StudioTabReview({
   designServiceRequirement,
   designServiceFee,
   matrixRows,
+  additionalPricingRows = [],
   onNavigateToTab,
   onSaveDraft,
   onPublish,
@@ -240,6 +242,38 @@ export function StudioTabReview({
             message: `Option "${opt.label}" in group "${group.name}" has a negative price modifier (₹${opt.priceModifier}). Additional charges must be non-negative.`,
             severity: 'ERROR',
           });
+        }
+      }
+    }
+
+    // Dynamic Additional Pricing Verification
+    const eligibleAddonGroups = optionGroups.filter((g) => Boolean(g.enableAdditionalPricing));
+    for (const group of eligibleAddonGroups) {
+      const groupTiers = (additionalPricingRows || []).filter((t) => t.groupCode === group.code);
+      if (groupTiers.length === 0) {
+        list.push({
+          tab: 'PRICING',
+          field: `addon_missing_${group.code}`,
+          message: `Option group "${group.name}" has Additional Pricing enabled, but no quantity tiers have been configured in Step 4 Pricing.`,
+          severity: 'ERROR',
+        });
+      } else {
+        const activeChoices = group.options.filter((o) => o.isActive !== false);
+        for (const opt of activeChoices) {
+          const optTiers = groupTiers.filter((t) => t.optionValue === opt.value);
+          const isExplicitlyExcluded = optTiers.some((t) => t.isExcluded);
+          if (!isExplicitlyExcluded) {
+            for (const t of optTiers) {
+              if (Number(t.unitPrice) < 0) {
+                list.push({
+                  tab: 'PRICING',
+                  field: `addon_neg_${group.code}_${opt.value}`,
+                  message: `Option "${opt.label}" in additional pricing group "${group.name}" has a negative tier rate (₹${t.unitPrice}). Charges must be non-negative.`,
+                  severity: 'ERROR',
+                });
+              }
+            }
+          }
         }
       }
     }

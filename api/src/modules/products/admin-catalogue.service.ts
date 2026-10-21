@@ -32,6 +32,8 @@ import {
   UpdatePricingRuleDto,
   BatchPricingRulesDto,
   ProductStatusDto,
+  SaveProductAdditionalPricingDto,
+  ProductAdditionalPricingTierDto,
 } from './dto/catalogue.dto';
 import { Prisma } from '@prisma/client';
 
@@ -273,6 +275,9 @@ export class AdminCatalogueService {
         pricingMatrices: {
           orderBy: { minQty: 'asc' },
         },
+        additionalPricings: {
+          orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
+        },
         pricingSource: {
           include: {
             syncLogs: {
@@ -391,6 +396,7 @@ export class AdminCatalogueService {
               isRequired: g.isRequired ?? true,
               isCustomerVisible: g.isCustomerVisible ?? true,
               sortOrder: g.sortOrder ?? i,
+              enableAdditionalPricing: Boolean(g.enableAdditionalPricing),
               isActive: g.isActive ?? true,
             },
           });
@@ -558,6 +564,7 @@ export class AdminCatalogueService {
               isRequired: g.isRequired ?? true,
               isCustomerVisible: g.isCustomerVisible ?? true,
               sortOrder: g.sortOrder ?? i,
+              enableAdditionalPricing: Boolean(g.enableAdditionalPricing),
               isActive: g.isActive ?? true,
             },
           });
@@ -996,6 +1003,7 @@ export class AdminCatalogueService {
         defaultOptions: dto.defaultOptions || [],
         metadata: dto.metadata || {},
         sortOrder: dto.sortOrder ?? 0,
+        enableAdditionalPricing: Boolean(dto.enableAdditionalPricing),
         isActive: dto.isActive ?? true,
       },
     });
@@ -1035,6 +1043,7 @@ export class AdminCatalogueService {
           ...(dto.defaultOptions !== undefined && { defaultOptions: dto.defaultOptions }),
           ...(dto.metadata !== undefined && { metadata: dto.metadata }),
           ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+          ...(dto.enableAdditionalPricing !== undefined && { enableAdditionalPricing: dto.enableAdditionalPricing }),
           ...(dto.isActive !== undefined && { isActive: dto.isActive }),
         },
       });
@@ -1065,6 +1074,7 @@ export class AdminCatalogueService {
             code: nextCode,
             inputType: nextInputType,
             description: nextDescription,
+            enableAdditionalPricing: dto.enableAdditionalPricing !== undefined ? dto.enableAdditionalPricing : prodGrp.enableAdditionalPricing,
             isActive: nextIsActive,
           },
         });
@@ -1078,6 +1088,10 @@ export class AdminCatalogueService {
           await tx.productConfigurationRule.updateMany({
             where: { productId: prodGrp.productId, targetGroupCode: group.code },
             data: { targetGroupCode: dto.code },
+          });
+          await tx.productAdditionalPricing.updateMany({
+            where: { productId: prodGrp.productId, groupCode: group.code },
+            data: { groupCode: dto.code },
           });
         }
 
@@ -1169,6 +1183,14 @@ export class AdminCatalogueService {
           },
           data: { isActive: false },
         });
+
+        // 4. Delete product additional pricing entries for this group
+        await tx.productAdditionalPricing.deleteMany({
+          where: {
+            productId: { in: attachedProductGroups.map((p) => p.productId) },
+            groupCode: group.code,
+          },
+        });
       }
 
       // 4. Delete the reusable group from master library
@@ -1219,6 +1241,7 @@ export class AdminCatalogueService {
           isRequired: dto.isRequired ?? true,
           isCustomerVisible: dto.isCustomerVisible ?? true,
           sortOrder: dto.sortOrder ?? 0,
+          enableAdditionalPricing: Boolean(dto.enableAdditionalPricing),
           isActive: dto.isActive ?? true,
         },
       });
@@ -2507,4 +2530,114 @@ export class AdminCatalogueService {
       combinations: evaluated,
     };
   }
+
+  // ==========================================
+  // DYNAMIC GROUP-BASED ADDITIONAL PRICING
+  // ==========================================
+
+  async getAdditionalPricing(productId: string) {
+    await this.getProductById(productId);
+    return this.prisma.productAdditionalPricing.findMany({
+      where: { productId },
+      orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
+    });
+  }
+
+  async saveAdditionalPricing(productId: string, dto: SaveProductAdditionalPricingDto, actorId?: string) {
+    const product = await this.getProductById(productId);
+    const tiers = dto.tiers || [];
+
+    // 1. Validation: Product Option Groups and active options check
+    const productGroups = product.optionGroups || [];
+    const groupMap = new Map<string, { group: any; optionValueSet: Set<string> }>();
+    for (const g of productGroups) {
+      const activeOptions = g.options.filter((o) => o.isActive !== false);
+      groupMap.set(g.code, {
+        group: g,
+        optionValueSet: new Set(activeOptions.map((o) => o.value)),
+      });
+    }
+
+    const seenCombos = new Set<string>();
+    for (let i = 0; i < tiers.length; i++) {
+      const t = tiers[i];
+      const minQty = Number(t.minQty) || 1;
+      const maxQty = Number(t.maxQty) || minQty;
+      const unitPrice = Number(t.unitPrice) || 0;
+
+      if (minQty < 1) {
+        throw new BadRequestException(`Tier ${i + 1}: Minimum quantity must be at least 1.`);
+      }
+      if (maxQty < minQty) {
+        throw new BadRequestException(
+          `Tier ${i + 1}: Maximum quantity (${maxQty}) cannot be less than minimum quantity (${minQty}).`,
+        );
+      }
+      if (unitPrice < 0) {
+        throw new BadRequestException(`Tier ${i + 1}: Additional unit price cannot be negative.`);
+      }
+
+      // Check group exists on product
+      const grpInfo = groupMap.get(t.groupCode);
+      if (!grpInfo) {
+        throw new BadRequestException(
+          `Tier ${i + 1}: Option group code '${t.groupCode}' does not exist on product '${product.name}'.`,
+        );
+      }
+
+      // Check option value exists in group
+      if (!grpInfo.optionValueSet.has(t.optionValue)) {
+        throw new BadRequestException(
+          `Tier ${i + 1}: Option value '${t.optionValue}' does not belong to active options of group '${t.groupCode}'.`,
+        );
+      }
+
+      // Check uniqueness of [groupCode, optionValue, minQty, maxQty]
+      const tierKey = `${t.groupCode}_${t.optionValue}_${minQty}_${maxQty}`;
+      if (seenCombos.has(tierKey)) {
+        throw new BadRequestException(
+          `Tier ${i + 1}: Duplicate additional pricing tier for '${t.groupCode}' / '${t.optionValue}' at quantity bracket [${minQty}–${maxQty}].`,
+        );
+      }
+      seenCombos.add(tierKey);
+    }
+
+    // 2. Atomic persistence
+    return this.prisma.$transaction(async (tx) => {
+      await tx.productAdditionalPricing.deleteMany({ where: { productId } });
+
+      for (const t of tiers) {
+        const minQty = Number(t.minQty) || 1;
+        const maxQty = Number(t.maxQty) || minQty;
+        const unitPrice = Number(t.unitPrice) || 0;
+
+        await tx.productAdditionalPricing.create({
+          data: {
+            productId,
+            groupCode: t.groupCode,
+            optionValue: t.optionValue,
+            minQty,
+            maxQty,
+            unitPrice: new Prisma.Decimal(unitPrice),
+            chargeBasis: t.chargeBasis || 'PER_UNIT',
+            isExcluded: Boolean(t.isExcluded),
+          },
+        });
+      }
+
+      await this.auditService.log({
+        actorId,
+        action: 'PRODUCT_ADDITIONAL_PRICING_SAVED',
+        entity: 'Product',
+        entityId: productId,
+        reason: `Saved ${tiers.length} group-based additional pricing tiers`,
+      });
+
+      return tx.productAdditionalPricing.findMany({
+        where: { productId },
+        orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
+      });
+    });
+  }
 }
+

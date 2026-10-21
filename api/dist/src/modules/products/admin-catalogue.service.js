@@ -217,6 +217,9 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                 pricingMatrices: {
                     orderBy: { minQty: 'asc' },
                 },
+                additionalPricings: {
+                    orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
+                },
                 pricingSource: {
                     include: {
                         syncLogs: {
@@ -322,6 +325,7 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                             isRequired: g.isRequired ?? true,
                             isCustomerVisible: g.isCustomerVisible ?? true,
                             sortOrder: g.sortOrder ?? i,
+                            enableAdditionalPricing: Boolean(g.enableAdditionalPricing),
                             isActive: g.isActive ?? true,
                         },
                     });
@@ -473,6 +477,7 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                             isRequired: g.isRequired ?? true,
                             isCustomerVisible: g.isCustomerVisible ?? true,
                             sortOrder: g.sortOrder ?? i,
+                            enableAdditionalPricing: Boolean(g.enableAdditionalPricing),
                             isActive: g.isActive ?? true,
                         },
                     });
@@ -853,6 +858,7 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                 defaultOptions: dto.defaultOptions || [],
                 metadata: dto.metadata || {},
                 sortOrder: dto.sortOrder ?? 0,
+                enableAdditionalPricing: Boolean(dto.enableAdditionalPricing),
                 isActive: dto.isActive ?? true,
             },
         });
@@ -886,6 +892,7 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                     ...(dto.defaultOptions !== undefined && { defaultOptions: dto.defaultOptions }),
                     ...(dto.metadata !== undefined && { metadata: dto.metadata }),
                     ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+                    ...(dto.enableAdditionalPricing !== undefined && { enableAdditionalPricing: dto.enableAdditionalPricing }),
                     ...(dto.isActive !== undefined && { isActive: dto.isActive }),
                 },
             });
@@ -911,6 +918,7 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                         code: nextCode,
                         inputType: nextInputType,
                         description: nextDescription,
+                        enableAdditionalPricing: dto.enableAdditionalPricing !== undefined ? dto.enableAdditionalPricing : prodGrp.enableAdditionalPricing,
                         isActive: nextIsActive,
                     },
                 });
@@ -922,6 +930,10 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                     await tx.productConfigurationRule.updateMany({
                         where: { productId: prodGrp.productId, targetGroupCode: group.code },
                         data: { targetGroupCode: dto.code },
+                    });
+                    await tx.productAdditionalPricing.updateMany({
+                        where: { productId: prodGrp.productId, groupCode: group.code },
+                        data: { groupCode: dto.code },
                     });
                 }
                 if (dto.defaultOptions && Array.isArray(dto.defaultOptions)) {
@@ -993,6 +1005,12 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                     },
                     data: { isActive: false },
                 });
+                await tx.productAdditionalPricing.deleteMany({
+                    where: {
+                        productId: { in: attachedProductGroups.map((p) => p.productId) },
+                        groupCode: group.code,
+                    },
+                });
             }
             await tx.reusableOptionGroup.delete({
                 where: { id },
@@ -1032,6 +1050,7 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                     isRequired: dto.isRequired ?? true,
                     isCustomerVisible: dto.isCustomerVisible ?? true,
                     sortOrder: dto.sortOrder ?? 0,
+                    enableAdditionalPricing: Boolean(dto.enableAdditionalPricing),
                     isActive: dto.isActive ?? true,
                 },
             });
@@ -2093,6 +2112,85 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
             totalGenerated: evaluated.length,
             combinations: evaluated,
         };
+    }
+    async getAdditionalPricing(productId) {
+        await this.getProductById(productId);
+        return this.prisma.productAdditionalPricing.findMany({
+            where: { productId },
+            orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
+        });
+    }
+    async saveAdditionalPricing(productId, dto, actorId) {
+        const product = await this.getProductById(productId);
+        const tiers = dto.tiers || [];
+        const productGroups = product.optionGroups || [];
+        const groupMap = new Map();
+        for (const g of productGroups) {
+            const activeOptions = g.options.filter((o) => o.isActive !== false);
+            groupMap.set(g.code, {
+                group: g,
+                optionValueSet: new Set(activeOptions.map((o) => o.value)),
+            });
+        }
+        const seenCombos = new Set();
+        for (let i = 0; i < tiers.length; i++) {
+            const t = tiers[i];
+            const minQty = Number(t.minQty) || 1;
+            const maxQty = Number(t.maxQty) || minQty;
+            const unitPrice = Number(t.unitPrice) || 0;
+            if (minQty < 1) {
+                throw new common_1.BadRequestException(`Tier ${i + 1}: Minimum quantity must be at least 1.`);
+            }
+            if (maxQty < minQty) {
+                throw new common_1.BadRequestException(`Tier ${i + 1}: Maximum quantity (${maxQty}) cannot be less than minimum quantity (${minQty}).`);
+            }
+            if (unitPrice < 0) {
+                throw new common_1.BadRequestException(`Tier ${i + 1}: Additional unit price cannot be negative.`);
+            }
+            const grpInfo = groupMap.get(t.groupCode);
+            if (!grpInfo) {
+                throw new common_1.BadRequestException(`Tier ${i + 1}: Option group code '${t.groupCode}' does not exist on product '${product.name}'.`);
+            }
+            if (!grpInfo.optionValueSet.has(t.optionValue)) {
+                throw new common_1.BadRequestException(`Tier ${i + 1}: Option value '${t.optionValue}' does not belong to active options of group '${t.groupCode}'.`);
+            }
+            const tierKey = `${t.groupCode}_${t.optionValue}_${minQty}_${maxQty}`;
+            if (seenCombos.has(tierKey)) {
+                throw new common_1.BadRequestException(`Tier ${i + 1}: Duplicate additional pricing tier for '${t.groupCode}' / '${t.optionValue}' at quantity bracket [${minQty}–${maxQty}].`);
+            }
+            seenCombos.add(tierKey);
+        }
+        return this.prisma.$transaction(async (tx) => {
+            await tx.productAdditionalPricing.deleteMany({ where: { productId } });
+            for (const t of tiers) {
+                const minQty = Number(t.minQty) || 1;
+                const maxQty = Number(t.maxQty) || minQty;
+                const unitPrice = Number(t.unitPrice) || 0;
+                await tx.productAdditionalPricing.create({
+                    data: {
+                        productId,
+                        groupCode: t.groupCode,
+                        optionValue: t.optionValue,
+                        minQty,
+                        maxQty,
+                        unitPrice: new client_1.Prisma.Decimal(unitPrice),
+                        chargeBasis: t.chargeBasis || 'PER_UNIT',
+                        isExcluded: Boolean(t.isExcluded),
+                    },
+                });
+            }
+            await this.auditService.log({
+                actorId,
+                action: 'PRODUCT_ADDITIONAL_PRICING_SAVED',
+                entity: 'Product',
+                entityId: productId,
+                reason: `Saved ${tiers.length} group-based additional pricing tiers`,
+            });
+            return tx.productAdditionalPricing.findMany({
+                where: { productId },
+                orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
+            });
+        });
     }
 };
 exports.AdminCatalogueService = AdminCatalogueService;
