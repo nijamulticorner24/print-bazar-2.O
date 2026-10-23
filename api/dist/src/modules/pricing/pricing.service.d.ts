@@ -4,11 +4,39 @@ export interface OptionSelectionDto {
     optionCode: string;
     valueCode: string;
 }
+export interface VariantLineInput {
+    id?: string;
+    sku?: string;
+    combination: Record<string, string>;
+    quantity: number;
+    artworkUrl?: string;
+    artworkStorageKey?: string;
+    artworkFile?: any;
+}
+export interface VariantLineQuote {
+    id?: string;
+    sku?: string;
+    combination: Record<string, string>;
+    optionsSummary: Array<{
+        optionName: string;
+        optionCode: string;
+        valueName: string;
+        valueCode: string;
+        priceModifier: number;
+        additionalUnitPrice?: number;
+        additionalChargeTotal?: number;
+    }>;
+    quantity: number;
+    unitPrice: number;
+    lineSubtotal: number;
+    artworkUrl?: string;
+}
 export interface QuoteCalculationRequestDto {
     productId: string;
     quantity: number;
     options?: OptionSelectionDto[];
     fieldValues?: Record<string, any>;
+    variantLines?: VariantLineInput[];
     hasArtwork?: boolean;
     hasDesignService?: boolean;
     hasReferenceImage?: boolean;
@@ -19,6 +47,9 @@ export interface QuoteCalculationRequestDto {
     isCod?: boolean;
 }
 export interface QuoteItemBreakdown {
+    isMultiVariant?: boolean;
+    totalVariantQuantity?: number;
+    variantLines?: VariantLineQuote[];
     startingReferenceRate?: number;
     referenceUnitPrice?: number;
     basePrice: number;
@@ -98,5 +129,47 @@ export declare class PricingService {
     private readonly prisma;
     private readonly shippingGstService;
     constructor(prisma: PrismaService, shippingGstService: ShippingGstService);
+    evaluateCombinationPricing(product: any, initialSelections: Record<string, any>, effectiveOrderQty: number, lineQty: number): {
+        startingReferenceRate: number;
+        unitPrice: number;
+        baseUnitPrice: number;
+        optionsUnitModifier: number;
+        lineSubtotal: number;
+        selectedOptionsSummary: {
+            optionName: string;
+            optionCode: string;
+            valueName: string;
+            valueCode: string;
+            priceModifier: number;
+            additionalUnitPrice?: number;
+            additionalChargeTotal?: number;
+        }[];
+        specificationsSnapshot: Record<string, any>;
+        appliedOffer: {
+            offerId: string;
+            minQty: number;
+            maxQty: number;
+            discountPercent: number;
+            offerName: string;
+            savingsAmount: number;
+        } | null;
+        availableOffers: {
+            id: string;
+            minQty: number;
+            maxQty: number;
+            discountPercent: number;
+            unitPrice: number;
+            label: string;
+        }[];
+        groupOptionModifiers: Map<string, {
+            modVal: number;
+            type: string;
+            isAdditionalTierPricing?: boolean;
+        }>;
+        bestMatchingRule: any;
+        referenceUnitPrice: number;
+        originalBasePrice: number;
+        userSelections: Record<string, any>;
+    };
     calculateQuote(dto: QuoteCalculationRequestDto): Promise<QuoteItemBreakdown>;
 }

@@ -31,6 +31,10 @@ export interface StudioTabOptionsProps {
   productId?: string;
   optionGroups: ProductOptionGroup[];
   setOptionGroups: React.Dispatch<React.SetStateAction<ProductOptionGroup[]>>;
+  allowMultipleVariants?: boolean;
+  setAllowMultipleVariants?: (val: boolean) => void;
+  variantDimensions?: string[];
+  setVariantDimensions?: (dims: string[]) => void;
   matrixRows?: MatrixRowItem[];
   setMatrixRows?: React.Dispatch<React.SetStateAction<MatrixRowItem[]>>;
   basePrice?: number | string;
@@ -46,6 +50,10 @@ export function StudioTabOptions({
   productId,
   optionGroups,
   setOptionGroups,
+  allowMultipleVariants,
+  setAllowMultipleVariants,
+  variantDimensions,
+  setVariantDimensions,
   matrixRows,
   setMatrixRows,
   basePrice,
@@ -227,6 +235,7 @@ export function StudioTabOptions({
         name: lib.name,
         code: lib.code,
         inputType: lib.inputType || 'SELECT',
+        selectionBehavior: (lib.selectionBehavior as any) || 'SINGLE',
         description: lib.description || '',
         isRequired: true,
         isCustomerVisible: true,
@@ -265,6 +274,7 @@ export function StudioTabOptions({
       name: `Custom Option Group ${newIdx}`,
       code: `custom_option_${newIdx}`,
       inputType: 'SELECT',
+      selectionBehavior: 'SINGLE',
       description: '',
       isRequired: true,
       isCustomerVisible: true,
@@ -632,6 +642,120 @@ export function StudioTabOptions({
         </div>
       </div>
 
+      {/* Product-level Multiple Variants per Order Setting */}
+      <div className="bg-white rounded-xl border border-slate-200/90 p-4 shadow-xs space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                Multi-Variant Product Ordering
+              </span>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                  allowMultipleVariants
+                    ? 'bg-amber-100 text-amber-950 border-amber-300'
+                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                }`}
+              >
+                {allowMultipleVariants ? 'ENABLED' : 'DISABLED'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500">
+              Enable customers to order mixed variant combinations (e.g. Medium/Black: 2 pcs, XL/White: 3 pcs) in a single order with aggregate quantity tier pricing.
+            </p>
+          </div>
+
+          <label className="relative inline-flex items-center cursor-pointer shrink-0">
+            <input
+              type="checkbox"
+              checked={Boolean(allowMultipleVariants)}
+              onChange={(e) => {
+                const nextVal = e.target.checked;
+                setAllowMultipleVariants?.(nextVal);
+                if (nextVal && (!variantDimensions || variantDimensions.length === 0)) {
+                  const candidateCodes = optionGroups
+                    .filter((g) => g.selectionBehavior === 'VARIANT_WISE' || ['size', 'color', 'colour'].includes(g.code.toLowerCase()))
+                    .map((g) => g.code);
+                  if (candidateCodes.length > 0) {
+                    setVariantDimensions?.(candidateCodes);
+                  }
+                }
+                onChange?.();
+              }}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+          </label>
+        </div>
+
+        {allowMultipleVariants && (
+          <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800">
+                Choose Variant Dimensions (e.g. Size, Color)
+              </span>
+              <span className="text-[11px] text-slate-500">
+                Groups not selected as dimensions remain shared product-level choices.
+              </span>
+            </div>
+
+            {optionGroups.length === 0 ? (
+              <p className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+                Please attach or create option groups first to configure variant dimensions.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                {optionGroups.map((g) => {
+                  const isDimension = (variantDimensions || []).includes(g.code);
+                  return (
+                    <label
+                      key={g.code}
+                      className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition ${
+                        isDimension
+                          ? 'bg-amber-50/70 border-amber-300 text-amber-950 font-semibold'
+                          : 'bg-slate-50/60 border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isDimension}
+                        onChange={(e) => {
+                          const current = variantDimensions || [];
+                          const next = e.target.checked
+                            ? [...current, g.code]
+                            : current.filter((c) => c !== g.code);
+                          setVariantDimensions?.(next);
+                          onChange?.();
+                        }}
+                        className="mt-0.5 rounded text-amber-500 border-slate-300 focus:ring-amber-500"
+                      />
+                      <div className="min-w-0">
+                        <div className="text-xs flex items-center gap-1.5 flex-wrap">
+                          <span className="truncate">{g.name}</span>
+                          <span className="text-[10px] text-slate-400 font-mono">({g.code})</span>
+                        </div>
+                        {g.selectionBehavior === 'VARIANT_WISE' && (
+                          <span className="inline-block mt-0.5 text-[9px] uppercase font-bold text-amber-800 bg-amber-100/80 px-1.5 py-0.2 rounded border border-amber-200">
+                            Preset Variant Dimension
+                          </span>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            {allowMultipleVariants && (!variantDimensions || variantDimensions.length === 0) && (
+              <div className="flex items-center gap-2 p-2 bg-rose-50 text-rose-800 text-xs rounded-lg border border-rose-200">
+                <RiErrorWarningLine className="w-4 h-4 shrink-0" />
+                <span>At least one option group must be selected as a variant dimension when multi-variant ordering is enabled.</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Top Action Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs">
         <div>
@@ -867,6 +991,19 @@ export function StudioTabOptions({
                       <option value="RADIO">RADIO (Button group cards)</option>
                       <option value="CHECKBOX">CHECKBOX (Multi-select add-on)</option>
                       <option value="TOGGLE">TOGGLE (Yes/No switch)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Selection Behavior</label>
+                    <select
+                      value={activeGroup.selectionBehavior || 'SINGLE'}
+                      onChange={(e) => updateActiveGroup({ selectionBehavior: e.target.value as any })}
+                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-amber-500 cursor-pointer"
+                    >
+                      <option value="SINGLE">SINGLE (One selection for configuration)</option>
+                      <option value="MULTIPLE">MULTIPLE (Select multiple values from group)</option>
+                      <option value="VARIANT_WISE">VARIANT_WISE (Dimension in multi-variant ordering)</option>
                     </select>
                   </div>
                 </div>

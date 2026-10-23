@@ -11,21 +11,21 @@ export declare class ProductsService {
             } | null;
         } & {
             id: string;
-            createdAt: Date;
             name: string;
-            isActive: boolean;
-            updatedAt: Date;
-            description: string | null;
             slug: string;
+            description: string | null;
             sortOrder: number;
+            isActive: boolean;
+            createdAt: Date;
+            updatedAt: Date;
             image: string | null;
             parentId: string | null;
         };
         images: {
             id: string;
+            sortOrder: number;
             createdAt: Date;
             updatedAt: Date;
-            sortOrder: number;
             isPrimary: boolean;
             productId: string;
             storageKey: string | null;
@@ -36,10 +36,10 @@ export declare class ProductsService {
         optionGroups: ({
             options: {
                 id: string;
-                createdAt: Date;
-                isActive: boolean;
-                updatedAt: Date;
                 sortOrder: number;
+                isActive: boolean;
+                createdAt: Date;
+                updatedAt: Date;
                 groupId: string;
                 label: string;
                 value: string;
@@ -52,12 +52,12 @@ export declare class ProductsService {
             }[];
         } & {
             id: string;
-            createdAt: Date;
             name: string;
-            isActive: boolean;
-            updatedAt: Date;
             description: string | null;
             sortOrder: number;
+            isActive: boolean;
+            createdAt: Date;
+            updatedAt: Date;
             isCustomerVisible: boolean;
             productId: string;
             reusableGroupId: string | null;
@@ -65,12 +65,13 @@ export declare class ProductsService {
             inputType: string;
             isRequired: boolean;
             enableAdditionalPricing: boolean;
+            selectionBehavior: string;
         })[];
         configurationRules: {
             id: string;
-            createdAt: Date;
             name: string;
             isActive: boolean;
+            createdAt: Date;
             updatedAt: Date;
             productId: string;
             conditionGroupCode: string;
@@ -100,15 +101,11 @@ export declare class ProductsService {
         } | null;
     } & {
         id: string;
-        createdAt: Date;
-        name: string;
-        isActive: boolean;
-        updatedAt: Date;
-        tags: string[];
-        description: string | null;
         categoryId: string;
+        name: string;
         slug: string;
         sku: string;
+        description: string | null;
         status: import(".prisma/client").$Enums.ProductStatus;
         pricingModel: string;
         basePrice: import("@prisma/client/runtime/library").Decimal;
@@ -118,11 +115,13 @@ export declare class ProductsService {
         productionDays: number;
         sortOrder: number;
         isFeatured: boolean;
+        tags: string[];
         seoTitle: string | null;
         seoDescription: string | null;
         trackInventory: boolean;
         stockQuantity: number;
         lowStockAlert: number;
+        isActive: boolean;
         defaultSize: string | null;
         artworkRequirement: import(".prisma/client").$Enums.ProductOptionRequirement;
         artworkPrice: import("@prisma/client/runtime/library").Decimal | null;
@@ -144,6 +143,10 @@ export declare class ProductsService {
         artworkFileFormats: string[];
         maxArtworkFileSizeMb: number;
         designServiceFee: import("@prisma/client/runtime/library").Decimal | null;
+        allowMultipleVariants: boolean;
+        variantDimensions: string[];
+        createdAt: Date;
+        updatedAt: Date;
     })[]>;
     getProductBySlug(slugOrId: string): Promise<{
         category: {
@@ -154,21 +157,21 @@ export declare class ProductsService {
             } | null;
         } & {
             id: string;
-            createdAt: Date;
             name: string;
-            isActive: boolean;
-            updatedAt: Date;
-            description: string | null;
             slug: string;
+            description: string | null;
             sortOrder: number;
+            isActive: boolean;
+            createdAt: Date;
+            updatedAt: Date;
             image: string | null;
             parentId: string | null;
         };
         images: {
             id: string;
+            sortOrder: number;
             createdAt: Date;
             updatedAt: Date;
-            sortOrder: number;
             isPrimary: boolean;
             productId: string;
             storageKey: string | null;
@@ -179,10 +182,10 @@ export declare class ProductsService {
         optionGroups: ({
             options: {
                 id: string;
-                createdAt: Date;
-                isActive: boolean;
-                updatedAt: Date;
                 sortOrder: number;
+                isActive: boolean;
+                createdAt: Date;
+                updatedAt: Date;
                 groupId: string;
                 label: string;
                 value: string;
@@ -195,12 +198,12 @@ export declare class ProductsService {
             }[];
         } & {
             id: string;
-            createdAt: Date;
             name: string;
-            isActive: boolean;
-            updatedAt: Date;
             description: string | null;
             sortOrder: number;
+            isActive: boolean;
+            createdAt: Date;
+            updatedAt: Date;
             isCustomerVisible: boolean;
             productId: string;
             reusableGroupId: string | null;
@@ -208,12 +211,13 @@ export declare class ProductsService {
             inputType: string;
             isRequired: boolean;
             enableAdditionalPricing: boolean;
+            selectionBehavior: string;
         })[];
         configurationRules: {
             id: string;
-            createdAt: Date;
             name: string;
             isActive: boolean;
+            createdAt: Date;
             updatedAt: Date;
             productId: string;
             conditionGroupCode: string;
@@ -244,23 +248,32 @@ export declare class ProductsService {
         pricingMatrices: {
             id: string;
             createdAt: Date;
-            minQty: number;
             productId: string;
+            minQty: number;
             maxQty: number;
             attributeCombination: import("@prisma/client/runtime/library").JsonValue;
             unitPrice: import("@prisma/client/runtime/library").Decimal;
         }[];
+        additionalPricings: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            productId: string;
+            minQty: number;
+            optionValue: string;
+            groupCode: string;
+            maxQty: number;
+            unitPrice: import("@prisma/client/runtime/library").Decimal;
+            chargeBasis: string;
+            isExcluded: boolean;
+        }[];
     } & {
         id: string;
-        createdAt: Date;
-        name: string;
-        isActive: boolean;
-        updatedAt: Date;
-        tags: string[];
-        description: string | null;
         categoryId: string;
+        name: string;
         slug: string;
         sku: string;
+        description: string | null;
         status: import(".prisma/client").$Enums.ProductStatus;
         pricingModel: string;
         basePrice: import("@prisma/client/runtime/library").Decimal;
@@ -270,11 +283,13 @@ export declare class ProductsService {
         productionDays: number;
         sortOrder: number;
         isFeatured: boolean;
+        tags: string[];
         seoTitle: string | null;
         seoDescription: string | null;
         trackInventory: boolean;
         stockQuantity: number;
         lowStockAlert: number;
+        isActive: boolean;
         defaultSize: string | null;
         artworkRequirement: import(".prisma/client").$Enums.ProductOptionRequirement;
         artworkPrice: import("@prisma/client/runtime/library").Decimal | null;
@@ -296,6 +311,10 @@ export declare class ProductsService {
         artworkFileFormats: string[];
         maxArtworkFileSizeMb: number;
         designServiceFee: import("@prisma/client/runtime/library").Decimal | null;
+        allowMultipleVariants: boolean;
+        variantDimensions: string[];
+        createdAt: Date;
+        updatedAt: Date;
     }>;
     listCategories(): Promise<({
         _count: {
@@ -303,13 +322,13 @@ export declare class ProductsService {
         };
     } & {
         id: string;
-        createdAt: Date;
         name: string;
-        isActive: boolean;
-        updatedAt: Date;
-        description: string | null;
         slug: string;
+        description: string | null;
         sortOrder: number;
+        isActive: boolean;
+        createdAt: Date;
+        updatedAt: Date;
         image: string | null;
         parentId: string | null;
     })[]>;

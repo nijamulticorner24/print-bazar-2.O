@@ -52,6 +52,38 @@ export declare class PackingService {
             fullName: string;
             phone: string;
         };
+        shippingAddress: {
+            id: string;
+            createdAt: Date;
+            phone: string;
+            updatedAt: Date;
+            customerId: string;
+            type: string;
+            isDefault: boolean;
+            contactName: string;
+            street: string;
+            landmark: string | null;
+            city: string;
+            state: string;
+            postalCode: string;
+            country: string;
+        } | null;
+        billingAddress: {
+            id: string;
+            createdAt: Date;
+            phone: string;
+            updatedAt: Date;
+            customerId: string;
+            type: string;
+            isDefault: boolean;
+            contactName: string;
+            street: string;
+            landmark: string | null;
+            city: string;
+            state: string;
+            postalCode: string;
+            country: string;
+        } | null;
         items: ({
             product: {
                 id: string;
@@ -94,46 +126,14 @@ export declare class PackingService {
             updatedAt: Date;
             sku: string;
             productId: string;
-            unitPrice: Prisma.Decimal;
-            quantity: number;
             totalPrice: Prisma.Decimal;
+            quantity: number;
+            unitPrice: Prisma.Decimal;
             productName: string;
             specifications: Prisma.JsonValue;
             approvedArtworkVersionId: string | null;
             designNotes: string | null;
         })[];
-        shippingAddress: {
-            id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
-            customerId: string;
-            isDefault: boolean;
-            type: string;
-            postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
-            city: string;
-            state: string;
-            country: string;
-        } | null;
-        billingAddress: {
-            id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
-            customerId: string;
-            isDefault: boolean;
-            type: string;
-            postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
-            city: string;
-            state: string;
-            country: string;
-        } | null;
         packages: ({
             shipment: {
                 id: string;
@@ -183,8 +183,8 @@ export declare class PackingService {
             id: string;
             createdAt: Date;
             orderId: string;
-            notes: string | null;
             type: import(".prisma/client").$Enums.QCInspectionType;
+            notes: string | null;
             items: Prisma.JsonValue;
             jobCardId: string | null;
             outcome: import(".prisma/client").$Enums.QCOutcome;
@@ -229,6 +229,38 @@ export declare class PackingService {
             gstin: string | null;
             userId: string | null;
         };
+        shippingAddress: {
+            id: string;
+            createdAt: Date;
+            phone: string;
+            updatedAt: Date;
+            customerId: string;
+            type: string;
+            isDefault: boolean;
+            contactName: string;
+            street: string;
+            landmark: string | null;
+            city: string;
+            state: string;
+            postalCode: string;
+            country: string;
+        } | null;
+        billingAddress: {
+            id: string;
+            createdAt: Date;
+            phone: string;
+            updatedAt: Date;
+            customerId: string;
+            type: string;
+            isDefault: boolean;
+            contactName: string;
+            street: string;
+            landmark: string | null;
+            city: string;
+            state: string;
+            postalCode: string;
+            country: string;
+        } | null;
         items: ({
             product: {
                 id: string;
@@ -276,6 +308,8 @@ export declare class PackingService {
                 artworkFileFormats: string[];
                 maxArtworkFileSizeMb: number;
                 designServiceFee: Prisma.Decimal | null;
+                allowMultipleVariants: boolean;
+                variantDimensions: string[];
             };
             artworkVersions: {
                 id: string;
@@ -312,46 +346,14 @@ export declare class PackingService {
             updatedAt: Date;
             sku: string;
             productId: string;
-            unitPrice: Prisma.Decimal;
-            quantity: number;
             totalPrice: Prisma.Decimal;
+            quantity: number;
+            unitPrice: Prisma.Decimal;
             productName: string;
             specifications: Prisma.JsonValue;
             approvedArtworkVersionId: string | null;
             designNotes: string | null;
         })[];
-        shippingAddress: {
-            id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
-            customerId: string;
-            isDefault: boolean;
-            type: string;
-            postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
-            city: string;
-            state: string;
-            country: string;
-        } | null;
-        billingAddress: {
-            id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
-            customerId: string;
-            isDefault: boolean;
-            type: string;
-            postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
-            city: string;
-            state: string;
-            country: string;
-        } | null;
         packages: ({
             shipment: {
                 id: string;
@@ -429,8 +431,8 @@ export declare class PackingService {
             id: string;
             createdAt: Date;
             orderId: string;
-            notes: string | null;
             type: import(".prisma/client").$Enums.QCInspectionType;
+            notes: string | null;
             items: Prisma.JsonValue;
             jobCardId: string | null;
             outcome: import(".prisma/client").$Enums.QCOutcome;

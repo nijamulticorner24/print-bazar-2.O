@@ -88,7 +88,10 @@ let OrdersService = OrdersService_1 = class OrdersService {
         let maxProductionDays = 2;
         const evaluatedItems = [];
         for (const itemDto of dto.items) {
-            const itemQty = Math.max(1, Number(itemDto.quantity) || 100);
+            const hasVariantLines = Boolean(itemDto.variantLines && itemDto.variantLines.length > 0);
+            const itemQty = hasVariantLines
+                ? itemDto.variantLines.reduce((sum, v) => sum + Math.max(1, Number(v.quantity) || 1), 0)
+                : Math.max(1, Number(itemDto.quantity) || 100);
             let product = null;
             if (itemDto.productId) {
                 product = await this.prisma.product.findFirst({
@@ -138,7 +141,8 @@ let OrdersService = OrdersService_1 = class OrdersService {
                         : null;
             const hasArtwork = Boolean(rawArt?.fileUrl ||
                 rawArt?.storageKey ||
-                (afs && Object.values(afs).some((f) => f?.fileUrl || f?.storageKey)));
+                (afs && Object.values(afs).some((f) => f?.fileUrl || f?.storageKey)) ||
+                (itemDto.variantLines && itemDto.variantLines.some((vl) => Boolean(vl.artworkUrl))));
             const refReq = product.referenceImageRequirement || 'OPTIONAL';
             const rawRef = itemDto.referenceImage ||
                 (itemDto.referenceImageUrl
@@ -169,9 +173,10 @@ let OrdersService = OrdersService_1 = class OrdersService {
             const workflowRoute = wantsDesign ? 'DESIGN_SERVICE' : 'CUSTOMER_ARTWORK';
             const quote = await this.pricingService.calculateQuote({
                 productId: product.id,
-                quantity: itemDto.quantity,
+                quantity: itemQty,
                 options: itemDto.options,
                 fieldValues: itemDto.fieldValues,
+                variantLines: itemDto.variantLines,
                 hasArtwork,
                 hasDesignService: wantsDesign,
                 hasReferenceImage: hasRefImage,
@@ -185,12 +190,14 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 productId: product.id,
                 sku: product.sku,
                 productName: product.name,
-                quantity: itemDto.quantity,
+                quantity: quote.quantity,
                 unitPrice: quote.unitPrice,
                 totalPrice: quote.subtotal,
                 specifications: {
                     options: quote.selectedOptionsSummary,
                     specificationsSnapshot: quote.specificationsSnapshot,
+                    isMultiVariant: Boolean(quote.isMultiVariant),
+                    variantLines: quote.variantLines || null,
                     basePrice: quote.basePrice,
                     optionsCost: quote.optionsCost,
                     artworkRequirement: artReq,
@@ -214,6 +221,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                     designNotes: itemDto.designNotes || itemDto.specifications?.designNotes || dto.customerNotes || null,
                 },
                 designNotes: itemDto.designNotes || itemDto.specifications?.designNotes || dto.customerNotes || null,
+                variantLinesData: quote.variantLines || null,
             });
         }
         const deliveryMethod = dto.deliveryMethod || 'COURIER';
@@ -311,7 +319,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                     customerNotes: dto.customerNotes || evaluatedItems[0]?.designNotes || null,
                     shippingAddressId,
                     items: {
-                        create: evaluatedItems,
+                        create: evaluatedItems.map(({ variantLinesData, ...it }) => it),
                     },
                 },
                 include: {
@@ -320,6 +328,24 @@ let OrdersService = OrdersService_1 = class OrdersService {
                     shippingAddress: true,
                 },
             });
+            for (let i = 0; i < evaluatedItems.length; i++) {
+                const vlData = evaluatedItems[i].variantLinesData;
+                const createdItem = createdOrder.items[i];
+                if (vlData && vlData.length > 0 && createdItem) {
+                    await tx.orderItemVariant.createMany({
+                        data: vlData.map((vl) => ({
+                            orderItemId: createdItem.id,
+                            sku: vl.sku || `${createdItem.sku}-${Object.values(vl.combination).join('-')}`,
+                            combination: vl.combination,
+                            quantity: Number(vl.quantity),
+                            unitPrice: new client_1.Prisma.Decimal(vl.unitPrice),
+                            totalPrice: new client_1.Prisma.Decimal(vl.lineSubtotal),
+                            artworkUrl: vl.artworkUrl || null,
+                            specifications: { optionsSummary: vl.optionsSummary },
+                        })),
+                    });
+                }
+            }
             for (let i = 0; i < dto.items.length; i++) {
                 const itemDto = dto.items[i];
                 const createdItem = createdOrder.items[i];
@@ -519,6 +545,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                     customer: { select: { fullName: true, email: true, phone: true, companyName: true } },
                     items: {
                         include: {
+                            variants: true,
                             artworkVersions: {
                                 orderBy: { versionNumber: 'desc' },
                                 take: 1,
@@ -554,6 +581,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 billingAddress: true,
                 items: {
                     include: {
+                        variants: true,
                         artworkVersions: { orderBy: { versionNumber: 'desc' } },
                         jobCards: {
                             include: {

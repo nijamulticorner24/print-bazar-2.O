@@ -18,6 +18,7 @@ import {
   RiCheckLine,
   RiAlertFill,
   RiCloseLine,
+  RiAddLine,
   RiInformationLine,
   RiPaletteLine,
   RiShieldCheckLine,
@@ -62,6 +63,12 @@ export interface ProductConfigurationResult {
   product: DynamicProduct;
   quantity: number;
   fieldValues: Record<string, any>;
+  variantLines?: Array<{
+    combination: Record<string, string>;
+    quantity: number;
+    unitPrice?: number;
+    lineSubtotal?: number;
+  }>;
   hasArtwork: boolean;
   artworkFile: FlowArtworkState | null;
   artworkFiles?: Record<string, FlowArtworkState>;
@@ -183,6 +190,128 @@ export function ProductConfigurationFlow({
       return changed ? updated : prev;
     });
   }, [rawGroups]);
+
+  // ---------------------------------------------------------------------------
+  // MULTI-VARIANT ORDERING ARCHITECTURE
+  // ---------------------------------------------------------------------------
+  const explicitDimensions = Array.isArray(product.variantDimensions) ? product.variantDimensions : [];
+  const variantWiseGroupCodes = useMemo(
+    () => rawGroups.filter((g) => g.selectionBehavior === 'VARIANT_WISE').map((g) => g.code),
+    [rawGroups]
+  );
+
+  const effectiveVariantDimensions = useMemo(() => {
+    if (explicitDimensions.length > 0) return explicitDimensions;
+    if (variantWiseGroupCodes.length > 0) return variantWiseGroupCodes;
+    return [];
+  }, [explicitDimensions, variantWiseGroupCodes]);
+
+  const isMultiVariantEnabled = Boolean(
+    (product.allowMultipleVariants || variantWiseGroupCodes.length > 0) &&
+    effectiveVariantDimensions.length > 0
+  );
+
+  const dimensionGroups = useMemo(() => {
+    if (!isMultiVariantEnabled || effectiveVariantDimensions.length === 0) return [];
+    return rawGroups.filter((g) => effectiveVariantDimensions.includes(g.code));
+  }, [rawGroups, isMultiVariantEnabled, effectiveVariantDimensions]);
+
+  const sharedGroups = useMemo(() => {
+    if (!isMultiVariantEnabled || effectiveVariantDimensions.length === 0) return rawGroups;
+    return rawGroups.filter((g) => !effectiveVariantDimensions.includes(g.code));
+  }, [rawGroups, isMultiVariantEnabled, effectiveVariantDimensions]);
+
+  interface VariantLineState {
+    id: string;
+    combination: Record<string, string>;
+    quantity: number;
+  }
+
+  const [variantLines, setVariantLines] = useState<VariantLineState[]>(() => {
+    if (!isMultiVariantEnabled || dimensionGroups.length === 0) return [];
+    const initialCombo: Record<string, string> = {};
+    for (const dg of dimensionGroups) {
+      const def = dg.options?.find((o) => o.isDefault && o.isActive !== false) || dg.options?.[0];
+      if (def) {
+        initialCombo[dg.code] = def.value;
+      }
+    }
+    return [
+      {
+        id: `vl-${Date.now()}-1`,
+        combination: initialCombo,
+        quantity: Math.max(1, Number(product.minQuantity) || 1),
+      },
+    ];
+  });
+
+  const totalVariantQuantity = useMemo(() => {
+    if (!isMultiVariantEnabled) return 0;
+    return variantLines.reduce((acc, line) => acc + (Number(line.quantity) || 0), 0);
+  }, [isMultiVariantEnabled, variantLines]);
+
+  // Synchronize variant lines if dimension groups populate
+  useEffect(() => {
+    if (isMultiVariantEnabled && dimensionGroups.length > 0) {
+      setVariantLines((prev) => {
+        if (prev.length > 0) return prev;
+        const initialCombo: Record<string, string> = {};
+        for (const dg of dimensionGroups) {
+          const def = dg.options?.find((o) => o.isDefault && o.isActive !== false) || dg.options?.[0];
+          if (def) {
+            initialCombo[dg.code] = def.value;
+          }
+        }
+        return [
+          {
+            id: `vl-${Date.now()}-1`,
+            combination: initialCombo,
+            quantity: Math.max(1, Number(product.minQuantity) || 1),
+          },
+        ];
+      });
+    }
+  }, [isMultiVariantEnabled, dimensionGroups, product.minQuantity]);
+
+  const handleAddVariantLine = () => {
+    const newCombo: Record<string, string> = {};
+    for (const dg of dimensionGroups) {
+      const def = dg.options?.find((o) => o.isDefault && o.isActive !== false) || dg.options?.[0];
+      if (def) {
+        newCombo[dg.code] = def.value;
+      }
+    }
+    setVariantLines((prev) => [
+      ...prev,
+      {
+        id: `vl-${Date.now()}-${prev.length + 1}`,
+        combination: newCombo,
+        quantity: 1,
+      },
+    ]);
+  };
+
+  const handleRemoveVariantLine = (id: string) => {
+    if (variantLines.length <= 1) return;
+    setVariantLines((prev) => prev.filter((vl) => vl.id !== id));
+  };
+
+  const handleUpdateVariantLineCombination = (id: string, groupCode: string, value: string) => {
+    setVariantLines((prev) =>
+      prev.map((vl) =>
+        vl.id === id
+          ? { ...vl, combination: { ...vl.combination, [groupCode]: value } }
+          : vl
+      )
+    );
+  };
+
+  const handleUpdateVariantLineQuantity = (id: string, newQty: number) => {
+    const validQty = Math.max(1, Math.floor(newQty) || 1);
+    setVariantLines((prev) =>
+      prev.map((vl) => (vl.id === id ? { ...vl, quantity: validQty } : vl))
+    );
+  };
 
   // ---------------------------------------------------------------------------
   // 2. REAL-TIME CONDITIONAL RULES EVALUATION ENGINE
@@ -715,11 +844,19 @@ export function ProductConfigurationFlow({
           valueCode: String(valueCode),
         }));
 
+        const effectiveQty = isMultiVariantEnabled ? Math.max(1, totalVariantQuantity) : (Number(quantity) || minQty);
+
         const q = await api.calculateQuote({
           productId: product.id,
-          quantity: Number(quantity) || minQty,
+          quantity: effectiveQty,
           options: optionPayload,
           fieldValues: selectedOptions,
+          variantLines: isMultiVariantEnabled
+            ? variantLines.map((vl) => ({
+                combination: vl.combination,
+                quantity: Number(vl.quantity) || 1,
+              }))
+            : undefined,
           hasArtwork: Object.keys(activeSlotFiles).length > 0,
           hasDesignService: wantsDesignService,
           deliveryMethod,
@@ -755,6 +892,9 @@ export function ProductConfigurationFlow({
     quantity,
     minQty,
     selectedOptions,
+    isMultiVariantEnabled,
+    totalVariantQuantity,
+    variantLines,
     activeSlotFiles,
     wantsDesignService,
     deliveryMethod,
@@ -848,7 +988,29 @@ export function ProductConfigurationFlow({
         errors.push(`Please select an option for: ${g.name}`);
       }
     }
-    if (isExplicitlyExcluded) {
+    if (isMultiVariantEnabled) {
+      if (!variantLines || variantLines.length === 0) {
+        errors.push('At least one variant combination line must be configured.');
+      } else {
+        if (totalVariantQuantity < minQty) {
+          errors.push(`Minimum total volume across all combinations is ${minQty.toLocaleString()} pieces (currently ${totalVariantQuantity}).`);
+        }
+        if (totalVariantQuantity > maxQty) {
+          errors.push(`Maximum total volume across all combinations is ${maxQty.toLocaleString()} pieces.`);
+        }
+        for (let i = 0; i < variantLines.length; i++) {
+          const vl = variantLines[i];
+          if (!vl.quantity || vl.quantity <= 0) {
+            errors.push(`Variant line #${i + 1} must have a positive quantity.`);
+          }
+          for (const dim of dimensionGroups) {
+            if (!vl.combination[dim.code]) {
+              errors.push(`Variant line #${i + 1} is missing a selection for ${dim.name}.`);
+            }
+          }
+        }
+      }
+    } else if (isExplicitlyExcluded) {
       errors.push('The selected specification combination is not supported for production.');
     } else if (isMissingMatrixCombo) {
       errors.push('This combination is currently unavailable. Please select another configuration.');
@@ -919,11 +1081,20 @@ export function ProductConfigurationFlow({
     }
 
     const primaryFile = Object.values(activeSlotFiles)[0] || null;
+    const finalQuantity = isMultiVariantEnabled ? totalVariantQuantity : quantity;
 
     return {
       product,
-      quantity,
+      quantity: finalQuantity,
       fieldValues: selectedOptions,
+      variantLines: isMultiVariantEnabled
+        ? variantLines.map((vl, idx) => ({
+            combination: vl.combination,
+            quantity: Number(vl.quantity) || 1,
+            unitPrice: quote?.variantLines?.[idx]?.unitPrice,
+            lineSubtotal: quote?.variantLines?.[idx]?.lineSubtotal,
+          }))
+        : undefined,
       hasArtwork: Object.keys(activeSlotFiles).length > 0,
       artworkFile: primaryFile,
       artworkFiles: activeSlotFiles,
@@ -941,6 +1112,7 @@ export function ProductConfigurationFlow({
       grandTotal: computedGrandTotal,
       quote: {
         ...(quote || {}),
+        variantLines: isMultiVariantEnabled ? (quote?.variantLines || variantLines) : undefined,
         subtotal: computedSubtotal,
         totalTax: computedTax,
         shippingAmount: computedShipping,
@@ -1001,7 +1173,9 @@ export function ProductConfigurationFlow({
             </p>
           </div>
           <span className="text-xs font-mono font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200">
-            {visibleGroups.length} Options
+            {isMultiVariantEnabled
+              ? `${visibleGroups.filter((g) => !effectiveVariantDimensions.includes(g.code)).length} Shared Options`
+              : `${visibleGroups.length} Options`}
           </span>
         </div>
 
@@ -1027,23 +1201,35 @@ export function ProductConfigurationFlow({
           )}
 
           {/* Dynamic Option Groups with Conditional Rule Engine */}
-          {visibleGroups.map((group) => {
-            const status = groupStatusMap[group.code];
-            return (
-              <div key={group.id} className="pb-5 border-b border-slate-100 last:border-0 last:pb-0">
-                <DynamicFieldRenderer
-                  field={{
-                    ...group,
-                    isRequired: status?.isRequired ?? group.isRequired,
-                  }}
-                  value={selectedOptions[group.code]}
-                  onChange={(val) => handleOptionChange(group.code, val)}
-                  disabled={status?.isDisabled}
-                  disabledReason={status?.disabledReason}
-                />
+          {visibleGroups
+            .filter((group) => !isMultiVariantEnabled || !effectiveVariantDimensions.includes(group.code))
+            .map((group) => {
+              const status = groupStatusMap[group.code];
+              return (
+                <div key={group.id} className="pb-5 border-b border-slate-100 last:border-0 last:pb-0">
+                  <DynamicFieldRenderer
+                    field={{
+                      ...group,
+                      isRequired: status?.isRequired ?? group.isRequired,
+                    }}
+                    value={selectedOptions[group.code]}
+                    onChange={(val) => handleOptionChange(group.code, val)}
+                    disabled={status?.isDisabled}
+                    disabledReason={status?.disabledReason}
+                  />
+                </div>
+              );
+            })}
+
+          {isMultiVariantEnabled &&
+            visibleGroups.filter((group) => !effectiveVariantDimensions.includes(group.code)).length === 0 && (
+              <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-xl text-xs text-slate-600 flex items-center gap-2.5">
+                <RiInformationLine className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  Product specifications ({dimensionGroups.map((g) => g.name).join(', ')}) are configured in the variant builder below.
+                </span>
               </div>
-            );
-          })}
+            )}
         </div>
       </div>
 
@@ -1059,19 +1245,32 @@ export function ProductConfigurationFlow({
               </span>
               <span className="text-slate-300">•</span>
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Batch Scale
+                {isMultiVariantEnabled ? 'Variant Matrix' : 'Batch Scale'}
               </span>
             </div>
             <h2 className="text-xl font-black text-slate-900 tracking-tight font-display mt-0.5">
-              Production Run Volume
+              {isMultiVariantEnabled ? 'Choose Sizes, Colors & Quantities' : 'Production Run Volume'}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              {hasActiveCombinationTiers
+              {isMultiVariantEnabled
+                ? 'Configure mixed size, color, or style combinations with independent quantities in a single order.'
+                : hasActiveCombinationTiers
                 ? 'Select a configured quantity and verified rate for this exact specification.'
                 : 'Select production run size. Higher quantities qualify for tier volume discounts.'}
             </p>
           </div>
-          {hasActiveCombinationTiers ? (
+          {isMultiVariantEnabled ? (
+            <div className="flex flex-col items-end">
+              <span className="text-xs font-mono font-bold bg-amber-100/90 text-amber-950 border border-amber-300 px-3 py-1 rounded-lg">
+                Total: {totalVariantQuantity} pieces
+              </span>
+              {totalVariantQuantity < minQty && (
+                <span className="text-[10px] font-bold text-rose-600 mt-1">
+                  Min required: {minQty} pcs
+                </span>
+              )}
+            </div>
+          ) : hasActiveCombinationTiers ? (
             <span className="text-xs text-slate-500 font-mono">
               <strong className="text-slate-900">{validCombinationTiers.length}</strong> available tier(s)
             </span>
@@ -1082,7 +1281,237 @@ export function ProductConfigurationFlow({
           )}
         </div>
 
-        {isExplicitlyExcluded ? (
+        {isMultiVariantEnabled ? (
+          <div className="space-y-4">
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
+                    <th className="py-3 px-3 w-10">#</th>
+                    {dimensionGroups.map((dg) => (
+                      <th key={dg.code} className="py-3 px-3">
+                        {dg.name}
+                      </th>
+                    ))}
+                    <th className="py-3 px-3 w-36 text-center">Quantity</th>
+                    <th className="py-3 px-3 text-right">Unit Rate</th>
+                    <th className="py-3 px-3 text-right">Subtotal</th>
+                    <th className="py-3 px-3 text-center w-12"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {variantLines.map((line, idx) => {
+                    const lineQuote = quote?.variantLines?.[idx];
+                    const unitPrice = lineQuote?.unitPrice ?? (line.quantity > 0 ? (lineQuote?.lineSubtotal ?? 0) / line.quantity : 0);
+                    const subtotal = lineQuote?.lineSubtotal ?? (unitPrice * line.quantity);
+
+                    return (
+                      <tr key={line.id} className="hover:bg-slate-50/70 transition">
+                        <td className="py-3 px-3 font-mono text-slate-400 font-bold">{idx + 1}</td>
+                        {dimensionGroups.map((dg) => {
+                          const currentVal = line.combination[dg.code] || '';
+                          const activeOptions = dg.options?.filter((o) => o.isActive !== false) || [];
+
+                          return (
+                            <td key={dg.code} className="py-2.5 px-3">
+                              <select
+                                value={currentVal}
+                                onChange={(e) =>
+                                  handleUpdateVariantLineCombination(line.id, dg.code, e.target.value)
+                                }
+                                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-amber-500 cursor-pointer"
+                              >
+                                {activeOptions.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>
+                                    {opt.label} {opt.priceModifier ? `(+₹${opt.priceModifier})` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          );
+                        })}
+
+                        {/* Quantity Stepper */}
+                        <td className="py-2.5 px-3 text-center">
+                          <div className="inline-flex items-center border border-slate-300 rounded-lg bg-white overflow-hidden shadow-2xs">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateVariantLineQuantity(line.id, line.quantity - 1)}
+                              disabled={line.quantity <= 1}
+                              className="px-2.5 py-1 hover:bg-slate-100 text-slate-700 font-bold disabled:opacity-30 disabled:cursor-not-allowed transition"
+                            >
+                              −
+                            </button>
+                            <input
+                              type="number"
+                              min="1"
+                              value={line.quantity}
+                              onChange={(e) =>
+                                handleUpdateVariantLineQuantity(line.id, parseInt(e.target.value) || 1)
+                              }
+                              className="w-14 text-center font-mono font-bold text-xs text-slate-900 border-x border-slate-200 py-1 focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateVariantLineQuantity(line.id, line.quantity + 1)}
+                              className="px-2.5 py-1 hover:bg-slate-100 text-slate-700 font-bold transition"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </td>
+
+                        {/* Unit Price */}
+                        <td className="py-3 px-3 text-right font-mono text-xs text-slate-700 font-medium">
+                          {unitPrice > 0 ? `₹${Number(unitPrice).toFixed(2)}` : '—'}
+                        </td>
+
+                        {/* Subtotal */}
+                        <td className="py-3 px-3 text-right font-mono text-xs font-bold text-slate-900">
+                          {subtotal > 0 ? `₹${Number(subtotal).toFixed(2)}` : '—'}
+                        </td>
+
+                        {/* Action: Delete line */}
+                        <td className="py-3 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveVariantLine(line.id)}
+                            disabled={variantLines.length <= 1}
+                            className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-20 disabled:hover:text-slate-400 cursor-pointer disabled:cursor-not-allowed transition"
+                            title="Remove combination line"
+                          >
+                            <RiDeleteBinLine className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Stacked Card View */}
+            <div className="block md:hidden space-y-3">
+              {variantLines.map((line, idx) => {
+                const lineQuote = quote?.variantLines?.[idx];
+                const unitPrice = lineQuote?.unitPrice ?? (line.quantity > 0 ? (lineQuote?.lineSubtotal ?? 0) / line.quantity : 0);
+                const subtotal = lineQuote?.lineSubtotal ?? (unitPrice * line.quantity);
+
+                return (
+                  <div
+                    key={line.id}
+                    className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <span className="font-mono text-xs font-bold text-slate-700">
+                        Variant #{idx + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveVariantLine(line.id)}
+                        disabled={variantLines.length <= 1}
+                        className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-20 cursor-pointer transition"
+                        title="Remove combination line"
+                      >
+                        <RiDeleteBinLine className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {dimensionGroups.map((dg) => {
+                        const currentVal = line.combination[dg.code] || '';
+                        const activeOptions = dg.options?.filter((o) => o.isActive !== false) || [];
+
+                        return (
+                          <div key={dg.code} className="space-y-1">
+                            <label className="text-[11px] font-bold text-slate-600 uppercase">
+                              {dg.name}
+                            </label>
+                            <select
+                              value={currentVal}
+                              onChange={(e) =>
+                                handleUpdateVariantLineCombination(line.id, dg.code, e.target.value)
+                              }
+                              className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:border-amber-500"
+                            >
+                              {activeOptions.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label} {opt.priceModifier ? `(+₹${opt.priceModifier})` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                      <div className="inline-flex items-center border border-slate-300 rounded-lg bg-white overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateVariantLineQuantity(line.id, line.quantity - 1)}
+                          disabled={line.quantity <= 1}
+                          className="px-3 py-1.5 hover:bg-slate-100 text-slate-700 font-bold disabled:opacity-30"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="number"
+                          min="1"
+                          value={line.quantity}
+                          onChange={(e) =>
+                            handleUpdateVariantLineQuantity(line.id, parseInt(e.target.value) || 1)
+                          }
+                          className="w-12 text-center font-mono font-bold text-xs text-slate-900 border-x border-slate-200 py-1.5 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateVariantLineQuantity(line.id, line.quantity + 1)}
+                          className="px-3 py-1.5 hover:bg-slate-100 text-slate-700 font-bold"
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      <div className="text-right">
+                        <div className="text-[11px] font-mono text-slate-500">
+                          {unitPrice > 0 ? `₹${Number(unitPrice).toFixed(2)}/pc` : '—'}
+                        </div>
+                        <div className="text-xs font-mono font-bold text-slate-900">
+                          {subtotal > 0 ? `₹${Number(subtotal).toFixed(2)}` : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Action Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleAddVariantLine}
+                className="inline-flex items-center gap-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-slate-950 font-bold text-xs px-4 py-2.5 rounded-lg border border-[#E3A008]/50 shadow-xs transition active:scale-95 cursor-pointer self-start"
+              >
+                <RiAddLine className="w-4 h-4" />
+                <span>Add Another Variant</span>
+              </button>
+
+              <div className="flex items-center gap-3 text-xs font-mono">
+                <span className="text-slate-600">
+                  Total Order Quantity: <strong className="text-slate-900 text-sm font-bold">{totalVariantQuantity} pieces</strong>
+                </span>
+                {totalVariantQuantity < minQty && (
+                  <span className="text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded font-bold">
+                    Min required: {minQty} pcs
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : isExplicitlyExcluded ? (
           <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-3">
             <RiAlertFill className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
             <div>

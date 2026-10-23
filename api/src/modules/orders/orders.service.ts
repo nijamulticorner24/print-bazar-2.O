@@ -34,6 +34,16 @@ export interface CreateOrderItemDto {
   totalPrice?: number;
   options?: OptionSelectionDto[];
   fieldValues?: Record<string, any>;
+  variantLines?: Array<{
+    id?: string;
+    sku?: string;
+    combination: Record<string, string>;
+    quantity: number;
+    unitPrice?: number;
+    lineSubtotal?: number;
+    artworkUrl?: string;
+    specifications?: any;
+  }>;
   specifications?: any;
   designNotes?: string;
   artworkUrl?: string;
@@ -205,10 +215,14 @@ export class OrdersService {
       totalPrice: number;
       specifications: Prisma.InputJsonValue;
       designNotes?: string;
+      variantLinesData?: any[] | null;
     }> = [];
 
     for (const itemDto of dto.items) {
-      const itemQty = Math.max(1, Number(itemDto.quantity) || 100);
+      const hasVariantLines = Boolean(itemDto.variantLines && itemDto.variantLines.length > 0);
+      const itemQty = hasVariantLines
+        ? itemDto.variantLines!.reduce((sum, v) => sum + Math.max(1, Number(v.quantity) || 1), 0)
+        : Math.max(1, Number(itemDto.quantity) || 100);
       let product = null;
 
       if (itemDto.productId) {
@@ -267,7 +281,8 @@ export class OrdersService {
       const hasArtwork = Boolean(
         rawArt?.fileUrl ||
         rawArt?.storageKey ||
-        (afs && Object.values(afs).some((f: any) => f?.fileUrl || f?.storageKey))
+        (afs && Object.values(afs).some((f: any) => f?.fileUrl || f?.storageKey)) ||
+        (itemDto.variantLines && itemDto.variantLines.some((vl) => Boolean(vl.artworkUrl)))
       );
       const refReq = product.referenceImageRequirement || 'OPTIONAL';
       const rawRef =
@@ -305,9 +320,10 @@ export class OrdersService {
       // Calculate server-side price quote with dynamic field & flow engine support
       const quote = await this.pricingService.calculateQuote({
         productId: product.id,
-        quantity: itemDto.quantity,
+        quantity: itemQty,
         options: itemDto.options,
         fieldValues: itemDto.fieldValues,
+        variantLines: itemDto.variantLines,
         hasArtwork,
         hasDesignService: wantsDesign,
         hasReferenceImage: hasRefImage,
@@ -323,12 +339,14 @@ export class OrdersService {
         productId: product.id,
         sku: product.sku,
         productName: product.name,
-        quantity: itemDto.quantity,
+        quantity: quote.quantity,
         unitPrice: quote.unitPrice,
         totalPrice: quote.subtotal,
         specifications: {
           options: quote.selectedOptionsSummary,
           specificationsSnapshot: quote.specificationsSnapshot,
+          isMultiVariant: Boolean(quote.isMultiVariant),
+          variantLines: quote.variantLines || null,
           basePrice: quote.basePrice,
           optionsCost: quote.optionsCost,
           artworkRequirement: artReq,
@@ -352,6 +370,7 @@ export class OrdersService {
           designNotes: itemDto.designNotes || (itemDto.specifications as any)?.designNotes || dto.customerNotes || null,
         } as unknown as Prisma.InputJsonValue,
         designNotes: itemDto.designNotes || (itemDto.specifications as any)?.designNotes || dto.customerNotes || null,
+        variantLinesData: quote.variantLines || null,
       });
     }
 
@@ -474,7 +493,7 @@ export class OrdersService {
           customerNotes: dto.customerNotes || (evaluatedItems[0] as any)?.designNotes || null,
           shippingAddressId,
           items: {
-            create: evaluatedItems,
+            create: evaluatedItems.map(({ variantLinesData, ...it }) => it),
           },
         },
         include: {
@@ -483,6 +502,26 @@ export class OrdersService {
           shippingAddress: true,
         },
       });
+
+      // Persist OrderItemVariant records for multi-variant items
+      for (let i = 0; i < evaluatedItems.length; i++) {
+        const vlData = evaluatedItems[i].variantLinesData;
+        const createdItem = createdOrder.items[i];
+        if (vlData && vlData.length > 0 && createdItem) {
+          await tx.orderItemVariant.createMany({
+            data: vlData.map((vl) => ({
+              orderItemId: createdItem.id,
+              sku: vl.sku || `${createdItem.sku}-${Object.values(vl.combination).join('-')}`,
+              combination: vl.combination as Prisma.InputJsonValue,
+              quantity: Number(vl.quantity),
+              unitPrice: new Prisma.Decimal(vl.unitPrice),
+              totalPrice: new Prisma.Decimal(vl.lineSubtotal),
+              artworkUrl: vl.artworkUrl || null,
+              specifications: { optionsSummary: vl.optionsSummary } as Prisma.InputJsonValue,
+            })),
+          });
+        }
+      }
 
       // Create initial ArtworkVersion records for items with artwork uploaded
       for (let i = 0; i < dto.items.length; i++) {
@@ -704,6 +743,7 @@ export class OrdersService {
           customer: { select: { fullName: true, email: true, phone: true, companyName: true } },
           items: {
             include: {
+              variants: true,
               artworkVersions: {
                 orderBy: { versionNumber: 'desc' },
                 take: 1,
@@ -745,6 +785,7 @@ export class OrdersService {
         billingAddress: true,
         items: {
           include: {
+            variants: true,
             artworkVersions: { orderBy: { versionNumber: 'desc' } },
             jobCards: {
               include: {

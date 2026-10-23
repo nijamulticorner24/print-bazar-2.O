@@ -14,8 +14,8 @@ export declare class QualityControlController {
         id: string;
         createdAt: Date;
         orderId: string;
-        notes: string | null;
         type: import(".prisma/client").$Enums.QCInspectionType;
+        notes: string | null;
         items: import("@prisma/client/runtime/library").JsonValue;
         jobCardId: string | null;
         outcome: import(".prisma/client").$Enums.QCOutcome;
@@ -65,9 +65,9 @@ export declare class QualityControlController {
             updatedAt: Date;
             sku: string;
             productId: string;
-            unitPrice: import("@prisma/client/runtime/library").Decimal;
-            quantity: number;
             totalPrice: import("@prisma/client/runtime/library").Decimal;
+            quantity: number;
+            unitPrice: import("@prisma/client/runtime/library").Decimal;
             productName: string;
             specifications: import("@prisma/client/runtime/library").JsonValue;
             approvedArtworkVersionId: string | null;
@@ -97,8 +97,8 @@ export declare class QualityControlController {
             id: string;
             createdAt: Date;
             orderId: string;
-            notes: string | null;
             type: import(".prisma/client").$Enums.QCInspectionType;
+            notes: string | null;
             items: import("@prisma/client/runtime/library").JsonValue;
             jobCardId: string | null;
             outcome: import(".prisma/client").$Enums.QCOutcome;
@@ -135,8 +135,8 @@ export declare class QualityControlController {
         id: string;
         createdAt: Date;
         orderId: string;
-        notes: string | null;
         type: import(".prisma/client").$Enums.QCInspectionType;
+        notes: string | null;
         items: import("@prisma/client/runtime/library").JsonValue;
         jobCardId: string | null;
         outcome: import(".prisma/client").$Enums.QCOutcome;

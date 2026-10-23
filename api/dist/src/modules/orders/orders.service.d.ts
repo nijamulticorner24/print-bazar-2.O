@@ -14,6 +14,16 @@ export interface CreateOrderItemDto {
     totalPrice?: number;
     options?: OptionSelectionDto[];
     fieldValues?: Record<string, any>;
+    variantLines?: Array<{
+        id?: string;
+        sku?: string;
+        combination: Record<string, string>;
+        quantity: number;
+        unitPrice?: number;
+        lineSubtotal?: number;
+        artworkUrl?: string;
+        specifications?: any;
+    }>;
     specifications?: any;
     designNotes?: string;
     artworkUrl?: string;
@@ -111,59 +121,56 @@ export declare class OrdersService {
         customer: {
             id: string;
             createdAt: Date;
-            email: string;
-            fullName: string;
-            phone: string;
             updatedAt: Date;
+            userId: string | null;
+            fullName: string;
+            email: string;
+            phone: string;
             companyName: string | null;
             gstin: string | null;
-            userId: string | null;
         };
-        items: {
-            id: string;
-            createdAt: Date;
-            orderId: string;
-            updatedAt: Date;
-            sku: string;
-            productId: string;
-            unitPrice: Prisma.Decimal;
-            quantity: number;
-            totalPrice: Prisma.Decimal;
-            productName: string;
-            specifications: Prisma.JsonValue;
-            approvedArtworkVersionId: string | null;
-            designNotes: string | null;
-        }[];
         shippingAddress: {
             id: string;
             createdAt: Date;
-            phone: string;
             updatedAt: Date;
             customerId: string;
-            isDefault: boolean;
+            phone: string;
             type: string;
-            postalCode: string;
             contactName: string;
             street: string;
             landmark: string | null;
             city: string;
             state: string;
+            postalCode: string;
             country: string;
+            isDefault: boolean;
         } | null;
+        items: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            sku: string;
+            productName: string;
+            quantity: number;
+            unitPrice: Prisma.Decimal;
+            totalPrice: Prisma.Decimal;
+            specifications: Prisma.JsonValue;
+            approvedArtworkVersionId: string | null;
+            designNotes: string | null;
+            productId: string;
+            orderId: string;
+        }[];
     } & {
         id: string;
-        createdAt: Date;
-        updatedAt: Date;
-        customerId: string;
-        status: import(".prisma/client").$Enums.OrderStatus;
-        subtotal: Prisma.Decimal;
-        deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
-        discountAmount: Prisma.Decimal;
         orderNumber: string;
         sourceChannel: import(".prisma/client").$Enums.OrderChannel;
+        status: import(".prisma/client").$Enums.OrderStatus;
         customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+        deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+        subtotal: Prisma.Decimal;
         taxAmount: Prisma.Decimal;
         shippingAmount: Prisma.Decimal;
+        discountAmount: Prisma.Decimal;
         totalAmount: Prisma.Decimal;
         paidAmount: Prisma.Decimal;
         balanceAmount: Prisma.Decimal;
@@ -173,26 +180,30 @@ export declare class OrdersService {
         dueAt: Date | null;
         customerNotes: string | null;
         internalNotes: string | null;
+        createdAt: Date;
+        updatedAt: Date;
+        customerId: string;
         shippingAddressId: string | null;
         billingAddressId: string | null;
     }>;
     listOrders(filters: OrderQueryFilters, currentUser?: JwtPayload): Promise<{
         data: ({
             customer: {
-                email: string;
                 fullName: string;
+                email: string;
                 phone: string;
                 companyName: string | null;
             };
             items: ({
                 artworkVersions: {
                     id: string;
-                    createdAt: Date;
                     status: import(".prisma/client").$Enums.ArtworkStatus;
+                    customerNotes: string | null;
+                    createdAt: Date;
+                    versionNumber: number;
+                    orderItemId: string;
                     storageKey: string;
                     originalFileName: string;
-                    customerNotes: string | null;
-                    versionNumber: number;
                     mimeType: string;
                     fileSize: number;
                     checksum: string;
@@ -211,22 +222,34 @@ export declare class OrdersService {
                     prepressNotes: string | null;
                     uploadedBy: string;
                     approvedAt: Date | null;
+                }[];
+                variants: {
+                    id: string;
+                    createdAt: Date;
+                    updatedAt: Date;
+                    sku: string | null;
+                    quantity: number;
+                    unitPrice: Prisma.Decimal;
+                    totalPrice: Prisma.Decimal;
+                    specifications: Prisma.JsonValue | null;
                     orderItemId: string;
+                    combination: Prisma.JsonValue;
+                    artworkUrl: string | null;
                 }[];
             } & {
                 id: string;
                 createdAt: Date;
-                orderId: string;
                 updatedAt: Date;
                 sku: string;
-                productId: string;
-                unitPrice: Prisma.Decimal;
-                quantity: number;
-                totalPrice: Prisma.Decimal;
                 productName: string;
+                quantity: number;
+                unitPrice: Prisma.Decimal;
+                totalPrice: Prisma.Decimal;
                 specifications: Prisma.JsonValue;
                 approvedArtworkVersionId: string | null;
                 designNotes: string | null;
+                productId: string;
+                orderId: string;
             })[];
             packages: {
                 id: string;
@@ -235,18 +258,15 @@ export declare class OrdersService {
             }[];
         } & {
             id: string;
-            createdAt: Date;
-            updatedAt: Date;
-            customerId: string;
-            status: import(".prisma/client").$Enums.OrderStatus;
-            subtotal: Prisma.Decimal;
-            deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
-            discountAmount: Prisma.Decimal;
             orderNumber: string;
             sourceChannel: import(".prisma/client").$Enums.OrderChannel;
+            status: import(".prisma/client").$Enums.OrderStatus;
             customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+            deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+            subtotal: Prisma.Decimal;
             taxAmount: Prisma.Decimal;
             shippingAmount: Prisma.Decimal;
+            discountAmount: Prisma.Decimal;
             totalAmount: Prisma.Decimal;
             paidAmount: Prisma.Decimal;
             balanceAmount: Prisma.Decimal;
@@ -256,6 +276,9 @@ export declare class OrdersService {
             dueAt: Date | null;
             customerNotes: string | null;
             internalNotes: string | null;
+            createdAt: Date;
+            updatedAt: Date;
+            customerId: string;
             shippingAddressId: string | null;
             billingAddressId: string | null;
         })[];
@@ -270,52 +293,64 @@ export declare class OrdersService {
         customer: {
             id: string;
             createdAt: Date;
-            email: string;
-            fullName: string;
-            phone: string;
             updatedAt: Date;
+            userId: string | null;
+            fullName: string;
+            email: string;
+            phone: string;
             companyName: string | null;
             gstin: string | null;
-            userId: string | null;
         };
-        auditLogs: ({
-            actor: {
-                fullName: string;
-                role: import(".prisma/client").$Enums.UserRole;
-            } | null;
-        } & {
+        shippingAddress: {
             id: string;
-            actorType: string;
-            action: string;
-            entity: string;
-            entityId: string;
-            previousState: Prisma.JsonValue | null;
-            newState: Prisma.JsonValue | null;
-            reason: string | null;
-            ipAddress: string | null;
-            userAgent: string | null;
             createdAt: Date;
-            actorId: string | null;
-            orderId: string | null;
-        })[];
+            updatedAt: Date;
+            customerId: string;
+            phone: string;
+            type: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
+            city: string;
+            state: string;
+            postalCode: string;
+            country: string;
+            isDefault: boolean;
+        } | null;
+        billingAddress: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            customerId: string;
+            phone: string;
+            type: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
+            city: string;
+            state: string;
+            postalCode: string;
+            country: string;
+            isDefault: boolean;
+        } | null;
         items: ({
             jobCards: ({
                 machine: {
                     id: string;
                     createdAt: Date;
-                    name: string;
-                    isActive: boolean;
                     updatedAt: Date;
-                    code: string;
+                    name: string;
                     type: string;
+                    isActive: boolean;
+                    code: string;
                     hourlyCapacity: number;
                 } | null;
                 issues: {
                     id: string;
                     createdAt: Date;
-                    description: string;
                     jobCardId: string;
                     reasonCode: string;
+                    description: string;
                     reportedBy: string;
                     isResolved: boolean;
                     resolvedBy: string | null;
@@ -327,13 +362,13 @@ export declare class OrdersService {
                 } | null;
             } & {
                 id: string;
-                createdAt: Date;
-                orderId: string;
-                updatedAt: Date;
                 status: import(".prisma/client").$Enums.JobCardStatus;
                 priority: import(".prisma/client").$Enums.Priority;
                 dueAt: Date;
+                createdAt: Date;
+                updatedAt: Date;
                 approvedArtworkVersionId: string | null;
+                orderId: string;
                 orderItemId: string;
                 jobNumber: string;
                 preHoldStatus: import(".prisma/client").$Enums.JobCardStatus | null;
@@ -347,12 +382,13 @@ export declare class OrdersService {
             })[];
             artworkVersions: {
                 id: string;
-                createdAt: Date;
                 status: import(".prisma/client").$Enums.ArtworkStatus;
+                customerNotes: string | null;
+                createdAt: Date;
+                versionNumber: number;
+                orderItemId: string;
                 storageKey: string;
                 originalFileName: string;
-                customerNotes: string | null;
-                versionNumber: number;
                 mimeType: string;
                 fileSize: number;
                 checksum: string;
@@ -371,61 +407,41 @@ export declare class OrdersService {
                 prepressNotes: string | null;
                 uploadedBy: string;
                 approvedAt: Date | null;
+            }[];
+            variants: {
+                id: string;
+                createdAt: Date;
+                updatedAt: Date;
+                sku: string | null;
+                quantity: number;
+                unitPrice: Prisma.Decimal;
+                totalPrice: Prisma.Decimal;
+                specifications: Prisma.JsonValue | null;
                 orderItemId: string;
+                combination: Prisma.JsonValue;
+                artworkUrl: string | null;
             }[];
         } & {
             id: string;
             createdAt: Date;
-            orderId: string;
             updatedAt: Date;
             sku: string;
-            productId: string;
-            unitPrice: Prisma.Decimal;
-            quantity: number;
-            totalPrice: Prisma.Decimal;
             productName: string;
+            quantity: number;
+            unitPrice: Prisma.Decimal;
+            totalPrice: Prisma.Decimal;
             specifications: Prisma.JsonValue;
             approvedArtworkVersionId: string | null;
             designNotes: string | null;
+            productId: string;
+            orderId: string;
         })[];
-        shippingAddress: {
-            id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
-            customerId: string;
-            isDefault: boolean;
-            type: string;
-            postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
-            city: string;
-            state: string;
-            country: string;
-        } | null;
-        billingAddress: {
-            id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
-            customerId: string;
-            isDefault: boolean;
-            type: string;
-            postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
-            city: string;
-            state: string;
-            country: string;
-        } | null;
         payments: {
             id: string;
-            createdAt: Date;
-            orderId: string;
-            updatedAt: Date;
             status: import(".prisma/client").$Enums.PaymentStatus;
+            createdAt: Date;
+            updatedAt: Date;
+            orderId: string;
             transactionId: string;
             razorpayOrderId: string | null;
             razorpayPaymentId: string | null;
@@ -439,25 +455,25 @@ export declare class OrdersService {
         }[];
         invoices: {
             id: string;
-            orderId: string;
             subtotal: Prisma.Decimal;
+            shippingAmount: Prisma.Decimal;
+            orderId: string;
+            invoiceNumber: string;
+            customerGstin: string | null;
             cgst: Prisma.Decimal;
             sgst: Prisma.Decimal;
             igst: Prisma.Decimal;
-            grandTotal: Prisma.Decimal;
             totalTax: Prisma.Decimal;
-            shippingAmount: Prisma.Decimal;
-            invoiceNumber: string;
-            customerGstin: string | null;
+            grandTotal: Prisma.Decimal;
             pdfUrl: string | null;
             issuedAt: Date;
         }[];
         packages: ({
             shipment: {
                 id: string;
+                status: import(".prisma/client").$Enums.ShipmentStatus;
                 createdAt: Date;
                 updatedAt: Date;
-                status: import(".prisma/client").$Enums.ShipmentStatus;
                 shipmentNumber: string;
                 courierName: string;
                 awbNumber: string;
@@ -469,10 +485,10 @@ export declare class OrdersService {
             } | null;
         } & {
             id: string;
-            createdAt: Date;
-            orderId: string;
-            updatedAt: Date;
             status: import(".prisma/client").$Enums.PackageStatus;
+            createdAt: Date;
+            updatedAt: Date;
+            orderId: string;
             packageNumber: string;
             sequenceNumber: number;
             totalPackages: number;
@@ -491,15 +507,35 @@ export declare class OrdersService {
             } | null;
         } & {
             id: string;
-            reason: string | null;
             createdAt: Date;
             orderId: string;
             department: import(".prisma/client").$Enums.Department | null;
-            notes: string | null;
             fromStatus: import(".prisma/client").$Enums.OrderStatus | null;
             toStatus: import(".prisma/client").$Enums.OrderStatus;
-            durationMinutes: number | null;
             changedById: string | null;
+            reason: string | null;
+            notes: string | null;
+            durationMinutes: number | null;
+        })[];
+        auditLogs: ({
+            actor: {
+                fullName: string;
+                role: import(".prisma/client").$Enums.UserRole;
+            } | null;
+        } & {
+            id: string;
+            createdAt: Date;
+            orderId: string | null;
+            reason: string | null;
+            actorId: string | null;
+            actorType: string;
+            action: string;
+            entity: string;
+            entityId: string;
+            previousState: Prisma.JsonValue | null;
+            newState: Prisma.JsonValue | null;
+            ipAddress: string | null;
+            userAgent: string | null;
         })[];
         qcChecklists: ({
             inspector: {
@@ -509,29 +545,26 @@ export declare class OrdersService {
         } & {
             id: string;
             createdAt: Date;
-            orderId: string;
-            notes: string | null;
-            type: import(".prisma/client").$Enums.QCInspectionType;
             items: Prisma.JsonValue;
+            type: import(".prisma/client").$Enums.QCInspectionType;
+            orderId: string;
             jobCardId: string | null;
+            notes: string | null;
             outcome: import(".prisma/client").$Enums.QCOutcome;
             inspectorId: string;
             defects: import(".prisma/client").$Enums.DefectCategory[];
         })[];
     } & {
         id: string;
-        createdAt: Date;
-        updatedAt: Date;
-        customerId: string;
-        status: import(".prisma/client").$Enums.OrderStatus;
-        subtotal: Prisma.Decimal;
-        deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
-        discountAmount: Prisma.Decimal;
         orderNumber: string;
         sourceChannel: import(".prisma/client").$Enums.OrderChannel;
+        status: import(".prisma/client").$Enums.OrderStatus;
         customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+        deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+        subtotal: Prisma.Decimal;
         taxAmount: Prisma.Decimal;
         shippingAmount: Prisma.Decimal;
+        discountAmount: Prisma.Decimal;
         totalAmount: Prisma.Decimal;
         paidAmount: Prisma.Decimal;
         balanceAmount: Prisma.Decimal;
@@ -541,6 +574,9 @@ export declare class OrdersService {
         dueAt: Date | null;
         customerNotes: string | null;
         internalNotes: string | null;
+        createdAt: Date;
+        updatedAt: Date;
+        customerId: string;
         shippingAddressId: string | null;
         billingAddressId: string | null;
     }>;

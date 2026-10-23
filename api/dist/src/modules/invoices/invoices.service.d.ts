@@ -15,35 +15,20 @@ export declare class InvoicesService {
                 gstin: string | null;
                 userId: string | null;
             };
-            items: {
-                id: string;
-                createdAt: Date;
-                orderId: string;
-                updatedAt: Date;
-                sku: string;
-                productId: string;
-                unitPrice: import("@prisma/client/runtime/library").Decimal;
-                quantity: number;
-                totalPrice: import("@prisma/client/runtime/library").Decimal;
-                productName: string;
-                specifications: import("@prisma/client/runtime/library").JsonValue;
-                approvedArtworkVersionId: string | null;
-                designNotes: string | null;
-            }[];
             shippingAddress: {
                 id: string;
                 createdAt: Date;
                 phone: string;
                 updatedAt: Date;
                 customerId: string;
-                isDefault: boolean;
                 type: string;
-                postalCode: string;
+                isDefault: boolean;
                 contactName: string;
                 street: string;
                 landmark: string | null;
                 city: string;
                 state: string;
+                postalCode: string;
                 country: string;
             } | null;
             billingAddress: {
@@ -52,16 +37,31 @@ export declare class InvoicesService {
                 phone: string;
                 updatedAt: Date;
                 customerId: string;
-                isDefault: boolean;
                 type: string;
-                postalCode: string;
+                isDefault: boolean;
                 contactName: string;
                 street: string;
                 landmark: string | null;
                 city: string;
                 state: string;
+                postalCode: string;
                 country: string;
             } | null;
+            items: {
+                id: string;
+                createdAt: Date;
+                orderId: string;
+                updatedAt: Date;
+                sku: string;
+                productId: string;
+                totalPrice: import("@prisma/client/runtime/library").Decimal;
+                quantity: number;
+                unitPrice: import("@prisma/client/runtime/library").Decimal;
+                productName: string;
+                specifications: import("@prisma/client/runtime/library").JsonValue;
+                approvedArtworkVersionId: string | null;
+                designNotes: string | null;
+            }[];
         } & {
             id: string;
             createdAt: Date;

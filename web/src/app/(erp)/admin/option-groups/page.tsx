@@ -44,6 +44,7 @@ export default function OptionGroupsLibraryPage() {
   const [formName, setFormName] = useState('');
   const [formCode, setFormCode] = useState('');
   const [formInputType, setFormInputType] = useState('SELECT');
+  const [formSelectionBehavior, setFormSelectionBehavior] = useState<'SINGLE' | 'MULTIPLE' | 'VARIANT_WISE' | string>('SINGLE');
   const [formDescription, setFormDescription] = useState('');
   const [formIsActive, setFormIsActive] = useState(true);
   const [formEnableAdditionalPricing, setFormEnableAdditionalPricing] = useState(false);
@@ -91,6 +92,7 @@ export default function OptionGroupsLibraryPage() {
     setFormName(group.name);
     setFormCode(group.code);
     setFormInputType(group.inputType || 'SELECT');
+    setFormSelectionBehavior(group.selectionBehavior || 'SINGLE');
     setFormDescription(group.description || '');
     setFormIsActive(group.isActive);
     setFormEnableAdditionalPricing(Boolean(group.enableAdditionalPricing));
@@ -112,6 +114,7 @@ export default function OptionGroupsLibraryPage() {
     setFormName('');
     setFormCode('');
     setFormInputType('SELECT');
+    setFormSelectionBehavior('SINGLE');
     setFormDescription('');
     setFormIsActive(true);
     setFormEnableAdditionalPricing(false);
@@ -189,6 +192,7 @@ export default function OptionGroupsLibraryPage() {
       name: formName.trim(),
       code: formCode.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_'),
       inputType: formInputType,
+      selectionBehavior: formSelectionBehavior,
       description: formDescription.trim() || null,
       isActive: formIsActive,
       enableAdditionalPricing: formEnableAdditionalPricing,
@@ -578,6 +582,20 @@ export default function OptionGroupsLibraryPage() {
                           <span className="font-sans font-semibold text-slate-600">
                             {group.inputType}
                           </span>
+                          <span>•</span>
+                          <span className={`px-1.5 py-0.2 text-[10px] font-bold rounded font-sans ${
+                            group.selectionBehavior === 'VARIANT_WISE'
+                              ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                              : group.selectionBehavior === 'MULTIPLE'
+                              ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {group.selectionBehavior === 'VARIANT_WISE'
+                              ? 'Variant-Wise'
+                              : group.selectionBehavior === 'MULTIPLE'
+                              ? 'Multi-Select'
+                              : 'Single'}
+                          </span>
                           {group.enableAdditionalPricing && (
                             <>
                               <span>•</span>
@@ -703,9 +721,9 @@ export default function OptionGroupsLibraryPage() {
                     <p className="text-[11px] text-slate-600">Stable alphanumeric snake_case identifier</p>
                   </div>
 
-                  {/* Input Type */}
+                  {/* Input Type (Presentation) */}
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-700">Input Type</label>
+                    <label className="text-xs font-semibold text-slate-700">Input Type (Presentation)</label>
                     <select
                       value={formInputType}
                       onChange={(e) => setFormInputType(e.target.value)}
@@ -716,7 +734,50 @@ export default function OptionGroupsLibraryPage() {
                       <option value="CHECKBOX">Checkboxes (CHECKBOX)</option>
                       <option value="TOGGLE">Toggle Switch (TOGGLE)</option>
                     </select>
-                    <p className="text-[11px] text-slate-600">Customer selection presentation style</p>
+                    <p className="text-[11px] text-slate-600">Visual display widget for customer selection</p>
+                  </div>
+
+                  {/* Selection Behavior (Semantics) */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                      <span>Selection Behavior (Semantics)</span>
+                    </label>
+                    <select
+                      value={formSelectionBehavior}
+                      onChange={(e) => setFormSelectionBehavior(e.target.value)}
+                      className="w-full h-9 px-3 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
+                    >
+                      <option value="SINGLE">Single Selection (SINGLE)</option>
+                      <option value="MULTIPLE">Multiple Selection (MULTIPLE)</option>
+                      <option value="VARIANT_WISE">Variant Dimension (VARIANT_WISE)</option>
+                    </select>
+                    <p className="text-[11px] text-slate-600">
+                      {formSelectionBehavior === 'VARIANT_WISE'
+                        ? 'Eligible as a dimension in multi-variant product ordering (e.g., Size, Color)'
+                        : formSelectionBehavior === 'MULTIPLE'
+                        ? 'Allows selecting multiple values from the same group'
+                        : 'Select exactly one value for the configuration'}
+                    </p>
+                  </div>
+
+                  {/* Informational Guidance Banner */}
+                  <div className="md:col-span-2 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-[11px] flex items-center gap-2">
+                    <RiInformationLine className="w-4 h-4 text-slate-500 shrink-0" />
+                    <span>
+                      {formSelectionBehavior === 'VARIANT_WISE' ? (
+                        <>
+                          <strong className="text-purple-700">Variant Dimension:</strong> When attached to a product with <em>Multiple Variants per Order</em> enabled, this group forms a variant dimension (e.g. Size or Color) for independent quantity breakdown.
+                        </>
+                      ) : formSelectionBehavior === 'MULTIPLE' ? (
+                        <>
+                          <strong className="text-blue-700">Multiple Selection:</strong> Customers can pick several values from this group simultaneously. Recommended with Checkboxes (CHECKBOX).
+                        </>
+                      ) : (
+                        <>
+                          <strong className="text-slate-800">Single Selection:</strong> Standard configuration mode. Customers pick one value per product order.
+                        </>
+                      )}
+                    </span>
                   </div>
 
                   {/* Active Status */}

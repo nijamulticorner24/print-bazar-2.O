@@ -64,6 +64,15 @@ export declare class OperationsController {
             createdAt: Date;
             status: import(".prisma/client").$Enums.OrderStatus;
             deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+            orderNumber: string;
+            customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+            totalAmount: import("@prisma/client/runtime/library").Decimal;
+            paidAmount: import("@prisma/client/runtime/library").Decimal;
+            balanceAmount: import("@prisma/client/runtime/library").Decimal;
+            paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
+            priority: import(".prisma/client").$Enums.Priority;
+            slaStatus: import(".prisma/client").$Enums.SlaStatus;
+            dueAt: Date | null;
             items: {
                 id: string;
                 quantity: number;
@@ -85,15 +94,6 @@ export declare class OperationsController {
                     isApproved: boolean;
                 }[];
             }[];
-            orderNumber: string;
-            customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
-            totalAmount: import("@prisma/client/runtime/library").Decimal;
-            paidAmount: import("@prisma/client/runtime/library").Decimal;
-            balanceAmount: import("@prisma/client/runtime/library").Decimal;
-            paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
-            priority: import(".prisma/client").$Enums.Priority;
-            slaStatus: import(".prisma/client").$Enums.SlaStatus;
-            dueAt: Date | null;
             packages: {
                 id: string;
                 status: import(".prisma/client").$Enums.PackageStatus;
@@ -173,6 +173,15 @@ export declare class OperationsController {
             createdAt: Date;
             status: import(".prisma/client").$Enums.OrderStatus;
             deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+            orderNumber: string;
+            customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+            totalAmount: import("@prisma/client/runtime/library").Decimal;
+            paidAmount: import("@prisma/client/runtime/library").Decimal;
+            balanceAmount: import("@prisma/client/runtime/library").Decimal;
+            paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
+            priority: import(".prisma/client").$Enums.Priority;
+            slaStatus: import(".prisma/client").$Enums.SlaStatus;
+            dueAt: Date | null;
             items: {
                 id: string;
                 quantity: number;
@@ -194,15 +203,6 @@ export declare class OperationsController {
                     isApproved: boolean;
                 }[];
             }[];
-            orderNumber: string;
-            customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
-            totalAmount: import("@prisma/client/runtime/library").Decimal;
-            paidAmount: import("@prisma/client/runtime/library").Decimal;
-            balanceAmount: import("@prisma/client/runtime/library").Decimal;
-            paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
-            priority: import(".prisma/client").$Enums.Priority;
-            slaStatus: import(".prisma/client").$Enums.SlaStatus;
-            dueAt: Date | null;
             packages: {
                 id: string;
                 status: import(".prisma/client").$Enums.PackageStatus;
@@ -282,6 +282,15 @@ export declare class OperationsController {
             createdAt: Date;
             status: import(".prisma/client").$Enums.OrderStatus;
             deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+            orderNumber: string;
+            customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+            totalAmount: import("@prisma/client/runtime/library").Decimal;
+            paidAmount: import("@prisma/client/runtime/library").Decimal;
+            balanceAmount: import("@prisma/client/runtime/library").Decimal;
+            paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
+            priority: import(".prisma/client").$Enums.Priority;
+            slaStatus: import(".prisma/client").$Enums.SlaStatus;
+            dueAt: Date | null;
             items: {
                 id: string;
                 quantity: number;
@@ -303,15 +312,6 @@ export declare class OperationsController {
                     isApproved: boolean;
                 }[];
             }[];
-            orderNumber: string;
-            customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
-            totalAmount: import("@prisma/client/runtime/library").Decimal;
-            paidAmount: import("@prisma/client/runtime/library").Decimal;
-            balanceAmount: import("@prisma/client/runtime/library").Decimal;
-            paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
-            priority: import(".prisma/client").$Enums.Priority;
-            slaStatus: import(".prisma/client").$Enums.SlaStatus;
-            dueAt: Date | null;
             packages: {
                 id: string;
                 status: import(".prisma/client").$Enums.PackageStatus;
@@ -391,6 +391,15 @@ export declare class OperationsController {
             createdAt: Date;
             status: import(".prisma/client").$Enums.OrderStatus;
             deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+            orderNumber: string;
+            customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+            totalAmount: import("@prisma/client/runtime/library").Decimal;
+            paidAmount: import("@prisma/client/runtime/library").Decimal;
+            balanceAmount: import("@prisma/client/runtime/library").Decimal;
+            paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
+            priority: import(".prisma/client").$Enums.Priority;
+            slaStatus: import(".prisma/client").$Enums.SlaStatus;
+            dueAt: Date | null;
             items: {
                 id: string;
                 quantity: number;
@@ -412,15 +421,6 @@ export declare class OperationsController {
                     isApproved: boolean;
                 }[];
             }[];
-            orderNumber: string;
-            customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
-            totalAmount: import("@prisma/client/runtime/library").Decimal;
-            paidAmount: import("@prisma/client/runtime/library").Decimal;
-            balanceAmount: import("@prisma/client/runtime/library").Decimal;
-            paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
-            priority: import(".prisma/client").$Enums.Priority;
-            slaStatus: import(".prisma/client").$Enums.SlaStatus;
-            dueAt: Date | null;
             packages: {
                 id: string;
                 status: import(".prisma/client").$Enums.PackageStatus;
@@ -500,6 +500,15 @@ export declare class OperationsController {
             createdAt: Date;
             status: import(".prisma/client").$Enums.OrderStatus;
             deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+            orderNumber: string;
+            customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+            totalAmount: import("@prisma/client/runtime/library").Decimal;
+            paidAmount: import("@prisma/client/runtime/library").Decimal;
+            balanceAmount: import("@prisma/client/runtime/library").Decimal;
+            paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
+            priority: import(".prisma/client").$Enums.Priority;
+            slaStatus: import(".prisma/client").$Enums.SlaStatus;
+            dueAt: Date | null;
             items: {
                 id: string;
                 quantity: number;
@@ -521,15 +530,6 @@ export declare class OperationsController {
                     isApproved: boolean;
                 }[];
             }[];
-            orderNumber: string;
-            customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
-            totalAmount: import("@prisma/client/runtime/library").Decimal;
-            paidAmount: import("@prisma/client/runtime/library").Decimal;
-            balanceAmount: import("@prisma/client/runtime/library").Decimal;
-            paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
-            priority: import(".prisma/client").$Enums.Priority;
-            slaStatus: import(".prisma/client").$Enums.SlaStatus;
-            dueAt: Date | null;
             packages: {
                 id: string;
                 status: import(".prisma/client").$Enums.PackageStatus;
@@ -652,14 +652,14 @@ export declare class OperationsController {
                 phone: string;
                 updatedAt: Date;
                 customerId: string;
-                isDefault: boolean;
                 type: string;
-                postalCode: string;
+                isDefault: boolean;
                 contactName: string;
                 street: string;
                 landmark: string | null;
                 city: string;
                 state: string;
+                postalCode: string;
                 country: string;
             }[];
         } & {
@@ -682,6 +682,38 @@ export declare class OperationsController {
             authorName: string;
             authorRole: import(".prisma/client").$Enums.UserRole;
         }[];
+        shippingAddress: {
+            id: string;
+            createdAt: Date;
+            phone: string;
+            updatedAt: Date;
+            customerId: string;
+            type: string;
+            isDefault: boolean;
+            contactName: string;
+            street: string;
+            landmark: string | null;
+            city: string;
+            state: string;
+            postalCode: string;
+            country: string;
+        } | null;
+        billingAddress: {
+            id: string;
+            createdAt: Date;
+            phone: string;
+            updatedAt: Date;
+            customerId: string;
+            type: string;
+            isDefault: boolean;
+            contactName: string;
+            street: string;
+            landmark: string | null;
+            city: string;
+            state: string;
+            postalCode: string;
+            country: string;
+        } | null;
         items: ({
             product: {
                 id: string;
@@ -701,9 +733,9 @@ export declare class OperationsController {
                     createdAt: Date;
                     description: string;
                     jobCardId: string;
+                    isResolved: boolean;
                     reasonCode: string;
                     reportedBy: string;
-                    isResolved: boolean;
                     resolvedBy: string | null;
                     resolvedAt: Date | null;
                 }[];
@@ -767,46 +799,14 @@ export declare class OperationsController {
             updatedAt: Date;
             sku: string;
             productId: string;
-            unitPrice: import("@prisma/client/runtime/library").Decimal;
-            quantity: number;
             totalPrice: import("@prisma/client/runtime/library").Decimal;
+            quantity: number;
+            unitPrice: import("@prisma/client/runtime/library").Decimal;
             productName: string;
             specifications: import("@prisma/client/runtime/library").JsonValue;
             approvedArtworkVersionId: string | null;
             designNotes: string | null;
         })[];
-        shippingAddress: {
-            id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
-            customerId: string;
-            isDefault: boolean;
-            type: string;
-            postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
-            city: string;
-            state: string;
-            country: string;
-        } | null;
-        billingAddress: {
-            id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
-            customerId: string;
-            isDefault: boolean;
-            type: string;
-            postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
-            city: string;
-            state: string;
-            country: string;
-        } | null;
         payments: {
             id: string;
             createdAt: Date;
@@ -891,8 +891,8 @@ export declare class OperationsController {
             id: string;
             createdAt: Date;
             orderId: string;
-            notes: string | null;
             type: import(".prisma/client").$Enums.QCInspectionType;
+            notes: string | null;
             items: import("@prisma/client/runtime/library").JsonValue;
             jobCardId: string | null;
             outcome: import(".prisma/client").$Enums.QCOutcome;

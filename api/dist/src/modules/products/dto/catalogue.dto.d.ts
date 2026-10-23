@@ -95,6 +95,7 @@ export declare class CreateProductOptionGroupDto {
     isCustomerVisible?: boolean;
     sortOrder?: number;
     enableAdditionalPricing?: boolean;
+    selectionBehavior?: string;
     isActive?: boolean;
     options?: CreateProductOptionDto[];
 }
@@ -124,6 +125,7 @@ export declare class CreateReusableOptionGroupDto {
     metadata?: any;
     sortOrder?: number;
     enableAdditionalPricing?: boolean;
+    selectionBehavior?: string;
     isActive?: boolean;
 }
 export declare class UpdateReusableOptionGroupDto {
@@ -135,6 +137,7 @@ export declare class UpdateReusableOptionGroupDto {
     metadata?: any;
     sortOrder?: number;
     enableAdditionalPricing?: boolean;
+    selectionBehavior?: string;
     isActive?: boolean;
 }
 export declare class CreateProductConfigurationRuleDto {
@@ -234,6 +237,8 @@ export declare class CreateProductDto {
     artworkFileFormats?: string[];
     maxArtworkFileSizeMb?: number;
     designServiceFee?: number;
+    allowMultipleVariants?: boolean;
+    variantDimensions?: string[];
 }
 export declare class UpdateProductDto {
     categoryId?: string;
@@ -278,6 +283,8 @@ export declare class UpdateProductDto {
     artworkFileFormats?: string[];
     maxArtworkFileSizeMb?: number;
     designServiceFee?: number;
+    allowMultipleVariants?: boolean;
+    variantDimensions?: string[];
 }
 export declare class CreateInventoryItemDto {
     name: string;

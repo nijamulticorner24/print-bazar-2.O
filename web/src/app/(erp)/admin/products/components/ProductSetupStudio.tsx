@@ -100,6 +100,12 @@ export function ProductSetupStudio({
       ? initialProduct.optionGroups
       : []
   );
+  const [allowMultipleVariants, setAllowMultipleVariants] = useState<boolean>(
+    initialProduct?.allowMultipleVariants ?? false
+  );
+  const [variantDimensions, setVariantDimensions] = useState<string[]>(
+    initialProduct?.variantDimensions || []
+  );
 
   // 3. CONDITIONAL RULES
   const [rules, setRules] = useState<ProductConfigurationRule[]>(
@@ -269,12 +275,17 @@ export function ProductSetupStudio({
         isPrimary: img.isPrimary,
       })),
 
+      // Variant Ordering
+      allowMultipleVariants,
+      variantDimensions,
+
       // Option Groups
       optionGroups: optionGroups.map((g, idx) => ({
         reusableGroupId: g.reusableGroupId || null,
         name: g.name.trim(),
         code: g.code.trim(),
         inputType: g.inputType || 'SELECT',
+        selectionBehavior: g.selectionBehavior || 'SINGLE',
         description: g.description,
         isRequired: g.isRequired,
         isCustomerVisible: g.isCustomerVisible,
@@ -572,6 +583,10 @@ export function ProductSetupStudio({
             productId={productId}
             optionGroups={optionGroups}
             setOptionGroups={setOptionGroups}
+            allowMultipleVariants={allowMultipleVariants}
+            setAllowMultipleVariants={setAllowMultipleVariants}
+            variantDimensions={variantDimensions}
+            setVariantDimensions={setVariantDimensions}
             matrixRows={matrixRows}
             setMatrixRows={setMatrixRows}
             basePrice={basePrice}

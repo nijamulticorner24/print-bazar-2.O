@@ -253,6 +253,10 @@ export class CreateProductOptionGroupDto {
   @IsOptional()
   enableAdditionalPricing?: boolean;
 
+  @IsString()
+  @IsOptional()
+  selectionBehavior?: string; // SINGLE, MULTIPLE, VARIANT_WISE
+
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
@@ -358,6 +362,10 @@ export class CreateReusableOptionGroupDto {
   @IsOptional()
   enableAdditionalPricing?: boolean;
 
+  @IsString()
+  @IsOptional()
+  selectionBehavior?: string; // SINGLE, MULTIPLE, VARIANT_WISE
+
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
@@ -393,6 +401,10 @@ export class UpdateReusableOptionGroupDto {
   @IsBoolean()
   @IsOptional()
   enableAdditionalPricing?: boolean;
+
+  @IsString()
+  @IsOptional()
+  selectionBehavior?: string; // SINGLE, MULTIPLE, VARIANT_WISE
 
   @IsBoolean()
   @IsOptional()
@@ -768,6 +780,15 @@ export class CreateProductDto {
   @IsNumber()
   @IsOptional()
   designServiceFee?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  allowMultipleVariants?: boolean;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  variantDimensions?: string[];
 }
 
 export class UpdateProductDto {
@@ -960,6 +981,15 @@ export class UpdateProductDto {
   @IsNumber()
   @IsOptional()
   designServiceFee?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  allowMultipleVariants?: boolean;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  variantDimensions?: string[];
 }
 
 // ==========================================

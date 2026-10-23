@@ -286,6 +286,8 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                     designServiceRequirement: dto.designServiceRequirement || 'DISABLED',
                     designServicePrice: dto.designServicePrice !== undefined ? dto.designServicePrice : 0,
                     designServiceFee: dto.designServiceFee !== undefined ? dto.designServiceFee : (dto.designServicePrice || 0),
+                    allowMultipleVariants: dto.allowMultipleVariants ?? false,
+                    variantDimensions: dto.variantDimensions || [],
                     shippingChargeType: dto.shippingChargeType || 'DEFAULT',
                     unitWeightGrams: dto.unitWeightGrams !== undefined ? dto.unitWeightGrams : 0,
                     courierCharge: dto.courierCharge !== undefined ? dto.courierCharge : 100,
@@ -326,6 +328,7 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                             isCustomerVisible: g.isCustomerVisible ?? true,
                             sortOrder: g.sortOrder ?? i,
                             enableAdditionalPricing: Boolean(g.enableAdditionalPricing),
+                            selectionBehavior: g.selectionBehavior || 'SINGLE',
                             isActive: g.isActive ?? true,
                         },
                     });
@@ -439,6 +442,8 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                 artworkFileFormats: dto.artworkFileFormats,
                 maxArtworkFileSizeMb: dto.maxArtworkFileSizeMb,
                 designServiceFee: dto.designServiceFee,
+                allowMultipleVariants: dto.allowMultipleVariants !== undefined ? dto.allowMultipleVariants : current.allowMultipleVariants,
+                variantDimensions: dto.variantDimensions !== undefined ? dto.variantDimensions : current.variantDimensions,
                 referenceImageRequirement: dto.referenceImageRequirement,
                 designServiceRequirement: dto.designServiceRequirement,
                 designServicePrice: dto.designServicePrice,
@@ -478,6 +483,7 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                             isCustomerVisible: g.isCustomerVisible ?? true,
                             sortOrder: g.sortOrder ?? i,
                             enableAdditionalPricing: Boolean(g.enableAdditionalPricing),
+                            selectionBehavior: g.selectionBehavior || 'SINGLE',
                             isActive: g.isActive ?? true,
                         },
                     });
@@ -859,6 +865,7 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                 metadata: dto.metadata || {},
                 sortOrder: dto.sortOrder ?? 0,
                 enableAdditionalPricing: Boolean(dto.enableAdditionalPricing),
+                selectionBehavior: dto.selectionBehavior || 'SINGLE',
                 isActive: dto.isActive ?? true,
             },
         });
@@ -893,6 +900,7 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                     ...(dto.metadata !== undefined && { metadata: dto.metadata }),
                     ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
                     ...(dto.enableAdditionalPricing !== undefined && { enableAdditionalPricing: dto.enableAdditionalPricing }),
+                    ...(dto.selectionBehavior !== undefined && { selectionBehavior: dto.selectionBehavior }),
                     ...(dto.isActive !== undefined && { isActive: dto.isActive }),
                 },
             });
@@ -919,6 +927,7 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                         inputType: nextInputType,
                         description: nextDescription,
                         enableAdditionalPricing: dto.enableAdditionalPricing !== undefined ? dto.enableAdditionalPricing : prodGrp.enableAdditionalPricing,
+                        selectionBehavior: dto.selectionBehavior !== undefined ? dto.selectionBehavior : prodGrp.selectionBehavior,
                         isActive: nextIsActive,
                     },
                 });

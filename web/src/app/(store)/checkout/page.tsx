@@ -52,12 +52,19 @@ export default function CheckoutPage() {
       valueName?: string;
       priceModifier?: number;
     }>;
+    variantLines?: Array<{
+      combination: Record<string, string>;
+      quantity: number;
+      unitPrice?: number;
+      lineSubtotal?: number;
+    }>;
     quote?: {
       subtotal?: number;
       totalTax?: number;
       estimatedShipping?: number;
       grandTotal?: number;
       unitPrice?: number;
+      variantLines?: any[];
     };
     artworkFile?: any;
     artworkFiles?: any;
@@ -265,6 +272,7 @@ export default function CheckoutPage() {
             unitPrice: cart?.quote?.unitPrice || subtotal / (cart?.quantity || 500),
             totalPrice: subtotal,
             specifications: cart?.specificationsSnapshot || cart?.fieldValues || {},
+            variantLines: cart?.variantLines || cart?.quote?.variantLines || null,
             artworkFile: cart?.artworkFile || null,
             artworkFiles: cart?.artworkFiles || null,
             referenceImage: cart?.referenceImage || null,
@@ -610,6 +618,24 @@ export default function CheckoutPage() {
                 <div className="text-[11px] text-slate-500 font-mono">
                   Quantity: {cart?.quantity || 500} units • {cart?.sku || 'COMM-01'}
                 </div>
+                {cart?.variantLines && cart.variantLines.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-slate-200/60 space-y-1">
+                    <span className="text-[10px] font-mono font-bold text-amber-900 uppercase block">
+                      Multi-Variant Lines ({cart.quantity} pcs total):
+                    </span>
+                    {cart.variantLines.map((vl: any, idx: number) => {
+                      const desc = Object.entries(vl.combination || {})
+                        .map(([k, v]) => `${k.toUpperCase()}: ${v}`)
+                        .join(' • ');
+                      return (
+                        <div key={idx} className="flex justify-between text-[11px] text-slate-700">
+                          <span>{desc}</span>
+                          <span className="font-mono font-bold text-slate-900">{vl.quantity} pcs</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Price Calculation */}

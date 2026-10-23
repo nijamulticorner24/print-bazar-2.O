@@ -353,6 +353,8 @@ export class AdminCatalogueService {
           designServiceRequirement: (dto.designServiceRequirement as any) || 'DISABLED',
           designServicePrice: dto.designServicePrice !== undefined ? dto.designServicePrice : 0,
           designServiceFee: dto.designServiceFee !== undefined ? dto.designServiceFee : (dto.designServicePrice || 0),
+          allowMultipleVariants: dto.allowMultipleVariants ?? false,
+          variantDimensions: dto.variantDimensions || [],
           shippingChargeType: dto.shippingChargeType || 'DEFAULT',
           unitWeightGrams: dto.unitWeightGrams !== undefined ? dto.unitWeightGrams : 0,
           courierCharge: dto.courierCharge !== undefined ? dto.courierCharge : 100,
@@ -397,6 +399,7 @@ export class AdminCatalogueService {
               isCustomerVisible: g.isCustomerVisible ?? true,
               sortOrder: g.sortOrder ?? i,
               enableAdditionalPricing: Boolean(g.enableAdditionalPricing),
+              selectionBehavior: g.selectionBehavior || 'SINGLE',
               isActive: g.isActive ?? true,
             },
           });
@@ -522,6 +525,8 @@ export class AdminCatalogueService {
         artworkFileFormats: dto.artworkFileFormats,
         maxArtworkFileSizeMb: dto.maxArtworkFileSizeMb,
         designServiceFee: dto.designServiceFee,
+        allowMultipleVariants: dto.allowMultipleVariants !== undefined ? dto.allowMultipleVariants : current.allowMultipleVariants,
+        variantDimensions: dto.variantDimensions !== undefined ? dto.variantDimensions : current.variantDimensions,
         referenceImageRequirement: dto.referenceImageRequirement as any,
         designServiceRequirement: dto.designServiceRequirement as any,
         designServicePrice: dto.designServicePrice,
@@ -565,6 +570,7 @@ export class AdminCatalogueService {
               isCustomerVisible: g.isCustomerVisible ?? true,
               sortOrder: g.sortOrder ?? i,
               enableAdditionalPricing: Boolean(g.enableAdditionalPricing),
+              selectionBehavior: g.selectionBehavior || 'SINGLE',
               isActive: g.isActive ?? true,
             },
           });
@@ -1004,6 +1010,7 @@ export class AdminCatalogueService {
         metadata: dto.metadata || {},
         sortOrder: dto.sortOrder ?? 0,
         enableAdditionalPricing: Boolean(dto.enableAdditionalPricing),
+        selectionBehavior: dto.selectionBehavior || 'SINGLE',
         isActive: dto.isActive ?? true,
       },
     });
@@ -1044,6 +1051,7 @@ export class AdminCatalogueService {
           ...(dto.metadata !== undefined && { metadata: dto.metadata }),
           ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
           ...(dto.enableAdditionalPricing !== undefined && { enableAdditionalPricing: dto.enableAdditionalPricing }),
+          ...(dto.selectionBehavior !== undefined && { selectionBehavior: dto.selectionBehavior }),
           ...(dto.isActive !== undefined && { isActive: dto.isActive }),
         },
       });
@@ -1075,6 +1083,7 @@ export class AdminCatalogueService {
             inputType: nextInputType,
             description: nextDescription,
             enableAdditionalPricing: dto.enableAdditionalPricing !== undefined ? dto.enableAdditionalPricing : prodGrp.enableAdditionalPricing,
+            selectionBehavior: dto.selectionBehavior !== undefined ? dto.selectionBehavior : prodGrp.selectionBehavior,
             isActive: nextIsActive,
           },
         });

@@ -30,8 +30,8 @@ export declare class QualityControlService {
         id: string;
         createdAt: Date;
         orderId: string;
-        notes: string | null;
         type: import(".prisma/client").$Enums.QCInspectionType;
+        notes: string | null;
         items: Prisma.JsonValue;
         jobCardId: string | null;
         outcome: import(".prisma/client").$Enums.QCOutcome;
@@ -48,8 +48,8 @@ export declare class QualityControlService {
         id: string;
         createdAt: Date;
         orderId: string;
-        notes: string | null;
         type: import(".prisma/client").$Enums.QCInspectionType;
+        notes: string | null;
         items: Prisma.JsonValue;
         jobCardId: string | null;
         outcome: import(".prisma/client").$Enums.QCOutcome;
@@ -99,9 +99,9 @@ export declare class QualityControlService {
             updatedAt: Date;
             sku: string;
             productId: string;
-            unitPrice: Prisma.Decimal;
-            quantity: number;
             totalPrice: Prisma.Decimal;
+            quantity: number;
+            unitPrice: Prisma.Decimal;
             productName: string;
             specifications: Prisma.JsonValue;
             approvedArtworkVersionId: string | null;
@@ -131,8 +131,8 @@ export declare class QualityControlService {
             id: string;
             createdAt: Date;
             orderId: string;
-            notes: string | null;
             type: import(".prisma/client").$Enums.QCInspectionType;
+            notes: string | null;
             items: Prisma.JsonValue;
             jobCardId: string | null;
             outcome: import(".prisma/client").$Enums.QCOutcome;

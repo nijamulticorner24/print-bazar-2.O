@@ -290,6 +290,7 @@ class CreateProductOptionGroupDto {
     isCustomerVisible;
     sortOrder;
     enableAdditionalPricing;
+    selectionBehavior;
     isActive;
     options;
 }
@@ -339,6 +340,11 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Boolean)
 ], CreateProductOptionGroupDto.prototype, "enableAdditionalPricing", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], CreateProductOptionGroupDto.prototype, "selectionBehavior", void 0);
 __decorate([
     (0, class_validator_1.IsBoolean)(),
     (0, class_validator_1.IsOptional)(),
@@ -447,6 +453,7 @@ class CreateReusableOptionGroupDto {
     metadata;
     sortOrder;
     enableAdditionalPricing;
+    selectionBehavior;
     isActive;
 }
 exports.CreateReusableOptionGroupDto = CreateReusableOptionGroupDto;
@@ -489,6 +496,11 @@ __decorate([
     __metadata("design:type", Boolean)
 ], CreateReusableOptionGroupDto.prototype, "enableAdditionalPricing", void 0);
 __decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], CreateReusableOptionGroupDto.prototype, "selectionBehavior", void 0);
+__decorate([
     (0, class_validator_1.IsBoolean)(),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Boolean)
@@ -502,6 +514,7 @@ class UpdateReusableOptionGroupDto {
     metadata;
     sortOrder;
     enableAdditionalPricing;
+    selectionBehavior;
     isActive;
 }
 exports.UpdateReusableOptionGroupDto = UpdateReusableOptionGroupDto;
@@ -543,6 +556,11 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Boolean)
 ], UpdateReusableOptionGroupDto.prototype, "enableAdditionalPricing", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], UpdateReusableOptionGroupDto.prototype, "selectionBehavior", void 0);
 __decorate([
     (0, class_validator_1.IsBoolean)(),
     (0, class_validator_1.IsOptional)(),
@@ -828,6 +846,8 @@ class CreateProductDto {
     artworkFileFormats;
     maxArtworkFileSizeMb;
     designServiceFee;
+    allowMultipleVariants;
+    variantDimensions;
 }
 exports.CreateProductDto = CreateProductDto;
 __decorate([
@@ -1061,6 +1081,17 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Number)
 ], CreateProductDto.prototype, "designServiceFee", void 0);
+__decorate([
+    (0, class_validator_1.IsBoolean)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
+], CreateProductDto.prototype, "allowMultipleVariants", void 0);
+__decorate([
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsString)({ each: true }),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Array)
+], CreateProductDto.prototype, "variantDimensions", void 0);
 class UpdateProductDto {
     categoryId;
     name;
@@ -1104,6 +1135,8 @@ class UpdateProductDto {
     artworkFileFormats;
     maxArtworkFileSizeMb;
     designServiceFee;
+    allowMultipleVariants;
+    variantDimensions;
 }
 exports.UpdateProductDto = UpdateProductDto;
 __decorate([
@@ -1336,6 +1369,17 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Number)
 ], UpdateProductDto.prototype, "designServiceFee", void 0);
+__decorate([
+    (0, class_validator_1.IsBoolean)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
+], UpdateProductDto.prototype, "allowMultipleVariants", void 0);
+__decorate([
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsString)({ each: true }),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Array)
+], UpdateProductDto.prototype, "variantDimensions", void 0);
 class CreateInventoryItemDto {
     name;
     sku;

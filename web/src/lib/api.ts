@@ -143,6 +143,7 @@ export interface ProductOptionGroup {
   name: string;
   code: string;
   inputType: string;
+  selectionBehavior?: 'SINGLE' | 'MULTIPLE' | 'VARIANT_WISE' | string;
   description?: string | null;
   isRequired: boolean;
   isCustomerVisible: boolean;
@@ -157,6 +158,7 @@ export interface ReusableOptionGroup {
   name: string;
   code: string;
   inputType: 'SELECT' | 'RADIO' | 'CHECKBOX' | 'TOGGLE' | string;
+  selectionBehavior?: 'SINGLE' | 'MULTIPLE' | 'VARIANT_WISE' | string;
   description?: string | null;
   defaultOptions?: Array<{
     label: string;
@@ -420,6 +422,8 @@ export interface DynamicProduct {
   freeShippingThreshold?: number | string | null;
   allowCod?: boolean;
   codSurcharge?: number | string | null;
+  allowMultipleVariants?: boolean;
+  variantDimensions?: string[];
   // Dynamic Product Flow Engine Configuration (Admin-Controlled)
   artworkRequirement?: ProductOptionRequirement;
   artworkPrice?: number | string | null;
@@ -558,6 +562,14 @@ export const api = {
     quantity: number;
     options?: Array<{ optionCode: string; valueCode: string }>;
     fieldValues?: Record<string, any>;
+    variantLines?: Array<{
+      id?: string;
+      sku?: string;
+      combination: Record<string, string>;
+      quantity: number;
+      artworkUrl?: string;
+      artworkFile?: any;
+    }>;
     hasArtwork?: boolean;
     hasDesignService?: boolean;
     hasReferenceImage?: boolean;

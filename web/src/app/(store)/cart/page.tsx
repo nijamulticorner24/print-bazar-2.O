@@ -287,27 +287,60 @@ export default function CartPage() {
                     </div>
                   </div>
 
+                  {/* Multi-Variant Line Breakdown if configured */}
+                  {item.variantLines && item.variantLines.length > 0 && (
+                    <div className="p-3 bg-amber-50/70 rounded-lg border border-amber-200/90 space-y-2">
+                      <div className="flex items-center justify-between text-[11px] font-mono font-bold text-amber-950 uppercase tracking-wider">
+                        <span>Multi-Variant Combination Breakdown</span>
+                        <span className="bg-amber-100 text-amber-900 px-2 py-0.5 rounded border border-amber-300">
+                          {item.quantity} Total Pcs
+                        </span>
+                      </div>
+                      <div className="divide-y divide-amber-200/60 text-xs">
+                        {item.variantLines.map((vl: any, vIdx: number) => {
+                          const comboStr = Object.entries(vl.combination || {})
+                            .map(([k, v]) => `${k.toUpperCase()}: ${v}`)
+                            .join(' • ');
+                          return (
+                            <div key={vIdx} className="py-1.5 flex items-center justify-between text-slate-800">
+                              <span className="font-semibold text-slate-900">{comboStr}</span>
+                              <span className="font-mono font-bold text-amber-900 bg-white px-2 py-0.5 rounded border border-amber-200">
+                                {vl.quantity} pcs {vl.unitPrice ? `(@ ₹${Number(vl.unitPrice).toFixed(2)})` : ''}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Quantity Controller & Payment Term */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-slate-600">Quantity:</span>
-                      <div className="flex items-center border border-slate-300 rounded-lg overflow-hidden bg-white shadow-xs">
-                        <button
-                          onClick={() => updateQuantity(idx, Math.max(1, item.quantity - 50))}
-                          className="px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100"
-                        >
-                          -
-                        </button>
-                        <span className="px-3 py-1 text-xs font-mono font-bold text-slate-900 border-x border-slate-200">
-                          {item.quantity}
+                      {item.variantLines && item.variantLines.length > 0 ? (
+                        <span className="px-3 py-1 text-xs font-mono font-bold text-slate-900 bg-slate-100 rounded-lg border border-slate-200">
+                          {item.quantity} pcs ({item.variantLines.length} variant combinations)
                         </span>
-                        <button
-                          onClick={() => updateQuantity(idx, item.quantity + 50)}
-                          className="px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100"
-                        >
-                          +
-                        </button>
-                      </div>
+                      ) : (
+                        <div className="flex items-center border border-slate-300 rounded-lg overflow-hidden bg-white shadow-xs">
+                          <button
+                            onClick={() => updateQuantity(idx, Math.max(1, item.quantity - 50))}
+                            className="px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                          >
+                            -
+                          </button>
+                          <span className="px-3 py-1 text-xs font-mono font-bold text-slate-900 border-x border-slate-200">
+                            {item.quantity}
+                          </span>
+                          <button
+                            onClick={() => updateQuantity(idx, item.quantity + 50)}
+                            className="px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                          >
+                            +
+                          </button>
+                        </div>
+                      )}
                       <span className="text-[11px] text-slate-500 font-mono ml-2">
                         ₹{(Number(item.totalPrice) / item.quantity).toFixed(2)} / unit
                       </span>

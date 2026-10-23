@@ -10,6 +10,38 @@ export declare class PackingController {
             fullName: string;
             phone: string;
         };
+        shippingAddress: {
+            id: string;
+            createdAt: Date;
+            phone: string;
+            updatedAt: Date;
+            customerId: string;
+            type: string;
+            isDefault: boolean;
+            contactName: string;
+            street: string;
+            landmark: string | null;
+            city: string;
+            state: string;
+            postalCode: string;
+            country: string;
+        } | null;
+        billingAddress: {
+            id: string;
+            createdAt: Date;
+            phone: string;
+            updatedAt: Date;
+            customerId: string;
+            type: string;
+            isDefault: boolean;
+            contactName: string;
+            street: string;
+            landmark: string | null;
+            city: string;
+            state: string;
+            postalCode: string;
+            country: string;
+        } | null;
         items: ({
             product: {
                 id: string;
@@ -52,46 +84,14 @@ export declare class PackingController {
             updatedAt: Date;
             sku: string;
             productId: string;
-            unitPrice: import("@prisma/client/runtime/library").Decimal;
-            quantity: number;
             totalPrice: import("@prisma/client/runtime/library").Decimal;
+            quantity: number;
+            unitPrice: import("@prisma/client/runtime/library").Decimal;
             productName: string;
             specifications: import("@prisma/client/runtime/library").JsonValue;
             approvedArtworkVersionId: string | null;
             designNotes: string | null;
         })[];
-        shippingAddress: {
-            id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
-            customerId: string;
-            isDefault: boolean;
-            type: string;
-            postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
-            city: string;
-            state: string;
-            country: string;
-        } | null;
-        billingAddress: {
-            id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
-            customerId: string;
-            isDefault: boolean;
-            type: string;
-            postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
-            city: string;
-            state: string;
-            country: string;
-        } | null;
         packages: ({
             shipment: {
                 id: string;
@@ -141,8 +141,8 @@ export declare class PackingController {
             id: string;
             createdAt: Date;
             orderId: string;
-            notes: string | null;
             type: import(".prisma/client").$Enums.QCInspectionType;
+            notes: string | null;
             items: import("@prisma/client/runtime/library").JsonValue;
             jobCardId: string | null;
             outcome: import(".prisma/client").$Enums.QCOutcome;
@@ -188,6 +188,38 @@ export declare class PackingController {
             gstin: string | null;
             userId: string | null;
         };
+        shippingAddress: {
+            id: string;
+            createdAt: Date;
+            phone: string;
+            updatedAt: Date;
+            customerId: string;
+            type: string;
+            isDefault: boolean;
+            contactName: string;
+            street: string;
+            landmark: string | null;
+            city: string;
+            state: string;
+            postalCode: string;
+            country: string;
+        } | null;
+        billingAddress: {
+            id: string;
+            createdAt: Date;
+            phone: string;
+            updatedAt: Date;
+            customerId: string;
+            type: string;
+            isDefault: boolean;
+            contactName: string;
+            street: string;
+            landmark: string | null;
+            city: string;
+            state: string;
+            postalCode: string;
+            country: string;
+        } | null;
         items: ({
             product: {
                 id: string;
@@ -235,6 +267,8 @@ export declare class PackingController {
                 artworkFileFormats: string[];
                 maxArtworkFileSizeMb: number;
                 designServiceFee: import("@prisma/client/runtime/library").Decimal | null;
+                allowMultipleVariants: boolean;
+                variantDimensions: string[];
             };
             artworkVersions: {
                 id: string;
@@ -271,46 +305,14 @@ export declare class PackingController {
             updatedAt: Date;
             sku: string;
             productId: string;
-            unitPrice: import("@prisma/client/runtime/library").Decimal;
-            quantity: number;
             totalPrice: import("@prisma/client/runtime/library").Decimal;
+            quantity: number;
+            unitPrice: import("@prisma/client/runtime/library").Decimal;
             productName: string;
             specifications: import("@prisma/client/runtime/library").JsonValue;
             approvedArtworkVersionId: string | null;
             designNotes: string | null;
         })[];
-        shippingAddress: {
-            id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
-            customerId: string;
-            isDefault: boolean;
-            type: string;
-            postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
-            city: string;
-            state: string;
-            country: string;
-        } | null;
-        billingAddress: {
-            id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
-            customerId: string;
-            isDefault: boolean;
-            type: string;
-            postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
-            city: string;
-            state: string;
-            country: string;
-        } | null;
         packages: ({
             shipment: {
                 id: string;
@@ -388,8 +390,8 @@ export declare class PackingController {
             id: string;
             createdAt: Date;
             orderId: string;
-            notes: string | null;
             type: import(".prisma/client").$Enums.QCInspectionType;
+            notes: string | null;
             items: import("@prisma/client/runtime/library").JsonValue;
             jobCardId: string | null;
             outcome: import(".prisma/client").$Enums.QCOutcome;

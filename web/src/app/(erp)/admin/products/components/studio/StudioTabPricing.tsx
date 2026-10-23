@@ -176,11 +176,11 @@ export function StudioTabPricing({
   // 1.5 DYNAMIC ADDITIONAL PRICING WORKSPACE STATE & HELPERS
   // ---------------------------------------------------------------------------
   const eligibleAdditionalGroups = useMemo(() => {
-    return optionGroups.filter((g) => Boolean(g.enableAdditionalPricing));
+    return optionGroups.filter((g) => g.isActive !== false && Boolean(g.enableAdditionalPricing));
   }, [optionGroups]);
 
   const [selectedAddonGroupId, setSelectedAddonGroupId] = useState<string>(() => {
-    return optionGroups.find((g) => Boolean(g.enableAdditionalPricing))?.id || '';
+    return optionGroups.find((g) => g.isActive !== false && Boolean(g.enableAdditionalPricing))?.id || '';
   });
 
   useEffect(() => {
@@ -192,6 +192,11 @@ export function StudioTabPricing({
   const activeAddonGroup = useMemo(() => {
     return eligibleAdditionalGroups.find((g) => g.id === selectedAddonGroupId) || eligibleAdditionalGroups[0] || null;
   }, [eligibleAdditionalGroups, selectedAddonGroupId]);
+
+  const visibleAddonGroupOptions = useMemo(() => {
+    if (!activeAddonGroup) return [];
+    return activeAddonGroup.options.filter((opt) => opt.isActive !== false);
+  }, [activeAddonGroup]);
 
   // Dynamic Quantity Tiers for Product Base Pricing & Additional Pricing (Positive Integers & Brackets like 1-10)
   const [addonQuantityTiers, setAddonQuantityTiers] = useState<AddonQuantityTierItem[]>(() => {
@@ -1960,19 +1965,18 @@ export function StudioTabPricing({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-xs">
-                        {activeAddonGroup.options.length === 0 ? (
+                        {visibleAddonGroupOptions.length === 0 ? (
                           <tr>
                             <td
                               colSpan={addonQuantityTiers.length + 3}
                               className="p-8 text-center text-slate-400 italic"
                             >
-                              No option choices configured in group &quot;{activeAddonGroup.name}&quot;. Configure choices in Step 2.
+                              No active option choices configured in group &quot;{activeAddonGroup.name}&quot;. Configure choices in Step 2.
                             </td>
                           </tr>
                         ) : (
-                          activeAddonGroup.options.map((opt) => {
+                          visibleAddonGroupOptions.map((opt) => {
                             const isExcluded = isAddonOptionExcluded(activeAddonGroup.code, opt.value);
-                            const isActiveChoice = opt.isActive !== false;
 
                             return (
                               <tr
@@ -1992,11 +1996,6 @@ export function StudioTabPricing({
                                     {opt.isDefault && (
                                       <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-mono">
                                         Default
-                                      </span>
-                                    )}
-                                    {!isActiveChoice && (
-                                      <span className="text-[9px] bg-rose-50 text-rose-700 px-1.5 py-0.2 rounded font-mono">
-                                        Inactive
                                       </span>
                                     )}
                                   </div>
@@ -2030,7 +2029,7 @@ export function StudioTabPricing({
                                   const currentRate = getAddonTierPrice(activeAddonGroup.code, opt.value, tier);
                                   const numRate = typeof currentRate === 'number' ? currentRate : 0;
                                   const tierTotal = Math.round(numRate * tier.minQty * 100) / 100;
-                                  const isMissing = !isExcluded && isActiveChoice && (currentRate === '' || currentRate === 0);
+                                  const isMissing = !isExcluded && (currentRate === '' || currentRate === 0);
 
                                   return (
                                     <td key={tier.id} className="py-2.5 px-3.5 text-right">
@@ -2146,7 +2145,9 @@ export function StudioTabPricing({
           {/* Left: Input Selectors */}
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {optionGroups.map((grp) => (
+              {optionGroups
+                .filter((grp) => grp.isActive !== false && grp.options.some((opt) => opt.isActive !== false))
+                .map((grp) => (
                 <div key={grp.id} className="space-y-1">
                   <label className="text-[11px] font-bold text-slate-700 block">
                     {grp.name}

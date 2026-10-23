@@ -104,6 +104,9 @@ let ProductsService = class ProductsService {
                 pricingMatrices: {
                     orderBy: { minQty: 'asc' },
                 },
+                additionalPricings: {
+                    orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
+                },
                 pricingSource: true,
             },
         });

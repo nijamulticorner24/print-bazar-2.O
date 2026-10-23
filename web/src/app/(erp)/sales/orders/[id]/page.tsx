@@ -286,6 +286,46 @@ export default function OrderDetailPage() {
                     ))}
                   </div>
                 )}
+
+                {/* Multi-Variant Line Breakdown if present */}
+                {((item.variants && item.variants.length > 0) || (item.specifications?.variantLines && item.specifications.variantLines.length > 0)) && (
+                  <div className="p-3 bg-amber-50/80 rounded-lg border border-amber-200 space-y-2">
+                    <div className="flex items-center justify-between text-[11px] font-mono font-bold text-amber-950 uppercase tracking-wider">
+                      <span>Multi-Variant Production Breakdown</span>
+                      <span className="bg-amber-100 text-amber-900 px-2 py-0.5 rounded border border-amber-300">
+                        {item.quantity} Total Pcs
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-amber-200 text-amber-900 font-semibold text-[11px]">
+                            <th className="pb-1">Variant Combination</th>
+                            <th className="pb-1 text-right">Quantity</th>
+                            <th className="pb-1 text-right">Unit Rate</th>
+                            <th className="pb-1 text-right">Line Subtotal</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-amber-100">
+                          {(item.variants || item.specifications?.variantLines || []).map((v: any, vIdx: number) => {
+                            const combo = v.combination || (v.variantOptionIds ? JSON.stringify(v.variantOptionIds) : {});
+                            const comboText = typeof combo === 'object'
+                              ? Object.entries(combo).map(([k, val]) => `${k.toUpperCase()}: ${val}`).join(' • ')
+                              : String(combo);
+                            return (
+                              <tr key={vIdx} className="text-slate-800">
+                                <td className="py-1.5 font-medium">{comboText}</td>
+                                <td className="py-1.5 text-right font-mono font-bold">{v.quantity} pcs</td>
+                                <td className="py-1.5 text-right font-mono text-slate-600">₹{Number(v.unitPrice || 0).toFixed(2)}</td>
+                                <td className="py-1.5 text-right font-mono font-bold text-slate-900">₹{Number(v.subtotal || (v.quantity * (v.unitPrice || 0))).toFixed(2)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
