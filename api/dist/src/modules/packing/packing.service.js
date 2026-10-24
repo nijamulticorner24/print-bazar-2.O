@@ -164,8 +164,13 @@ let PackingService = PackingService_1 = class PackingService {
         return exports.STANDARD_PACKAGING_MATERIALS;
     }
     async completePacking(dto, operatorId) {
-        const order = await this.prisma.order.findUnique({
-            where: { id: dto.orderId },
+        const order = await this.prisma.order.findFirst({
+            where: {
+                OR: [
+                    { id: dto.orderId },
+                    { orderNumber: dto.orderId },
+                ],
+            },
             include: {
                 customer: true,
                 shippingAddress: true,
@@ -178,7 +183,7 @@ let PackingService = PackingService_1 = class PackingService {
         if (!order) {
             throw new common_1.NotFoundException(`Order '${dto.orderId}' not found`);
         }
-        const evalResult = await this.workflowState.evaluatePackingEligibility(dto.orderId);
+        const evalResult = await this.workflowState.evaluatePackingEligibility(order.id);
         if (!evalResult.eligible) {
             if (evalResult.reasons.includes('PAYMENT_PENDING') || evalResult.reasons.includes('PAYMENT_PARTIAL')) {
                 throw new common_1.BadRequestException(`Packing blocked: Payment clearance is pending. Outstanding balance of ₹${evalResult.balanceAmount.toFixed(2)} must be cleared before packing.`);

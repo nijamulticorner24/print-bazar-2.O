@@ -395,6 +395,11 @@ model Product {
   allowMultipleVariants      Boolean                  @default(false)
   variantDimensions          String[]                 @default([])
 
+  // Personalization Template System (Admin-Controlled & Reusable)
+  personalizationTemplateId   String?
+  personalizationTemplate     PersonalizationTemplate? @relation(fields: [personalizationTemplateId], references: [id], onDelete: SetNull)
+  personalizationConfig       Json?                    // Optional product overrides: { isEnabled: boolean, requiredOverrides?: Record<string, boolean> }
+
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
@@ -411,6 +416,7 @@ model Product {
   @@index([categoryId])
   @@index([status])
   @@index([isActive])
+  @@index([personalizationTemplateId])
 }
 
 model ProductImage {
@@ -694,6 +700,7 @@ model OrderItem {
   unitPrice                Decimal          @db.Decimal(12, 2)
   totalPrice               Decimal          @db.Decimal(12, 2)
   specifications           Json             // Immutable snapshot of all selected options & values
+  personalizationData      Json?            // Snapshot: { templateId, templateName, sharedValues, items }
   approvedArtworkVersionId String?
   designNotes              String?
   createdAt                DateTime         @default(now())
@@ -702,6 +709,7 @@ model OrderItem {
   artworkVersions          ArtworkVersion[]
   jobCards                 JobCard[]
   variants                 OrderItemVariant[]
+  personalizationRecords   OrderItemPersonalization[]
 
   @@index([orderId])
   @@index([productId])
@@ -1102,6 +1110,67 @@ model ShippingZone {
   @@index([pincodePrefix])
   @@index([isActive])
 }
+
+// ==========================================
+// REUSABLE PERSONALIZATION TEMPLATE SYSTEM
+// ==========================================
+
+model PersonalizationTemplate {
+  id          String                 @id @default(uuid())
+  name        String                 // e.g. "Wedding Frame Template", "Birthday Keepsake", "Alumni Plaque"
+  code        String                 @unique // e.g. "wedding_frame_std", "birthday_gift_custom"
+  description String?
+  category    String?                // e.g. "FRAMES", "GIFTS", "AWARDS", "GENERAL"
+  isActive    Boolean                @default(true)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  fields      PersonalizationField[]
+  products    Product[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+model PersonalizationField {
+  id              String                  @id @default(uuid())
+  templateId      String
+  template        PersonalizationTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name            String                  // Display label, e.g. "Bride Name", "Wedding Date", "Recipient Name"
+  code            String                  // Stable alphanumeric identifier, e.g. "bride_name", "wedding_date", "recipient_name"
+  inputType       String                  @default("TEXT") // TEXT, TEXTAREA, NUMBER, DATE, EMAIL, PHONE, SELECT
+  scope           String                  @default("PER_ORDER") // PER_ORDER (shared across order item), PER_ITEM (repeats per unit qty)
+  isRequired      Boolean                 @default(true)
+  placeholder     String?
+  helperText      String?
+  defaultValue    String?
+  validationRules Json?                   // { minLength?: number, maxLength?: number, pattern?: string, minValue?: number, maxValue?: number }
+  options         Json?                   // For SELECT: [{ label: string, value: string }]
+  sortOrder       Int                     @default(0)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@unique([templateId, code])
+  @@index([templateId])
+  @@index([sortOrder])
+}
+
+model OrderItemPersonalization {
+  id                 String    @id @default(uuid())
+  orderItemId        String
+  orderItem          OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  itemIndex          Int       // 1-indexed item number (1 to quantity, e.g. 1 to 50 for 50 frames)
+  variantCombination Json?     // Snapshot of variant combination for this specific item if multi-variant
+  fieldValues        Json      // Per-item field values: { recipient_name: "Aarav Sharma" }
+  sharedValues       Json?     // Snapshot of PER_ORDER shared values: { bride_name: "Priya", wedding_date: "2026-11-20" }
+  status             String    @default("PENDING") // PENDING, VERIFIED, PRINTED
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([orderItemId])
+  @@index([orderItemId, itemIndex])
+}
+
 
 
 

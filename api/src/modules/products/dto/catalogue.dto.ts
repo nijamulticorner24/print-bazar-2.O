@@ -789,6 +789,13 @@ export class CreateProductDto {
   @IsString({ each: true })
   @IsOptional()
   variantDimensions?: string[];
+
+  @IsString()
+  @IsOptional()
+  personalizationTemplateId?: string;
+
+  @IsOptional()
+  personalizationConfig?: any;
 }
 
 export class UpdateProductDto {
@@ -990,6 +997,13 @@ export class UpdateProductDto {
   @IsString({ each: true })
   @IsOptional()
   variantDimensions?: string[];
+
+  @IsString()
+  @IsOptional()
+  personalizationTemplateId?: string;
+
+  @IsOptional()
+  personalizationConfig?: any;
 }
 
 // ==========================================

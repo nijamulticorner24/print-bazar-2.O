@@ -40,10 +40,10 @@ export declare class ProductionBoardController {
         orderId: string;
         updatedAt: Date;
         status: import(".prisma/client").$Enums.JobCardStatus;
-        priority: import(".prisma/client").$Enums.Priority;
-        dueAt: Date;
         approvedArtworkVersionId: string | null;
         orderItemId: string;
+        priority: import(".prisma/client").$Enums.Priority;
+        dueAt: Date;
         jobNumber: string;
         preHoldStatus: import(".prisma/client").$Enums.JobCardStatus | null;
         currentStation: string;

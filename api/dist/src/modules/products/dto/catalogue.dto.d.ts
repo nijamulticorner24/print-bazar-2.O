@@ -239,6 +239,8 @@ export declare class CreateProductDto {
     designServiceFee?: number;
     allowMultipleVariants?: boolean;
     variantDimensions?: string[];
+    personalizationTemplateId?: string;
+    personalizationConfig?: any;
 }
 export declare class UpdateProductDto {
     categoryId?: string;
@@ -285,6 +287,8 @@ export declare class UpdateProductDto {
     designServiceFee?: number;
     allowMultipleVariants?: boolean;
     variantDimensions?: string[];
+    personalizationTemplateId?: string;
+    personalizationConfig?: any;
 }
 export declare class CreateInventoryItemDto {
     name: string;

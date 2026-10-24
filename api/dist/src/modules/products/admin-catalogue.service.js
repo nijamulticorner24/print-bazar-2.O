@@ -220,6 +220,13 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                 additionalPricings: {
                     orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
                 },
+                personalizationTemplate: {
+                    include: {
+                        fields: {
+                            orderBy: { sortOrder: 'asc' },
+                        },
+                    },
+                },
                 pricingSource: {
                     include: {
                         syncLogs: {
@@ -288,6 +295,8 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                     designServiceFee: dto.designServiceFee !== undefined ? dto.designServiceFee : (dto.designServicePrice || 0),
                     allowMultipleVariants: dto.allowMultipleVariants ?? false,
                     variantDimensions: dto.variantDimensions || [],
+                    personalizationTemplateId: dto.personalizationTemplateId || null,
+                    personalizationConfig: dto.personalizationConfig || null,
                     shippingChargeType: dto.shippingChargeType || 'DEFAULT',
                     unitWeightGrams: dto.unitWeightGrams !== undefined ? dto.unitWeightGrams : 0,
                     courierCharge: dto.courierCharge !== undefined ? dto.courierCharge : 100,
@@ -444,6 +453,8 @@ let AdminCatalogueService = AdminCatalogueService_1 = class AdminCatalogueServic
                 designServiceFee: dto.designServiceFee,
                 allowMultipleVariants: dto.allowMultipleVariants !== undefined ? dto.allowMultipleVariants : current.allowMultipleVariants,
                 variantDimensions: dto.variantDimensions !== undefined ? dto.variantDimensions : current.variantDimensions,
+                personalizationTemplateId: dto.personalizationTemplateId !== undefined ? (dto.personalizationTemplateId || null) : current.personalizationTemplateId,
+                personalizationConfig: dto.personalizationConfig !== undefined ? dto.personalizationConfig : current.personalizationConfig,
                 referenceImageRequirement: dto.referenceImageRequirement,
                 designServiceRequirement: dto.designServiceRequirement,
                 designServicePrice: dto.designServicePrice,

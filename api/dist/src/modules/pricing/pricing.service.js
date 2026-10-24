@@ -13,50 +13,14 @@ exports.PricingService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma/prisma.service");
 const shipping_gst_service_1 = require("../shipping-gst/shipping-gst.service");
+const product_rules_engine_1 = require("../products/rules/product-rules-engine");
 function normalizeKey(str) {
     if (!str)
         return '';
     return String(str).toLowerCase().trim().replace(/[\s-]+/g, '_');
 }
 function matchesRuleCondition(rule, userSelections) {
-    if (rule.isActive === false)
-        return false;
-    const payload = rule.actionPayload || {};
-    if (payload.conditionCombination && typeof payload.conditionCombination === 'object') {
-        const entries = Object.entries(payload.conditionCombination);
-        if (entries.length === 0)
-            return false;
-        return entries.every(([grpCode, optVal]) => {
-            const userVal = userSelections[grpCode];
-            if (userVal === undefined || userVal === null)
-                return false;
-            return normalizeKey(userVal) === normalizeKey(optVal);
-        });
-    }
-    const condVal = userSelections[rule.conditionGroupCode];
-    if (condVal === undefined || condVal === null)
-        return false;
-    const normUser = normalizeKey(condVal);
-    const normRule = normalizeKey(rule.conditionOptionValue);
-    if (rule.conditionOperator === 'EQUALS') {
-        return normUser === normRule;
-    }
-    if (rule.conditionOperator === 'NOT_EQUALS') {
-        return normUser !== normRule;
-    }
-    if (rule.conditionOperator === 'IN') {
-        const arr = Array.isArray(rule.conditionOptionValue)
-            ? rule.conditionOptionValue.map((v) => normalizeKey(String(v)))
-            : String(rule.conditionOptionValue).split(',').map((s) => normalizeKey(s));
-        return arr.includes(normUser);
-    }
-    if (rule.conditionOperator === 'GREATER_THAN') {
-        return Number(condVal) > Number(rule.conditionOptionValue);
-    }
-    if (rule.conditionOperator === 'LESS_THAN') {
-        return Number(condVal) < Number(rule.conditionOptionValue);
-    }
-    return normUser === normRule;
+    return (0, product_rules_engine_1.matchesRuleConditions)(rule, userSelections);
 }
 let PricingService = class PricingService {
     prisma;
@@ -74,43 +38,66 @@ let PricingService = class PricingService {
         const specificationsSnapshot = {};
         const optionGroups = product.optionGroups || product.options || [];
         const configurationRules = product.configurationRules || [];
-        for (const group of optionGroups) {
-            let isVisible = true;
-            for (const rule of configurationRules) {
-                if (rule.isActive === false)
-                    continue;
-                if (rule.targetGroupCode === group.code) {
-                    const conditionMet = matchesRuleCondition(rule, userSelections);
-                    if ((rule.actionType === 'HIDE' || rule.actionType === 'HIDE_OPTION') && conditionMet) {
-                        const isPrintingLocation = /print(ing)?_?(loc(ation)?|side)/i.test(rule.targetGroupCode || '');
-                        const isDesignCondition = /design/i.test(rule.conditionGroupCode || '');
-                        if (isPrintingLocation && isDesignCondition)
-                            continue;
-                        isVisible = false;
-                    }
-                    else if (rule.actionType === 'SHOW' && !conditionMet) {
-                        const isPrintingLocation = /print(ing)?_?(loc(ation)?|side)/i.test(rule.targetGroupCode || '');
-                        const isDesignCondition = /design/i.test(rule.conditionGroupCode || '');
-                        if (isPrintingLocation && isDesignCondition)
-                            continue;
-                        isVisible = false;
-                    }
+        const ruleEval = (0, product_rules_engine_1.evaluateProductConfiguration)(optionGroups.map((g) => ({
+            id: g.id,
+            name: g.name,
+            code: g.code,
+            isRequired: g.isRequired,
+            isCustomerVisible: g.isCustomerVisible,
+            options: (g.options || g.values || []).map((o) => ({
+                id: o.id,
+                label: o.label || o.name,
+                value: o.value || o.code,
+                isActive: o.isActive,
+                isDefault: o.isDefault,
+                priceModifier: o.priceModifier,
+                priceModifierType: o.priceModifierType,
+            })),
+        })), configurationRules, userSelections);
+        if (ruleEval.invalidCombinations && ruleEval.invalidCombinations.length > 0) {
+            throw new common_1.BadRequestException(`Invalid option combination: ${ruleEval.invalidCombinations.map((c) => c.message).join('; ')}`);
+        }
+        for (const [grpCode, val] of Object.entries(initialSelections)) {
+            if (val === undefined || val === null || val === '')
+                continue;
+            const optKey = `${grpCode}:${val}`;
+            if (ruleEval.optionStatus[optKey]?.isDisabled === true) {
+                const reason = ruleEval.optionStatus[optKey]?.disabledReason ||
+                    `Option '${val}' in '${grpCode}' is not available with the current configuration.`;
+                throw new common_1.BadRequestException(reason);
+            }
+            const isPrintingLocation = /print(ing)?_?(loc(ation)?|side)/i.test(grpCode || '');
+            const isDesignCondition = configurationRules.some((r) => /design/i.test(r.conditionGroupCode || ''));
+            if (isPrintingLocation && isDesignCondition) {
+            }
+            else if (ruleEval.groupStatus[grpCode]?.isVisible === false) {
+                throw new common_1.BadRequestException(`Option group '${grpCode}' is not applicable for this configuration.`);
+            }
+        }
+        for (const [key, val] of Object.entries(ruleEval.sanitizedSelections)) {
+            if (userSelections[key] === undefined || userSelections[key] === null || userSelections[key] === '') {
+                if (val !== undefined && val !== null) {
+                    userSelections[key] = val;
                 }
+            }
+        }
+        for (const group of optionGroups) {
+            let isVisible = ruleEval.groupStatus[group.code]?.isVisible !== false;
+            const isPrintingLocation = /print(ing)?_?(loc(ation)?|side)/i.test(group.code || '');
+            const isDesignCondition = configurationRules.some((r) => /design/i.test(r.conditionGroupCode || ''));
+            if (isPrintingLocation && isDesignCondition) {
+                isVisible = true;
             }
             if (!isVisible) {
                 delete userSelections[group.code];
                 continue;
             }
-            for (const rule of configurationRules) {
-                if (rule.isActive === false)
+            const activeOptVal = userSelections[group.code];
+            if (activeOptVal !== undefined && activeOptVal !== null && activeOptVal !== '') {
+                const optKey = `${group.code}:${activeOptVal}`;
+                if (ruleEval.optionStatus[optKey]?.isVisible === false) {
+                    delete userSelections[group.code];
                     continue;
-                if (rule.targetGroupCode === group.code && rule.targetOptionValue) {
-                    const conditionMet = matchesRuleCondition(rule, userSelections);
-                    if ((rule.actionType === 'HIDE' || rule.actionType === 'HIDE_OPTION') && conditionMet) {
-                        if (normalizeKey(userSelections[group.code]) === normalizeKey(rule.targetOptionValue)) {
-                            delete userSelections[group.code];
-                        }
-                    }
                 }
             }
             const groupOptions = group.options || group.values || [];

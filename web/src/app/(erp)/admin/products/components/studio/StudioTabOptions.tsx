@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   RiAddLine,
   RiSearch2Line,
@@ -22,7 +22,7 @@ import {
   RiArrowDropUpLine,
   RiSparklingFill,
 } from 'react-icons/ri';
-import { ProductOptionGroup, ProductOption, ReusableOptionGroup, api } from '@/lib/api';
+import { ProductOptionGroup, ProductOption, ReusableOptionGroup, PersonalizationTemplate, api } from '@/lib/api';
 import { Modal } from '@/components/ui';
 import { MatrixRowItem } from './StudioTabPricing';
 import { StudioTab } from './StudioTabReview';
@@ -42,6 +42,10 @@ export interface StudioTabOptionsProps {
   pricingModel?: string;
   rules?: any[];
   defaultSize?: string;
+  personalizationTemplateId?: string | null;
+  setPersonalizationTemplateId?: (id: string | null) => void;
+  personalizationConfig?: any;
+  setPersonalizationConfig?: (cfg: any) => void;
   onChange?: () => void;
   onNavigateToTab?: (tab: StudioTab) => void;
 }
@@ -61,12 +65,33 @@ export function StudioTabOptions({
   pricingModel,
   rules,
   defaultSize,
+  personalizationTemplateId,
+  setPersonalizationTemplateId,
+  personalizationConfig,
+  setPersonalizationConfig,
   onChange,
   onNavigateToTab,
 }: StudioTabOptionsProps) {
   const [selectedGroupIndex, setSelectedGroupIndex] = useState<number>(0);
   const [searchFilter, setSearchFilter] = useState('');
   const [choiceFilter, setChoiceFilter] = useState<'ALL' | 'ACTIVE' | 'EXCLUDED'>('ALL');
+
+  // Personalization Templates State
+  const [personalizationTemplates, setPersonalizationTemplates] = useState<PersonalizationTemplate[]>([]);
+  const [isLoadingPersonalization, setIsLoadingPersonalization] = useState(false);
+
+  useEffect(() => {
+    setIsLoadingPersonalization(true);
+    api.adminListPersonalizationTemplates({ isActive: true })
+      .then((data) => setPersonalizationTemplates(data || []))
+      .catch(() => {})
+      .finally(() => setIsLoadingPersonalization(false));
+  }, []);
+
+  const attachedTemplate = useMemo(() => {
+    if (!personalizationTemplateId) return null;
+    return personalizationTemplates.find((t) => t.id === personalizationTemplateId) || null;
+  }, [personalizationTemplateId, personalizationTemplates]);
 
   // Library Modal State
   const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
@@ -97,6 +122,19 @@ export function StudioTabOptions({
     if (!activeGroup) return [];
     return activeGroup.options.filter((o) => o.isActive !== false);
   }, [activeGroup]);
+
+  // Conditional Dependencies for the active group
+  const activeGroupRules = useMemo(() => {
+    if (!activeGroup || !Array.isArray(rules)) return { incoming: [], outgoing: [] };
+    const incoming = rules.filter((r) => r.targetGroupCode === activeGroup.code);
+    const outgoing = rules.filter(
+      (r) =>
+        r.conditionGroupCode === activeGroup.code ||
+        (Array.isArray(r.actionPayload?.conditions) &&
+          r.actionPayload.conditions.some((c: any) => c.groupCode === activeGroup.code))
+    );
+    return { incoming, outgoing };
+  }, [activeGroup, rules]);
 
   const isAllActiveInGroup = Boolean(
     activeGroup &&
@@ -756,6 +794,107 @@ export function StudioTabOptions({
         )}
       </div>
 
+      {/* Reusable Personalization Template Architecture (Keepsakes, Frames, Custom Gifts) */}
+      <div className="bg-gradient-to-r from-purple-50/50 via-white to-indigo-50/40 rounded-xl border border-purple-200/90 p-4 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-purple-950 uppercase tracking-wider">
+                Personalization Template Architecture
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                KEEPSAKES & FRAMES
+              </span>
+              {attachedTemplate && (
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  ATTACHED
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-600">
+              Attach a reusable template for wedding details, recipient name rosters, or occasion text.
+              <strong className="text-purple-900 font-medium"> Kept distinct from printing options and variant dimensions.</strong>
+            </p>
+          </div>
+
+          <a
+            href="/admin/personalization-templates"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-semibold text-purple-700 hover:text-purple-900 underline shrink-0 flex items-center gap-1"
+          >
+            Manage Templates Library ↗
+          </a>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-purple-100">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Select Attached Personalization Template
+            </label>
+            <select
+              value={personalizationTemplateId || ''}
+              onChange={(e) => {
+                const val = e.target.value || null;
+                setPersonalizationTemplateId?.(val);
+                onChange?.();
+              }}
+              className="w-full px-3 py-2 rounded-lg border border-purple-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            >
+              <option value="">None (Standard Commercial Print / No Inscriptions)</option>
+              {personalizationTemplates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.code}) {t.category ? `— ${t.category}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {attachedTemplate && (
+            <div className="bg-white/80 p-3 rounded-lg border border-purple-200/80 flex flex-col justify-center gap-1.5 text-xs">
+              <div className="font-semibold text-purple-950 flex items-center justify-between">
+                <span>{attachedTemplate.name}</span>
+                <span className="font-mono text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                  {attachedTemplate.code}
+                </span>
+              </div>
+              {attachedTemplate.description && (
+                <p className="text-[11px] text-slate-500 line-clamp-1">
+                  {attachedTemplate.description}
+                </p>
+              )}
+              <div className="flex items-center gap-2 pt-1 flex-wrap">
+                <span className="text-[11px] text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200 font-medium">
+                  {attachedTemplate.fields.filter((f) => f.scope === 'PER_ORDER').length} Shared Fields (PER_ORDER)
+                </span>
+                <span className="text-[11px] text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 font-medium">
+                  {attachedTemplate.fields.filter((f) => f.scope === 'PER_ITEM').length} Per-Item Fields (PER_ITEM)
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {attachedTemplate && attachedTemplate.fields.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-purple-100 flex flex-wrap gap-1.5">
+            {attachedTemplate.fields.map((f, i) => (
+              <span
+                key={i}
+                className={`text-[10px] px-2 py-0.5 rounded-full font-mono border ${
+                  f.scope === 'PER_ORDER'
+                    ? 'bg-sky-50 text-sky-800 border-sky-200'
+                    : 'bg-purple-50 text-purple-800 border-purple-200'
+                }`}
+                title={`Input: ${f.inputType} | Scope: ${f.scope} | Required: ${f.isRequired ? 'Yes' : 'No'}`}
+              >
+                {f.name} {f.isRequired && <span className="text-rose-600 font-bold">*</span>}{' '}
+                <span className="text-[9px] opacity-70">({f.scope === 'PER_ORDER' ? 'Shared' : 'Per-Item'})</span>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Top Action Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs">
         <div>
@@ -987,10 +1126,20 @@ export function StudioTabOptions({
                       onChange={(e) => updateActiveGroup({ inputType: e.target.value })}
                       className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-amber-500 cursor-pointer"
                     >
-                      <option value="SELECT">SELECT (Dropdown list)</option>
-                      <option value="RADIO">RADIO (Button group cards)</option>
-                      <option value="CHECKBOX">CHECKBOX (Multi-select add-on)</option>
-                      <option value="TOGGLE">TOGGLE (Yes/No switch)</option>
+                      <optgroup label="Choice & Selection Controls">
+                        <option value="SELECT">SELECT (Dropdown list)</option>
+                        <option value="RADIO">RADIO (Button group cards)</option>
+                        <option value="CHECKBOX">CHECKBOX (Multi-select add-on)</option>
+                        <option value="TOGGLE">TOGGLE (Yes/No switch)</option>
+                      </optgroup>
+                      <optgroup label="Text & Freeform Inputs">
+                        <option value="TEXT">TEXT (Single-line input)</option>
+                        <option value="TEXTAREA">TEXTAREA (Multi-line note/instructions)</option>
+                        <option value="NUMBER">NUMBER (Numeric quantity/count)</option>
+                        <option value="DATE">DATE (Date picker)</option>
+                        <option value="EMAIL">EMAIL (Email address)</option>
+                        <option value="PHONE">PHONE (Phone number)</option>
+                      </optgroup>
                     </select>
                   </div>
 
@@ -1040,6 +1189,78 @@ export function StudioTabOptions({
                   </label>
                 </div>
               </div>
+
+              {/* Conditional Option Dependencies & Rules Banner */}
+              {(activeGroupRules.incoming.length > 0 || activeGroupRules.outgoing.length > 0) ? (
+                <div className="p-4 bg-gradient-to-r from-amber-50/80 via-white to-amber-50/40 border border-amber-200/90 rounded-xl space-y-2 text-xs shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <RiSparklingFill className="w-4 h-4 text-amber-600" />
+                      <span className="font-bold text-slate-900 uppercase font-mono tracking-wider text-[11px]">
+                        Conditional Option Dependencies ({activeGroupRules.incoming.length + activeGroupRules.outgoing.length} Rules Linked)
+                      </span>
+                    </div>
+                    {onNavigateToTab && (
+                      <button
+                        type="button"
+                        onClick={() => onNavigateToTab('ARTWORK_CONDITIONS')}
+                        className="text-[11px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-2.5 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Configure Rules in Step 3</span>
+                        <RiArrowRightLine className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                    {activeGroupRules.incoming.length > 0 && (
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase block font-mono">
+                          Targeted By (Controlling Conditions):
+                        </span>
+                        <div className="space-y-1">
+                          {activeGroupRules.incoming.map((r, i) => (
+                            <div key={r.id || i} className="p-1.5 bg-white border border-slate-200 rounded text-[11px] text-slate-800 flex items-center justify-between">
+                              <span className="font-semibold truncate">{r.name}</span>
+                              <span className="text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0 ml-2">
+                                {r.actionType}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {activeGroupRules.outgoing.length > 0 && (
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase block font-mono">
+                          Controls Other Options (Triggers):
+                        </span>
+                        <div className="space-y-1">
+                          {activeGroupRules.outgoing.map((r, i) => (
+                            <div key={r.id || i} className="p-1.5 bg-white border border-slate-200 rounded text-[11px] text-slate-800 flex items-center justify-between">
+                              <span className="font-semibold truncate">{r.name}</span>
+                              <span className="text-[10px] font-mono font-bold bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200 shrink-0 ml-2">
+                                → {r.targetGroupCode || r.actionType}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : onNavigateToTab ? (
+                <div className="p-3 bg-slate-50 border border-dashed border-slate-200 rounded-xl flex items-center justify-between text-xs text-slate-600">
+                  <span>No conditional rules linked to <strong>{activeGroup.name}</strong> yet.</span>
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToTab('ARTWORK_CONDITIONS')}
+                    className="text-[11px] font-bold text-amber-800 hover:text-amber-950 underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Add conditional dependency</span>
+                    <RiArrowRightLine className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : null}
 
               {/* Options Table Card */}
               <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">

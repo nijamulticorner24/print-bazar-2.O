@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, Department, ProductStatus, ProductFieldType, InventoryCategory, OrderStatus } from '@prisma/client';
+import { PrismaClient, UserRole, Department, ProductStatus, InventoryCategory, OrderStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -25,14 +25,14 @@ async function main() {
     await prisma.customer.deleteMany();
     await prisma.user.deleteMany();
 
-    // Clear all catalog/product tables to leave only the 2 seed products
+    // Clear all catalog/product tables to leave only the seed products
     await prisma.stockMovement.deleteMany();
-    await prisma.productFieldOption.deleteMany();
-    await prisma.productField.deleteMany();
-    await prisma.productImage.deleteMany();
+    await prisma.productConfigurationRule.deleteMany();
+    await prisma.productAdditionalPricing.deleteMany();
     await prisma.pricingMatrix.deleteMany();
-    await prisma.productOptionValue.deleteMany();
     await prisma.productOption.deleteMany();
+    await prisma.productOptionGroup.deleteMany();
+    await prisma.productImage.deleteMany();
     await prisma.product.deleteMany();
     await prisma.productCategory.deleteMany();
     console.log('✅ Wiped all previous transactional data, test products, and custom test users.');
@@ -304,15 +304,15 @@ async function main() {
     ],
   });
 
-  // Dynamic Fields for Business Cards
-  await prisma.productField.deleteMany({ where: { productId: prodBizCards.id } });
+  // Dynamic Option Groups for Business Cards
+  await prisma.productOptionGroup.deleteMany({ where: { productId: prodBizCards.id } });
 
-  const f1Paper = await prisma.productField.create({
+  await prisma.productOptionGroup.create({
     data: {
       productId: prodBizCards.id,
-      label: 'Paper Substrate',
-      key: 'paper_stock',
-      type: ProductFieldType.SELECT,
+      name: 'Paper Substrate',
+      code: 'paper_stock',
+      inputType: 'SELECT',
       description: 'Select your preferred paper weight and surface texture',
       isRequired: true,
       sortOrder: 1,
@@ -326,12 +326,12 @@ async function main() {
     },
   });
 
-  const f2Lam = await prisma.productField.create({
+  await prisma.productOptionGroup.create({
     data: {
       productId: prodBizCards.id,
-      label: 'Lamination Finish',
-      key: 'lamination',
-      type: ProductFieldType.SELECT,
+      name: 'Lamination Finish',
+      code: 'lamination',
+      inputType: 'SELECT',
       description: 'Protective thermal coating applied to both sides',
       isRequired: true,
       sortOrder: 2,
@@ -346,15 +346,14 @@ async function main() {
     },
   });
 
-  const f3Corners = await prisma.productField.create({
+  await prisma.productOptionGroup.create({
     data: {
       productId: prodBizCards.id,
-      label: 'Round Corners (Die Cut)',
-      key: 'round_corners',
-      type: ProductFieldType.TOGGLE,
+      name: 'Round Corners (Die Cut)',
+      code: 'round_corners',
+      inputType: 'TOGGLE',
       description: 'Smooth 5mm radius die-cut rounded edges',
       isRequired: false,
-      defaultValue: 'no',
       sortOrder: 3,
       options: {
         create: [
@@ -444,56 +443,50 @@ async function main() {
     ],
   });
 
-  await prisma.productField.deleteMany({ where: { productId: prodBox.id } });
+  await prisma.productOptionGroup.deleteMany({ where: { productId: prodBox.id } });
 
-  await prisma.productField.create({
+  await prisma.productOptionGroup.create({
     data: {
       productId: prodBox.id,
-      label: 'Box Length (mm)',
-      key: 'box_length_mm',
-      type: ProductFieldType.NUMBER,
+      name: 'Box Length (mm)',
+      code: 'box_length_mm',
+      inputType: 'NUMBER',
       description: 'External box length in millimeters (100mm to 500mm)',
-      defaultValue: '200',
       isRequired: true,
       sortOrder: 1,
-      validationRules: { min: 100, max: 500, step: 5 },
     },
   });
 
-  await prisma.productField.create({
+  await prisma.productOptionGroup.create({
     data: {
       productId: prodBox.id,
-      label: 'Box Width (mm)',
-      key: 'box_width_mm',
-      type: ProductFieldType.NUMBER,
+      name: 'Box Width (mm)',
+      code: 'box_width_mm',
+      inputType: 'NUMBER',
       description: 'External box width in millimeters (100mm to 500mm)',
-      defaultValue: '150',
       isRequired: true,
       sortOrder: 2,
-      validationRules: { min: 100, max: 500, step: 5 },
     },
   });
 
-  await prisma.productField.create({
+  await prisma.productOptionGroup.create({
     data: {
       productId: prodBox.id,
-      label: 'Box Height (mm)',
-      key: 'box_height_mm',
-      type: ProductFieldType.NUMBER,
+      name: 'Box Height (mm)',
+      code: 'box_height_mm',
+      inputType: 'NUMBER',
       description: 'External box depth/height in millimeters (30mm to 200mm)',
-      defaultValue: '60',
       isRequired: true,
       sortOrder: 3,
-      validationRules: { min: 30, max: 200, step: 5 },
     },
   });
 
-  await prisma.productField.create({
+  await prisma.productOptionGroup.create({
     data: {
       productId: prodBox.id,
-      label: 'Kappa Board Core Thickness',
-      key: 'board_thickness',
-      type: ProductFieldType.SELECT,
+      name: 'Kappa Board Core Thickness',
+      code: 'board_thickness',
+      inputType: 'SELECT',
       description: 'Rigid board caliper for structural integrity',
       isRequired: true,
       sortOrder: 4,
@@ -507,16 +500,15 @@ async function main() {
     },
   });
 
-  // Conditional Field 1: Need Foil Stamping?
-  await prisma.productField.create({
+  // Conditional Option 1: Need Foil Stamping?
+  await prisma.productOptionGroup.create({
     data: {
       productId: prodBox.id,
-      label: 'Need Hot Foil Stamping?',
-      key: 'need_foil',
-      type: ProductFieldType.TOGGLE,
+      name: 'Need Hot Foil Stamping?',
+      code: 'need_foil',
+      inputType: 'TOGGLE',
       description: 'Metallic foil monogram on box lid',
       isRequired: false,
-      defaultValue: 'no',
       sortOrder: 5,
       options: {
         create: [
@@ -527,21 +519,16 @@ async function main() {
     },
   });
 
-  // Conditional Field 2: Foil Color (ONLY visible IF need_foil = 'yes')
-  await prisma.productField.create({
+  // Conditional Option 2: Foil Color (ONLY visible IF need_foil = 'yes')
+  await prisma.productOptionGroup.create({
     data: {
       productId: prodBox.id,
-      label: 'Foil Stamping Color',
-      key: 'foil_color',
-      type: ProductFieldType.SELECT,
+      name: 'Foil Stamping Color',
+      code: 'foil_color',
+      inputType: 'SELECT',
       description: 'Select hot stamping metallic foil pigment',
       isRequired: true,
       sortOrder: 6,
-      conditionalLogic: {
-        dependsOnFieldKey: 'need_foil',
-        operator: 'EQUALS',
-        value: 'yes',
-      },
       options: {
         create: [
           { label: 'Crown Mirror Gold', value: 'mirror_gold', priceModifier: 0.0, priceModifierType: 'FIXED', isDefault: true, sortOrder: 0 },
@@ -553,12 +540,27 @@ async function main() {
     },
   });
 
-  await prisma.productField.create({
+  // Create configuration rule linking need_foil -> foil_color
+  await prisma.productConfigurationRule.deleteMany({ where: { productId: prodBox.id } });
+  await prisma.productConfigurationRule.create({
     data: {
       productId: prodBox.id,
-      label: 'Special Fabrication Instructions',
-      key: 'fabrication_notes',
-      type: ProductFieldType.TEXTAREA,
+      name: 'Show Foil Color only if Foil is chosen',
+      conditionGroupCode: 'need_foil',
+      conditionOperator: 'EQUALS',
+      conditionOptionValue: 'yes',
+      actionType: 'SHOW',
+      targetGroupCode: 'foil_color',
+      isActive: true,
+    },
+  });
+
+  await prisma.productOptionGroup.create({
+    data: {
+      productId: prodBox.id,
+      name: 'Special Fabrication Instructions',
+      code: 'fabrication_notes',
+      inputType: 'TEXTAREA',
       description: 'Enter any specific slot dimensions or ribbon puller preferences',
       isRequired: false,
       sortOrder: 7,
@@ -608,14 +610,14 @@ async function main() {
     ],
   });
 
-  await prisma.productField.deleteMany({ where: { productId: prodStandee.id } });
+  await prisma.productOptionGroup.deleteMany({ where: { productId: prodStandee.id } });
 
-  await prisma.productField.create({
+  await prisma.productOptionGroup.create({
     data: {
       productId: prodStandee.id,
-      label: 'Standee Size',
-      key: 'standee_size',
-      type: ProductFieldType.SELECT,
+      name: 'Standee Size',
+      code: 'standee_size',
+      inputType: 'SELECT',
       description: 'Select standard display dimension',
       isRequired: true,
       sortOrder: 1,
@@ -628,12 +630,12 @@ async function main() {
     },
   });
 
-  await prisma.productField.create({
+  await prisma.productOptionGroup.create({
     data: {
       productId: prodStandee.id,
-      label: 'Media Substrate',
-      key: 'media_type',
-      type: ProductFieldType.SELECT,
+      name: 'Media Substrate',
+      code: 'media_type',
+      inputType: 'SELECT',
       description: 'Print substrate quality & opacity',
       isRequired: true,
       sortOrder: 2,

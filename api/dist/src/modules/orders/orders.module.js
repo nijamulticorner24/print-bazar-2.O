@@ -12,12 +12,13 @@ const orders_service_1 = require("./orders.service");
 const orders_controller_1 = require("./orders.controller");
 const pricing_module_1 = require("../pricing/pricing.module");
 const shipping_gst_module_1 = require("../shipping-gst/shipping-gst.module");
+const products_module_1 = require("../products/products.module");
 let OrdersModule = class OrdersModule {
 };
 exports.OrdersModule = OrdersModule;
 exports.OrdersModule = OrdersModule = __decorate([
     (0, common_1.Module)({
-        imports: [pricing_module_1.PricingModule, shipping_gst_module_1.ShippingGstModule],
+        imports: [pricing_module_1.PricingModule, shipping_gst_module_1.ShippingGstModule, products_module_1.ProductsModule],
         controllers: [orders_controller_1.OrdersController],
         providers: [orders_service_1.OrdersService],
         exports: [orders_service_1.OrdersService],

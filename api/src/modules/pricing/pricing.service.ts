@@ -1,6 +1,11 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShippingGstService } from '../shipping-gst/shipping-gst.service';
+import {
+  evaluateProductConfiguration,
+  matchesRuleConditions,
+  normalizeValue,
+} from '../products/rules/product-rules-engine';
 
 export interface OptionSelectionDto {
   optionCode: string;
@@ -133,46 +138,7 @@ function normalizeKey(str: string | undefined | null): string {
 }
 
 function matchesRuleCondition(rule: any, userSelections: Record<string, any>): boolean {
-  if (rule.isActive === false) return false;
-  const payload = (rule.actionPayload as any) || {};
-
-  // Case 1: Multi-group combination condition
-  if (payload.conditionCombination && typeof payload.conditionCombination === 'object') {
-    const entries = Object.entries(payload.conditionCombination);
-    if (entries.length === 0) return false;
-    return entries.every(([grpCode, optVal]) => {
-      const userVal = userSelections[grpCode];
-      if (userVal === undefined || userVal === null) return false;
-      return normalizeKey(userVal) === normalizeKey(optVal as string);
-    });
-  }
-
-  // Case 2: Single-group condition
-  const condVal = userSelections[rule.conditionGroupCode];
-  if (condVal === undefined || condVal === null) return false;
-
-  const normUser = normalizeKey(condVal);
-  const normRule = normalizeKey(rule.conditionOptionValue);
-
-  if (rule.conditionOperator === 'EQUALS') {
-    return normUser === normRule;
-  }
-  if (rule.conditionOperator === 'NOT_EQUALS') {
-    return normUser !== normRule;
-  }
-  if (rule.conditionOperator === 'IN') {
-    const arr = Array.isArray(rule.conditionOptionValue)
-      ? rule.conditionOptionValue.map((v: any) => normalizeKey(String(v)))
-      : String(rule.conditionOptionValue).split(',').map((s: string) => normalizeKey(s));
-    return arr.includes(normUser);
-  }
-  if (rule.conditionOperator === 'GREATER_THAN') {
-    return Number(condVal) > Number(rule.conditionOptionValue);
-  }
-  if (rule.conditionOperator === 'LESS_THAN') {
-    return Number(condVal) < Number(rule.conditionOptionValue);
-  }
-  return normUser === normRule;
+  return matchesRuleConditions(rule, userSelections);
 }
 
 @Injectable()
@@ -201,24 +167,70 @@ export class PricingService {
     const optionGroups: any[] = (product as any).optionGroups || (product as any).options || [];
     const configurationRules: any[] = (product as any).configurationRules || [];
 
-    for (const group of optionGroups) {
-      let isVisible = true;
-      for (const rule of configurationRules) {
-        if (rule.isActive === false) continue;
-        if (rule.targetGroupCode === group.code) {
-          const conditionMet = matchesRuleCondition(rule, userSelections);
-          if ((rule.actionType === 'HIDE' || rule.actionType === 'HIDE_OPTION') && conditionMet) {
-            const isPrintingLocation = /print(ing)?_?(loc(ation)?|side)/i.test(rule.targetGroupCode || '');
-            const isDesignCondition = /design/i.test(rule.conditionGroupCode || '');
-            if (isPrintingLocation && isDesignCondition) continue;
-            isVisible = false;
-          } else if (rule.actionType === 'SHOW' && !conditionMet) {
-            const isPrintingLocation = /print(ing)?_?(loc(ation)?|side)/i.test(rule.targetGroupCode || '');
-            const isDesignCondition = /design/i.test(rule.conditionGroupCode || '');
-            if (isPrintingLocation && isDesignCondition) continue;
-            isVisible = false;
-          }
+    // Authoritative product rules evaluation
+    const ruleEval = evaluateProductConfiguration(
+      optionGroups.map((g: any) => ({
+        id: g.id,
+        name: g.name,
+        code: g.code,
+        isRequired: g.isRequired,
+        isCustomerVisible: g.isCustomerVisible,
+        options: (g.options || g.values || []).map((o: any) => ({
+          id: o.id,
+          label: o.label || o.name,
+          value: o.value || o.code,
+          isActive: o.isActive,
+          isDefault: o.isDefault,
+          priceModifier: o.priceModifier,
+          priceModifierType: o.priceModifierType,
+        })),
+      })),
+      configurationRules,
+      userSelections,
+    );
+
+    if (ruleEval.invalidCombinations && ruleEval.invalidCombinations.length > 0) {
+      throw new BadRequestException(
+        `Invalid option combination: ${ruleEval.invalidCombinations.map((c) => c.message).join('; ')}`,
+      );
+    }
+
+    // Authoritative rejection if client submitted an option that is disabled or hidden by rules
+    for (const [grpCode, val] of Object.entries(initialSelections)) {
+      if (val === undefined || val === null || val === '') continue;
+      const optKey = `${grpCode}:${val}`;
+      if (ruleEval.optionStatus[optKey]?.isDisabled === true) {
+        const reason =
+          ruleEval.optionStatus[optKey]?.disabledReason ||
+          `Option '${val}' in '${grpCode}' is not available with the current configuration.`;
+        throw new BadRequestException(reason);
+      }
+      const isPrintingLocation = /print(ing)?_?(loc(ation)?|side)/i.test(grpCode || '');
+      const isDesignCondition = configurationRules.some((r: any) => /design/i.test(r.conditionGroupCode || ''));
+      if (isPrintingLocation && isDesignCondition) {
+        // Guard: Printing location is never hidden solely because design is not required
+      } else if (ruleEval.groupStatus[grpCode]?.isVisible === false) {
+        throw new BadRequestException(`Option group '${grpCode}' is not applicable for this configuration.`);
+      }
+    }
+
+    // Populate defaults for groups that were not explicitly selected
+    for (const [key, val] of Object.entries(ruleEval.sanitizedSelections)) {
+      if (userSelections[key] === undefined || userSelections[key] === null || userSelections[key] === '') {
+        if (val !== undefined && val !== null) {
+          userSelections[key] = val;
         }
+      }
+    }
+
+    for (const group of optionGroups) {
+      let isVisible = ruleEval.groupStatus[group.code]?.isVisible !== false;
+
+      // GUARD: Printing location must NOT be hidden solely because design is not required
+      const isPrintingLocation = /print(ing)?_?(loc(ation)?|side)/i.test(group.code || '');
+      const isDesignCondition = configurationRules.some((r: any) => /design/i.test(r.conditionGroupCode || ''));
+      if (isPrintingLocation && isDesignCondition) {
+        isVisible = true;
       }
 
       if (!isVisible) {
@@ -226,15 +238,13 @@ export class PricingService {
         continue;
       }
 
-      for (const rule of configurationRules) {
-        if (rule.isActive === false) continue;
-        if (rule.targetGroupCode === group.code && rule.targetOptionValue) {
-          const conditionMet = matchesRuleCondition(rule, userSelections);
-          if ((rule.actionType === 'HIDE' || rule.actionType === 'HIDE_OPTION') && conditionMet) {
-            if (normalizeKey(userSelections[group.code]) === normalizeKey(rule.targetOptionValue)) {
-              delete userSelections[group.code];
-            }
-          }
+      // Check option-level visibility
+      const activeOptVal = userSelections[group.code];
+      if (activeOptVal !== undefined && activeOptVal !== null && activeOptVal !== '') {
+        const optKey = `${group.code}:${activeOptVal}`;
+        if (ruleEval.optionStatus[optKey]?.isVisible === false) {
+          delete userSelections[group.code];
+          continue;
         }
       }
 

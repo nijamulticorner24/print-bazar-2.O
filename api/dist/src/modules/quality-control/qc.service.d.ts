@@ -30,8 +30,8 @@ export declare class QualityControlService {
         id: string;
         createdAt: Date;
         orderId: string;
-        type: import(".prisma/client").$Enums.QCInspectionType;
         notes: string | null;
+        type: import(".prisma/client").$Enums.QCInspectionType;
         items: Prisma.JsonValue;
         jobCardId: string | null;
         outcome: import(".prisma/client").$Enums.QCOutcome;
@@ -48,8 +48,8 @@ export declare class QualityControlService {
         id: string;
         createdAt: Date;
         orderId: string;
-        type: import(".prisma/client").$Enums.QCInspectionType;
         notes: string | null;
+        type: import(".prisma/client").$Enums.QCInspectionType;
         items: Prisma.JsonValue;
         jobCardId: string | null;
         outcome: import(".prisma/client").$Enums.QCOutcome;
@@ -63,14 +63,35 @@ export declare class QualityControlService {
             fullName: string;
             phone: string;
         };
+        jobCards: {
+            id: string;
+            createdAt: Date;
+            orderId: string;
+            updatedAt: Date;
+            status: import(".prisma/client").$Enums.JobCardStatus;
+            approvedArtworkVersionId: string | null;
+            orderItemId: string;
+            priority: import(".prisma/client").$Enums.Priority;
+            dueAt: Date;
+            jobNumber: string;
+            preHoldStatus: import(".prisma/client").$Enums.JobCardStatus | null;
+            currentStation: string;
+            machineId: string | null;
+            operatorId: string | null;
+            operationSequence: Prisma.JsonValue;
+            technicalSpecs: Prisma.JsonValue;
+            startedAt: Date | null;
+            completedAt: Date | null;
+        }[];
         items: ({
             artworkVersions: {
                 id: string;
                 createdAt: Date;
                 status: import(".prisma/client").$Enums.ArtworkStatus;
                 storageKey: string;
-                originalFileName: string;
+                orderItemId: string;
                 customerNotes: string | null;
+                originalFileName: string;
                 versionNumber: number;
                 mimeType: string;
                 fileSize: number;
@@ -90,7 +111,6 @@ export declare class QualityControlService {
                 prepressNotes: string | null;
                 uploadedBy: string;
                 approvedAt: Date | null;
-                orderItemId: string;
             }[];
         } & {
             id: string;
@@ -98,41 +118,22 @@ export declare class QualityControlService {
             orderId: string;
             updatedAt: Date;
             sku: string;
-            productId: string;
-            totalPrice: Prisma.Decimal;
             quantity: number;
             unitPrice: Prisma.Decimal;
+            productId: string;
+            totalPrice: Prisma.Decimal;
             productName: string;
             specifications: Prisma.JsonValue;
+            personalizationData: Prisma.JsonValue | null;
             approvedArtworkVersionId: string | null;
             designNotes: string | null;
         })[];
-        jobCards: {
-            id: string;
-            createdAt: Date;
-            orderId: string;
-            updatedAt: Date;
-            status: import(".prisma/client").$Enums.JobCardStatus;
-            priority: import(".prisma/client").$Enums.Priority;
-            dueAt: Date;
-            approvedArtworkVersionId: string | null;
-            orderItemId: string;
-            jobNumber: string;
-            preHoldStatus: import(".prisma/client").$Enums.JobCardStatus | null;
-            currentStation: string;
-            machineId: string | null;
-            operatorId: string | null;
-            operationSequence: Prisma.JsonValue;
-            technicalSpecs: Prisma.JsonValue;
-            startedAt: Date | null;
-            completedAt: Date | null;
-        }[];
         qcChecklists: {
             id: string;
             createdAt: Date;
             orderId: string;
-            type: import(".prisma/client").$Enums.QCInspectionType;
             notes: string | null;
+            type: import(".prisma/client").$Enums.QCInspectionType;
             items: Prisma.JsonValue;
             jobCardId: string | null;
             outcome: import(".prisma/client").$Enums.QCOutcome;
@@ -145,14 +146,14 @@ export declare class QualityControlService {
         updatedAt: Date;
         customerId: string;
         status: import(".prisma/client").$Enums.OrderStatus;
-        subtotal: Prisma.Decimal;
-        deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
-        discountAmount: Prisma.Decimal;
         orderNumber: string;
         sourceChannel: import(".prisma/client").$Enums.OrderChannel;
         customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+        deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+        subtotal: Prisma.Decimal;
         taxAmount: Prisma.Decimal;
         shippingAmount: Prisma.Decimal;
+        discountAmount: Prisma.Decimal;
         totalAmount: Prisma.Decimal;
         paidAmount: Prisma.Decimal;
         balanceAmount: Prisma.Decimal;

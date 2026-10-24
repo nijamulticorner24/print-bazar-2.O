@@ -215,8 +215,13 @@ export class PackingService {
    * Auto-generate barcodes, inherit customer shipping address, and advance order to READY_FOR_DISPATCH
    */
   async completePacking(dto: CompletePackingDto, operatorId: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: dto.orderId },
+    const order = await this.prisma.order.findFirst({
+      where: {
+        OR: [
+          { id: dto.orderId },
+          { orderNumber: dto.orderId },
+        ],
+      },
       include: {
         customer: true,
         shippingAddress: true,
@@ -232,7 +237,7 @@ export class PackingService {
     }
 
     // Strict Centralized Business Rule: Evaluate Packing Eligibility (Quality + Payment + Production Gates)
-    const evalResult = await this.workflowState.evaluatePackingEligibility(dto.orderId);
+    const evalResult = await this.workflowState.evaluatePackingEligibility(order.id);
     if (!evalResult.eligible) {
       if (evalResult.reasons.includes('PAYMENT_PENDING') || evalResult.reasons.includes('PAYMENT_PARTIAL')) {
         throw new BadRequestException(

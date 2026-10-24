@@ -27,8 +27,13 @@ let DispatchService = DispatchService_1 = class DispatchService {
         this.eventEmitter = eventEmitter;
     }
     async confirmCourierHandover(dto, staffId) {
-        const order = await this.prisma.order.findUnique({
-            where: { id: dto.orderId },
+        const order = await this.prisma.order.findFirst({
+            where: {
+                OR: [
+                    { id: dto.orderId },
+                    { orderNumber: dto.orderId },
+                ],
+            },
             include: {
                 packages: { include: { shipment: true } },
             },
@@ -92,8 +97,13 @@ let DispatchService = DispatchService_1 = class DispatchService {
         return updated;
     }
     async confirmStorePickup(dto, staffId) {
-        const order = await this.prisma.order.findUnique({
-            where: { id: dto.orderId },
+        const order = await this.prisma.order.findFirst({
+            where: {
+                OR: [
+                    { id: dto.orderId },
+                    { orderNumber: dto.orderId },
+                ],
+            },
         });
         if (!order)
             throw new common_1.NotFoundException(`Order '${dto.orderId}' not found`);

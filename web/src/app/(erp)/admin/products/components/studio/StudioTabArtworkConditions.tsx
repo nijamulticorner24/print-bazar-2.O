@@ -406,8 +406,8 @@ export function StudioTabArtworkConditions({
   const handleSaveRowModal = () => {
     if (!editingCombo) return;
 
-    if (rowStatus === 'REQUIRED' && rowSlotCount <= 0 && !rowRequireDesignBrief) {
-      setRowFormError('Artwork is marked REQUIRED, but 0 upload slots and no design brief are configured.');
+    if (rowStatus === 'REQUIRED' && rowSlotCount <= 0) {
+      setRowFormError('Artwork is marked REQUIRED, but 0 upload slots are configured.');
       return;
     }
 
@@ -786,7 +786,6 @@ export function StudioTabArtworkConditions({
                   <th className="p-3.5">Artwork Policy</th>
                   <th className="p-3.5">Design Fee (₹)</th>
                   <th className="p-3.5">Upload Slots</th>
-                  <th className="p-3.5">Design Brief / Reference</th>
                   <th className="p-3.5">File Specs</th>
                   <th className="p-3.5 text-right">Actions</th>
                 </tr>
@@ -870,28 +869,6 @@ export function StudioTabArtworkConditions({
                         )}
                       </td>
 
-                      {/* Design Brief / Reference */}
-                      <td className="p-3.5">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {reqBrief ? (
-                            <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-900 border border-purple-200 text-[10px] font-bold">
-                              Mandatory Brief
-                            </span>
-                          ) : showBrief ? (
-                            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 text-[10px]">
-                              Optional Brief
-                            </span>
-                          ) : (
-                            <span className="text-[11px] text-slate-400">No brief</span>
-                          )}
-
-                          {payload.showReferenceImage && (
-                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[9px] font-mono">
-                              Ref Files OK
-                            </span>
-                          )}
-                        </div>
-                      </td>
 
                       {/* File Specs */}
                       <td className="p-3.5 font-mono text-[11px] text-slate-600">
@@ -1055,41 +1032,6 @@ export function StudioTabArtworkConditions({
               </div>
             )}
 
-            {/* Design Brief & Reference Images */}
-            <div className="p-4 bg-purple-50/70 border border-purple-200 rounded-xl space-y-3">
-              <span className="text-xs font-bold text-purple-900 uppercase tracking-wider block">
-                Design Assistance & Customer Brief
-              </span>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={rowRequireDesignBrief}
-                    onChange={(e) => {
-                      setRowRequireDesignBrief(e.target.checked);
-                      if (e.target.checked) setRowShowDesignBrief(true);
-                    }}
-                    className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500"
-                  />
-                  <span className="text-xs font-medium text-purple-950">
-                    Require Design Brief from customer
-                  </span>
-                </label>
-
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={rowShowReferenceImage}
-                    onChange={(e) => setRowShowReferenceImage(e.target.checked)}
-                    className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500"
-                  />
-                  <span className="text-xs font-medium text-purple-950">
-                    Allow reference image / sketch uploads
-                  </span>
-                </label>
-              </div>
-            </div>
 
             {/* Combination Design Pricing */}
             <div className="p-4 bg-amber-50/70 border border-amber-300 rounded-xl space-y-3">

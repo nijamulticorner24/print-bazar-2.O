@@ -83,6 +83,8 @@ export function DynamicFieldRenderer({
     minMegapixels: o.minMegapixels,
     imageUrl: o.imageUrl,
     includeImage: o.includeImage,
+    isDisabled: Boolean(o.isDisabled),
+    disabledReason: o.disabledReason,
   }));
 
   // Helper to render price modifier badge on option
@@ -141,41 +143,57 @@ export function DynamicFieldRenderer({
         {/* RADIO / Option Cards */}
         {rawType === 'RADIO' && (
           <div className={`grid gap-2 sm:gap-2.5 ${options.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : options.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'}`}>
-            {options.map((opt) => {
+            {options.map((opt: any) => {
               const isSelected = String(value) === String(opt.value);
               const badge = renderPriceBadge(opt, isSelected);
+              const isOptDisabled = Boolean(disabled || opt.isDisabled);
 
               return (
                 <button
                   key={opt.id}
                   type="button"
-                  disabled={disabled}
-                  onClick={() => onChange(opt.value)}
-                  className={`group w-full flex items-center justify-between p-3 rounded-xl border text-left transition-all duration-150 cursor-pointer ${
-                    isSelected
-                      ? 'border-slate-950 bg-slate-950 text-white ring-1.5 ring-slate-950 shadow-xs'
-                      : 'border-slate-200/90 bg-white hover:border-slate-400 hover:bg-slate-50/70 text-slate-800'
+                  disabled={isOptDisabled}
+                  title={opt.disabledReason || (opt.isDisabled ? 'Not available with current selection' : undefined)}
+                  onClick={() => !isOptDisabled && onChange(opt.value)}
+                  className={`group w-full flex items-center justify-between p-3 rounded-xl border text-left transition-all duration-150 ${
+                    opt.isDisabled
+                      ? 'border-slate-200 bg-slate-50/70 text-slate-400 opacity-60 cursor-not-allowed'
+                      : isSelected
+                      ? 'border-slate-950 bg-slate-950 text-white ring-1.5 ring-slate-950 shadow-xs cursor-pointer'
+                      : 'border-slate-200/90 bg-white hover:border-slate-400 hover:bg-slate-50/70 text-slate-800 cursor-pointer'
                   } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0 pr-2">
                     <div
                       className={`h-4 w-4 rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${
-                        isSelected
+                        opt.isDisabled
+                          ? 'border-slate-300 bg-slate-200 text-slate-400'
+                          : isSelected
                           ? 'border-[#FFED00] bg-[#FFED00] text-slate-950'
                           : 'border-slate-300 bg-white group-hover:border-slate-400'
                       }`}
                     >
-                      {isSelected && <RiCheckLine className="h-3 w-3 stroke-[3]" />}
+                      {isSelected && !opt.isDisabled && <RiCheckLine className="h-3 w-3 stroke-[3]" />}
                     </div>
                     <span
                       className={`text-xs sm:text-[13px] block truncate transition-colors ${
-                        isSelected ? 'font-black text-white' : 'font-semibold text-slate-800'
+                        opt.isDisabled
+                          ? 'font-medium text-slate-400 line-through'
+                          : isSelected
+                          ? 'font-black text-white'
+                          : 'font-semibold text-slate-800'
                       }`}
                     >
                       {opt.label}
                     </span>
                   </div>
-                  {badge && <div className="flex-shrink-0">{badge}</div>}
+                  {opt.isDisabled ? (
+                    <span className="text-[10px] font-mono bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold shrink-0">
+                      Unavailable
+                    </span>
+                  ) : (
+                    badge && <div className="flex-shrink-0">{badge}</div>
+                  )}
                 </button>
               );
             })}
@@ -194,12 +212,12 @@ export function DynamicFieldRenderer({
               <option value="" disabled>
                 Select {label}...
               </option>
-              {options.map((opt) => {
+              {options.map((opt: any) => {
                 const mod = Number(opt.priceModifier || 0);
                 const modText = mod !== 0 ? ` (${mod > 0 ? '+' : ''}${opt.priceModifierType === 'PERCENTAGE' ? `${mod}%` : formatCurrency(mod)})` : '';
                 return (
-                  <option key={opt.id} value={opt.value}>
-                    {opt.label}{modText}
+                  <option key={opt.id} value={opt.value} disabled={opt.isDisabled}>
+                    {opt.label}{opt.isDisabled ? ' — (Unavailable)' : ''}{modText}
                   </option>
                 );
               })}
@@ -305,16 +323,83 @@ export function DynamicFieldRenderer({
           </div>
         )}
 
-        {/* Fallback standard text/number inputs if applicable */}
-        {(rawType === 'TEXT' || rawType === 'NUMBER') && (
+        {/* TEXTAREA Multi-line Text Input */}
+        {rawType === 'TEXTAREA' && (
+          <div className="space-y-2">
+            <textarea
+              rows={3}
+              value={value ?? ''}
+              disabled={disabled}
+              onChange={(e) => onChange(e.target.value)}
+              placeholder={`Enter ${label}...`}
+              className="w-full p-3 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:border-slate-950 focus:ring-1 focus:ring-slate-950 transition shadow-2xs resize-y disabled:bg-slate-50 disabled:cursor-not-allowed"
+            />
+            {options.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Suggestions:</span>
+                {options.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => onChange(opt.label || opt.value)}
+                    className="px-2 py-0.5 text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-md border border-slate-200 transition-colors"
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* DATE Picker */}
+        {rawType === 'DATE' && (
           <input
-            type={rawType === 'NUMBER' ? 'number' : 'text'}
+            type="date"
             value={value ?? ''}
             disabled={disabled}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={`Enter ${label}...`}
-            className="w-full h-11 px-3.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:border-slate-950 transition shadow-2xs"
+            className="w-full h-11 px-3.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:border-slate-950 transition shadow-2xs disabled:bg-slate-50 disabled:cursor-not-allowed"
           />
+        )}
+
+        {/* Standard Single-line inputs: TEXT, NUMBER, EMAIL, PHONE */}
+        {(rawType === 'TEXT' || rawType === 'NUMBER' || rawType === 'EMAIL' || rawType === 'PHONE') && (
+          <div className="space-y-2">
+            <input
+              type={
+                rawType === 'NUMBER'
+                  ? 'number'
+                  : rawType === 'EMAIL'
+                  ? 'email'
+                  : rawType === 'PHONE'
+                  ? 'tel'
+                  : 'text'
+              }
+              value={value ?? ''}
+              disabled={disabled}
+              onChange={(e) => onChange(e.target.value)}
+              placeholder={`Enter ${label}...`}
+              className="w-full h-11 px-3.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:border-slate-950 transition shadow-2xs disabled:bg-slate-50 disabled:cursor-not-allowed"
+            />
+            {options.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Presets:</span>
+                {options.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => onChange(opt.value || opt.label)}
+                    className="px-2 py-0.5 text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-md border border-slate-200 transition-colors"
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 

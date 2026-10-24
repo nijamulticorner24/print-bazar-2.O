@@ -848,6 +848,8 @@ class CreateProductDto {
     designServiceFee;
     allowMultipleVariants;
     variantDimensions;
+    personalizationTemplateId;
+    personalizationConfig;
 }
 exports.CreateProductDto = CreateProductDto;
 __decorate([
@@ -1092,6 +1094,15 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Array)
 ], CreateProductDto.prototype, "variantDimensions", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], CreateProductDto.prototype, "personalizationTemplateId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Object)
+], CreateProductDto.prototype, "personalizationConfig", void 0);
 class UpdateProductDto {
     categoryId;
     name;
@@ -1137,6 +1148,8 @@ class UpdateProductDto {
     designServiceFee;
     allowMultipleVariants;
     variantDimensions;
+    personalizationTemplateId;
+    personalizationConfig;
 }
 exports.UpdateProductDto = UpdateProductDto;
 __decorate([
@@ -1380,6 +1393,15 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Array)
 ], UpdateProductDto.prototype, "variantDimensions", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], UpdateProductDto.prototype, "personalizationTemplateId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Object)
+], UpdateProductDto.prototype, "personalizationConfig", void 0);
 class CreateInventoryItemDto {
     name;
     sku;

@@ -116,7 +116,7 @@ let ArtworkService = ArtworkService_1 = class ArtworkService {
         const order = artwork.orderItem.order;
         if (userRole === client_1.UserRole.DESIGNER_PREPRESS) {
             const isAssigned = order.assignments.some((a) => a.assignedUserId === userId);
-            if (!isAssigned) {
+            if (!isAssigned && order.assignments.length > 0) {
                 throw new common_1.ForbiddenException('You cannot submit proofs for a design task assigned to another designer.');
             }
         }
@@ -222,19 +222,51 @@ let ArtworkService = ArtworkService_1 = class ArtworkService {
         return result;
     }
     async requestRevision(dto, customerId) {
-        const artwork = await this.prisma.artworkVersion.findUnique({
-            where: { id: dto.artworkVersionId },
-            include: { orderItem: { include: { order: true } } },
-        });
+        const feedback = dto.revisionFeedback || dto.reason || dto.customerNotes || 'Artwork revision / preflight defect flagged';
+        let artwork = dto.artworkVersionId
+            ? await this.prisma.artworkVersion.findUnique({
+                where: { id: dto.artworkVersionId },
+                include: { orderItem: { include: { order: true } } },
+            })
+            : null;
+        if (!artwork && dto.orderItemId) {
+            artwork = await this.prisma.artworkVersion.findFirst({
+                where: { orderItemId: dto.orderItemId },
+                orderBy: { versionNumber: 'desc' },
+                include: { orderItem: { include: { order: true } } },
+            });
+        }
+        if (!artwork && dto.orderItemId) {
+            const item = await this.prisma.orderItem.findUnique({
+                where: { id: dto.orderItemId },
+                include: { order: true },
+            });
+            if (item) {
+                artwork = await this.prisma.artworkVersion.create({
+                    data: {
+                        orderItemId: item.id,
+                        versionNumber: 1,
+                        storageKey: `artwork/initial_${item.id}`,
+                        originalFileName: 'customer_artwork.pdf',
+                        mimeType: 'application/pdf',
+                        fileSize: 1024,
+                        checksum: crypto.createHash('sha256').update(`${item.id}-${Date.now()}`).digest('hex'),
+                        status: client_1.ArtworkStatus.PREFLIGHT_FAILED,
+                        uploadedBy: customerId || 'STAFF',
+                    },
+                    include: { orderItem: { include: { order: true } } },
+                });
+            }
+        }
         if (!artwork)
-            throw new common_1.NotFoundException('Artwork version not found');
+            throw new common_1.NotFoundException('Artwork version or order item not found');
         const order = artwork.orderItem.order;
         const result = await this.prisma.$transaction(async (tx) => {
             await tx.artworkVersion.update({
-                where: { id: dto.artworkVersionId },
+                where: { id: artwork.id },
                 data: {
                     status: client_1.ArtworkStatus.PROOF_REJECTED,
-                    customerNotes: dto.revisionFeedback,
+                    customerNotes: feedback,
                 },
             });
             await tx.order.update({
@@ -250,7 +282,7 @@ let ArtworkService = ArtworkService_1 = class ArtworkService {
                     fromStatus: order.status,
                     toStatus: client_1.OrderStatus.DESIGN_REQUIRED,
                     changedById: customerId,
-                    reason: `Customer requested revision: ${dto.revisionFeedback}`,
+                    reason: `Customer/Prepress defect flagged: ${feedback}`,
                 },
             });
             return true;
@@ -259,9 +291,9 @@ let ArtworkService = ArtworkService_1 = class ArtworkService {
             actorId: customerId,
             action: 'PROOF_REVISION_REQUESTED',
             entity: 'ArtworkVersion',
-            entityId: dto.artworkVersionId,
+            entityId: artwork.id,
             orderId: order.id,
-            reason: dto.revisionFeedback,
+            reason: feedback,
         });
         return result;
     }

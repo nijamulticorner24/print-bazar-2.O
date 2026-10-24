@@ -40,8 +40,13 @@ export class DispatchService {
    * Scans package barcodes, checks manifest, updates shipment to IN_TRANSIT, order to OUT_FOR_DELIVERY
    */
   async confirmCourierHandover(dto: CourierHandoverDto, staffId: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: dto.orderId },
+    const order = await this.prisma.order.findFirst({
+      where: {
+        OR: [
+          { id: dto.orderId },
+          { orderNumber: dto.orderId },
+        ],
+      },
       include: {
         packages: { include: { shipment: true } },
       },
@@ -128,8 +133,13 @@ export class DispatchService {
    * Mandatory check for unpaid balance; verifies collector identity; transitions order directly to DELIVERED
    */
   async confirmStorePickup(dto: StorePickupHandoverDto, staffId: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: dto.orderId },
+    const order = await this.prisma.order.findFirst({
+      where: {
+        OR: [
+          { id: dto.orderId },
+          { orderNumber: dto.orderId },
+        ],
+      },
     });
 
     if (!order) throw new NotFoundException(`Order '${dto.orderId}' not found`);

@@ -5,6 +5,8 @@ import { AuditService } from '../audit/audit.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { OrderStatus, OrderChannel, DeliveryMethod, PaymentStatus, Priority, SlaStatus, Prisma } from '@prisma/client';
 import { JwtPayload } from '../../common/types/roles';
+import { PersonalizationTemplateService } from '../products/personalization/personalization-template.service';
+import { PersonalizationPayload } from '../products/personalization/personalization-template.dto';
 export interface CreateOrderItemDto {
     productId: string;
     productName?: string;
@@ -14,6 +16,7 @@ export interface CreateOrderItemDto {
     totalPrice?: number;
     options?: OptionSelectionDto[];
     fieldValues?: Record<string, any>;
+    personalization?: PersonalizationPayload;
     variantLines?: Array<{
         id?: string;
         sku?: string;
@@ -96,6 +99,7 @@ export interface CreateOrderDto {
     items: CreateOrderItemDto[];
     customerNotes?: string;
     priority?: Priority;
+    idempotencyKey?: string;
 }
 export interface OrderQueryFilters {
     search?: string;
@@ -115,8 +119,9 @@ export declare class OrdersService {
     private readonly shippingGstService;
     private readonly auditService;
     private readonly eventEmitter;
+    private readonly personalizationService;
     private readonly logger;
-    constructor(prisma: PrismaService, pricingService: PricingService, shippingGstService: ShippingGstService, auditService: AuditService, eventEmitter: EventEmitter2);
+    constructor(prisma: PrismaService, pricingService: PricingService, shippingGstService: ShippingGstService, auditService: AuditService, eventEmitter: EventEmitter2, personalizationService: PersonalizationTemplateService);
     createOrder(dto: CreateOrderDto, creatorUserId?: string): Promise<{
         customer: {
             id: string;
@@ -131,9 +136,9 @@ export declare class OrdersService {
         };
         shippingAddress: {
             id: string;
+            customerId: string;
             createdAt: Date;
             updatedAt: Date;
-            customerId: string;
             phone: string;
             type: string;
             contactName: string;
@@ -155,6 +160,7 @@ export declare class OrdersService {
             unitPrice: Prisma.Decimal;
             totalPrice: Prisma.Decimal;
             specifications: Prisma.JsonValue;
+            personalizationData: Prisma.JsonValue | null;
             approvedArtworkVersionId: string | null;
             designNotes: string | null;
             productId: string;
@@ -163,6 +169,7 @@ export declare class OrdersService {
     } & {
         id: string;
         orderNumber: string;
+        customerId: string;
         sourceChannel: import(".prisma/client").$Enums.OrderChannel;
         status: import(".prisma/client").$Enums.OrderStatus;
         customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
@@ -180,11 +187,10 @@ export declare class OrdersService {
         dueAt: Date | null;
         customerNotes: string | null;
         internalNotes: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-        customerId: string;
         shippingAddressId: string | null;
         billingAddressId: string | null;
+        createdAt: Date;
+        updatedAt: Date;
     }>;
     listOrders(filters: OrderQueryFilters, currentUser?: JwtPayload): Promise<{
         data: ({
@@ -246,6 +252,7 @@ export declare class OrdersService {
                 unitPrice: Prisma.Decimal;
                 totalPrice: Prisma.Decimal;
                 specifications: Prisma.JsonValue;
+                personalizationData: Prisma.JsonValue | null;
                 approvedArtworkVersionId: string | null;
                 designNotes: string | null;
                 productId: string;
@@ -259,6 +266,7 @@ export declare class OrdersService {
         } & {
             id: string;
             orderNumber: string;
+            customerId: string;
             sourceChannel: import(".prisma/client").$Enums.OrderChannel;
             status: import(".prisma/client").$Enums.OrderStatus;
             customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
@@ -276,11 +284,10 @@ export declare class OrdersService {
             dueAt: Date | null;
             customerNotes: string | null;
             internalNotes: string | null;
-            createdAt: Date;
-            updatedAt: Date;
-            customerId: string;
             shippingAddressId: string | null;
             billingAddressId: string | null;
+            createdAt: Date;
+            updatedAt: Date;
         })[];
         meta: {
             page: number;
@@ -303,9 +310,9 @@ export declare class OrdersService {
         };
         shippingAddress: {
             id: string;
+            customerId: string;
             createdAt: Date;
             updatedAt: Date;
-            customerId: string;
             phone: string;
             type: string;
             contactName: string;
@@ -319,9 +326,9 @@ export declare class OrdersService {
         } | null;
         billingAddress: {
             id: string;
+            customerId: string;
             createdAt: Date;
             updatedAt: Date;
-            customerId: string;
             phone: string;
             type: string;
             contactName: string;
@@ -431,6 +438,7 @@ export declare class OrdersService {
             unitPrice: Prisma.Decimal;
             totalPrice: Prisma.Decimal;
             specifications: Prisma.JsonValue;
+            personalizationData: Prisma.JsonValue | null;
             approvedArtworkVersionId: string | null;
             designNotes: string | null;
             productId: string;
@@ -557,6 +565,7 @@ export declare class OrdersService {
     } & {
         id: string;
         orderNumber: string;
+        customerId: string;
         sourceChannel: import(".prisma/client").$Enums.OrderChannel;
         status: import(".prisma/client").$Enums.OrderStatus;
         customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
@@ -574,10 +583,9 @@ export declare class OrdersService {
         dueAt: Date | null;
         customerNotes: string | null;
         internalNotes: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-        customerId: string;
         shippingAddressId: string | null;
         billingAddressId: string | null;
+        createdAt: Date;
+        updatedAt: Date;
     }>;
 }

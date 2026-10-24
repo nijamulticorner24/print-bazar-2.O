@@ -157,7 +157,18 @@ export interface ReusableOptionGroup {
   id: string;
   name: string;
   code: string;
-  inputType: 'SELECT' | 'RADIO' | 'CHECKBOX' | 'TOGGLE' | string;
+  inputType:
+    | 'SELECT'
+    | 'RADIO'
+    | 'CHECKBOX'
+    | 'TOGGLE'
+    | 'TEXT'
+    | 'TEXTAREA'
+    | 'NUMBER'
+    | 'DATE'
+    | 'EMAIL'
+    | 'PHONE'
+    | string;
   selectionBehavior?: 'SINGLE' | 'MULTIPLE' | 'VARIANT_WISE' | string;
   description?: string | null;
   defaultOptions?: Array<{
@@ -444,6 +455,9 @@ export interface DynamicProduct {
   maxArtworkFileSizeMb?: number;
   designServiceFee?: number | string | null;
   designServicePrice?: number | string | null;
+  personalizationTemplateId?: string | null;
+  personalizationTemplate?: PersonalizationTemplate | null;
+  personalizationConfig?: any;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -976,8 +990,13 @@ export const api = {
     fetchApi<any>(`/artwork/submit-proof/${artworkVersionId}`, { method: 'POST', body: JSON.stringify({ prepressNotes }) }),
   approveProof: (data: { orderItemId: string; artworkVersionId: string }) =>
     fetchApi<any>('/artwork/approve-proof', { method: 'POST', body: JSON.stringify(data) }),
-  requestRevision: (data: { orderItemId: string; reason: string; customerNotes?: string }) =>
-    fetchApi<any>('/artwork/request-revision', { method: 'POST', body: JSON.stringify(data) }),
+  requestRevision: (data: {
+    orderItemId: string;
+    artworkVersionId?: string;
+    revisionFeedback?: string;
+    reason?: string;
+    customerNotes?: string;
+  }) => fetchApi<any>('/artwork/request-revision', { method: 'POST', body: JSON.stringify(data) }),
 
   // Operations Coordinator (OE) Module
   getOperationsDashboard: () =>
@@ -1114,5 +1133,137 @@ export const api = {
     }),
   getInvoice: (idOrNumber: string) =>
     fetchApi<any>(`/invoices/${idOrNumber}`),
+
+  // ==========================================
+  // PERSONALIZATION TEMPLATES API
+  // ==========================================
+  adminListPersonalizationTemplates: (params?: { search?: string; category?: string; isActive?: boolean }) => {
+    const q = new URLSearchParams();
+    if (params?.search) q.set('search', params.search);
+    if (params?.category) q.set('category', params.category);
+    if (params?.isActive !== undefined) q.set('isActive', String(params.isActive));
+    const qs = q.toString();
+    return fetchApi<PersonalizationTemplate[]>(`/admin/personalization-templates${qs ? `?${qs}` : ''}`);
+  },
+  adminGetPersonalizationTemplate: (id: string) =>
+    fetchApi<PersonalizationTemplate>(`/admin/personalization-templates/${id}`),
+  adminCreatePersonalizationTemplate: (data: Partial<PersonalizationTemplate>) =>
+    fetchApi<PersonalizationTemplate>('/admin/personalization-templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  adminUpdatePersonalizationTemplate: (id: string, data: Partial<PersonalizationTemplate>) =>
+    fetchApi<PersonalizationTemplate>(`/admin/personalization-templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  adminDeletePersonalizationTemplate: (id: string) =>
+    fetchApi<{ success: boolean; message: string }>(`/admin/personalization-templates/${id}`, {
+      method: 'DELETE',
+    }),
+  adminDuplicatePersonalizationTemplate: (id: string, newName?: string) =>
+    fetchApi<PersonalizationTemplate>(`/admin/personalization-templates/${id}/duplicate`, {
+      method: 'POST',
+      body: JSON.stringify({ name: newName }),
+    }),
+  getPublicPersonalizationTemplate: (id: string) =>
+    fetchApi<PersonalizationTemplate>(`/catalogue/personalization-templates/${id}`),
+  validatePersonalizationPayload: (
+    id: string,
+    quantity: number,
+    payload: PersonalizationPayload,
+    productConfigOverride?: any,
+  ) =>
+    fetchApi<{ isValid: boolean; errors: string[]; sanitized: any }>(
+      `/catalogue/personalization-templates/${id}/validate`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ quantity, payload, productConfigOverride }),
+      },
+    ),
+  getItemPersonalizationRecords: (orderId: string, itemId: string) =>
+    fetchApi<{
+      orderId: string;
+      itemId: string;
+      productName: string;
+      sku: string;
+      quantity: number;
+      personalizationData: any;
+      records: OrderItemPersonalizationRecord[];
+    }>(`/admin/orders/${orderId}/items/${itemId}/personalization/records`),
 };
+
+// Types for Personalization System
+export type PersonalizationInputType =
+  | 'TEXT'
+  | 'TEXTAREA'
+  | 'NUMBER'
+  | 'DATE'
+  | 'EMAIL'
+  | 'PHONE'
+  | 'SELECT';
+
+export type PersonalizationScope = 'PER_ORDER' | 'PER_ITEM';
+
+export interface PersonalizationValidationRules {
+  minLength?: number;
+  maxLength?: number;
+  minValue?: number;
+  maxValue?: number;
+  pattern?: string;
+  allowedExtensions?: string[];
+  customMessage?: string;
+}
+
+export interface PersonalizationField {
+  id?: string;
+  templateId?: string;
+  name: string;
+  code: string;
+  inputType: PersonalizationInputType;
+  scope: PersonalizationScope;
+  isRequired: boolean;
+  placeholder?: string | null;
+  helperText?: string | null;
+  defaultValue?: string | null;
+  validationRules?: PersonalizationValidationRules | null;
+  options?: Array<{ label: string; value: string }> | null;
+  sortOrder?: number;
+}
+
+export interface PersonalizationTemplate {
+  id: string;
+  name: string;
+  code: string;
+  description?: string | null;
+  category?: string | null;
+  isActive: boolean;
+  fields: PersonalizationField[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PersonalizationItemEntry {
+  itemIndex: number;
+  variantCombination?: Record<string, string>;
+  values: Record<string, any>;
+}
+
+export interface PersonalizationPayload {
+  templateId: string;
+  templateCode?: string;
+  sharedValues: Record<string, any>;
+  perItemEntries: PersonalizationItemEntry[];
+}
+
+export interface OrderItemPersonalizationRecord {
+  id: string;
+  orderItemId: string;
+  itemIndex: number;
+  variantCombination?: Record<string, string> | null;
+  fieldValues: Record<string, any>;
+  sharedValues?: Record<string, any> | null;
+  status: string;
+  createdAt: string;
+}
 

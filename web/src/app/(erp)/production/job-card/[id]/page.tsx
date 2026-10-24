@@ -11,6 +11,7 @@ import {
   AlertCircle,
   FileCheck,
   Scissors,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Button } from '@/components/ui';
 
@@ -178,6 +179,70 @@ export default function ShopFloorJobCardPrintable({
               <input type="checkbox" className="h-4 w-4" />
               <span>Step 4: Trim on Polar 78 Guillotine to exact 89×51mm. Zero burr edges.</span>
             </label>
+          </div>
+        </div>
+
+        {/* Personalization & Variable Data Roster (Print-Ready Engraving & Text) */}
+        <div className="py-6 border-b-2 border-brand-dark space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileSpreadsheet className="h-4 w-4 text-purple-700" />
+              <h3 className="text-xs font-mono font-black text-brand-dark uppercase tracking-wider">
+                VARIABLE DATA & PERSONALIZATION ROSTER (PRINT-READY LIST)
+              </h3>
+            </div>
+            <span className="text-[10px] font-mono font-bold bg-purple-100 text-purple-900 border border-purple-200 px-2 py-0.5 rounded">
+              PER-ITEM CUSTOMIZATION
+            </span>
+          </div>
+
+          <div className="p-3 bg-purple-50/40 border border-purple-200 rounded text-xs font-mono space-y-2">
+            <div className="flex justify-between items-center border-b border-purple-200/60 pb-1.5 text-[11px]">
+              <span className="text-purple-900 font-bold">TEMPLATE: Wedding Keepsake Frame (WEDDING_FRAME_V1)</span>
+              <span className="text-slate-600">SHARED: Bride: Priya S. • Groom: Rahul V. • Date: 15-Dec-2026</span>
+            </div>
+
+            <div className="overflow-x-auto max-h-48 overflow-y-auto bg-white border border-purple-100 rounded">
+              <table className="w-full text-left text-[11px] border-collapse font-mono">
+                <thead className="bg-purple-100/60 border-b border-purple-200 sticky top-0 text-purple-950 font-bold">
+                  <tr>
+                    <th className="py-1 px-2.5 w-16">Item #</th>
+                    <th className="py-1 px-2.5">Variant Selection</th>
+                    <th className="py-1 px-2.5">Recipient / Inscription</th>
+                    <th className="py-1 px-2.5">Table / Seating</th>
+                    <th className="py-1 px-2.5 text-center">QC Check</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  <tr className="hover:bg-purple-50/20">
+                    <td className="py-1 px-2.5 font-bold text-slate-500">#001</td>
+                    <td className="py-1 px-2.5 text-slate-700">A4 • Teak Wood Finish</td>
+                    <td className="py-1 px-2.5 font-bold text-slate-900">Uncle David & Family</td>
+                    <td className="py-1 px-2.5 text-slate-600">Table 04</td>
+                    <td className="py-1 px-2.5 text-center">[ ] PASS</td>
+                  </tr>
+                  <tr className="hover:bg-purple-50/20">
+                    <td className="py-1 px-2.5 font-bold text-slate-500">#002</td>
+                    <td className="py-1 px-2.5 text-slate-700">A4 • Rosewood Finish</td>
+                    <td className="py-1 px-2.5 font-bold text-slate-900">Aunt Sarah</td>
+                    <td className="py-1 px-2.5 text-slate-600">Table 04</td>
+                    <td className="py-1 px-2.5 text-center">[ ] PASS</td>
+                  </tr>
+                  <tr className="hover:bg-purple-50/20">
+                    <td className="py-1 px-2.5 font-bold text-slate-500">#003</td>
+                    <td className="py-1 px-2.5 text-slate-700">A4 • Natural Pine</td>
+                    <td className="py-1 px-2.5 font-bold text-slate-900">Dr. Vikram Singh</td>
+                    <td className="py-1 px-2.5 text-slate-600">VIP 01</td>
+                    <td className="py-1 px-2.5 text-center">[ ] PASS</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1">
+              <span>Showing variable sample roster. Full list available via production CSV export.</span>
+              <span className="font-bold text-purple-950 font-mono">PRINT READY VERIFIED</span>
+            </div>
           </div>
         </div>
 

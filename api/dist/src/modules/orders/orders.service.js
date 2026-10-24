@@ -18,24 +18,44 @@ const shipping_gst_service_1 = require("../shipping-gst/shipping-gst.service");
 const audit_service_1 = require("../audit/audit.service");
 const event_emitter_1 = require("@nestjs/event-emitter");
 const client_1 = require("@prisma/client");
+const product_rules_engine_1 = require("../products/rules/product-rules-engine");
 const crypto = require("crypto");
+const personalization_template_service_1 = require("../products/personalization/personalization-template.service");
 let OrdersService = OrdersService_1 = class OrdersService {
     prisma;
     pricingService;
     shippingGstService;
     auditService;
     eventEmitter;
+    personalizationService;
     logger = new common_1.Logger(OrdersService_1.name);
-    constructor(prisma, pricingService, shippingGstService, auditService, eventEmitter) {
+    constructor(prisma, pricingService, shippingGstService, auditService, eventEmitter, personalizationService) {
         this.prisma = prisma;
         this.pricingService = pricingService;
         this.shippingGstService = shippingGstService;
         this.auditService = auditService;
         this.eventEmitter = eventEmitter;
+        this.personalizationService = personalizationService;
     }
     async createOrder(dto, creatorUserId) {
         if (!dto.items || dto.items.length === 0) {
             throw new common_1.BadRequestException('An order must contain at least one product item.');
+        }
+        if (dto.idempotencyKey) {
+            const existing = await this.prisma.order.findFirst({
+                where: {
+                    internalNotes: { contains: `IDEMPOTENCY:${dto.idempotencyKey}` },
+                },
+                include: {
+                    items: true,
+                    customer: true,
+                    shippingAddress: true,
+                },
+            });
+            if (existing) {
+                this.logger.warn(`Idempotent order replay detected for key ${dto.idempotencyKey}: returning existing order ${existing.orderNumber}`);
+                return existing;
+            }
         }
         let customerId = dto.customerId;
         if (dto.customerDetails && (dto.customerDetails.email || dto.customerDetails.phone)) {
@@ -93,6 +113,21 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 ? itemDto.variantLines.reduce((sum, v) => sum + Math.max(1, Number(v.quantity) || 1), 0)
                 : Math.max(1, Number(itemDto.quantity) || 100);
             let product = null;
+            const productInclude = {
+                optionGroups: {
+                    include: {
+                        options: true,
+                    },
+                },
+                configurationRules: true,
+                personalizationTemplate: {
+                    include: {
+                        fields: {
+                            orderBy: { sortOrder: 'asc' },
+                        },
+                    },
+                },
+            };
             if (itemDto.productId) {
                 product = await this.prisma.product.findFirst({
                     where: {
@@ -102,20 +137,25 @@ let OrdersService = OrdersService_1 = class OrdersService {
                             { sku: itemDto.productId },
                         ],
                     },
+                    include: productInclude,
                 });
             }
             if (!product && itemDto.sku) {
                 product = await this.prisma.product.findFirst({
                     where: { sku: itemDto.sku },
+                    include: productInclude,
                 });
             }
             if (!product) {
                 product = await this.prisma.product.findFirst({
                     where: { status: 'PUBLISHED' },
+                    include: productInclude,
                 });
             }
             if (!product) {
-                product = await this.prisma.product.findFirst();
+                product = await this.prisma.product.findFirst({
+                    include: productInclude,
+                });
             }
             if (!product) {
                 throw new common_1.NotFoundException(`Product not found in system catalog.`);
@@ -171,6 +211,39 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 artworkSource = 'CUSTOMER';
             }
             const workflowRoute = wantsDesign ? 'DESIGN_SERVICE' : 'CUSTOMER_ARTWORK';
+            const configRules = product.configurationRules || [];
+            const optionGroups = product.optionGroups || [];
+            if (configRules.length > 0 && optionGroups.length > 0) {
+                const rawChoices = itemDto.options || itemDto.fieldValues || {};
+                const ruleEval = (0, product_rules_engine_1.evaluateProductConfiguration)(optionGroups.map((g) => ({
+                    id: g.id,
+                    name: g.name,
+                    code: g.code,
+                    isRequired: g.isRequired,
+                    isCustomerVisible: g.isCustomerVisible,
+                    options: (g.options || []).map((o) => ({
+                        id: o.id,
+                        label: o.label || o.name,
+                        value: o.value || o.code,
+                        isActive: o.isActive,
+                        isDefault: o.isDefault,
+                    })),
+                })), configRules, rawChoices);
+                if (!ruleEval.isValid && ruleEval.invalidCombinations.length > 0) {
+                    throw new common_1.BadRequestException(`Invalid option configuration for '${product.name}': ${ruleEval.invalidCombinations.map((c) => c.message).join('; ')}`);
+                }
+                for (const [grpCode, chosenVal] of Object.entries(rawChoices)) {
+                    if (chosenVal) {
+                        const optKey = `${grpCode}:${chosenVal}`;
+                        if (ruleEval.optionStatus[optKey]?.isDisabled) {
+                            throw new common_1.BadRequestException(`Selected option '${chosenVal}' for '${grpCode}' is disabled by product configuration rules.`);
+                        }
+                        if (ruleEval.groupStatus[grpCode]?.isVisible === false) {
+                            throw new common_1.BadRequestException(`Option group '${grpCode}' is not available with current selections.`);
+                        }
+                    }
+                }
+            }
             const quote = await this.pricingService.calculateQuote({
                 productId: product.id,
                 quantity: itemQty,
@@ -186,6 +259,22 @@ let OrdersService = OrdersService_1 = class OrdersService {
             if (quote.productionDays > maxProductionDays) {
                 maxProductionDays = quote.productionDays;
             }
+            let validatedPersonalization = null;
+            if (product.personalizationTemplate && product.personalizationTemplate.isActive) {
+                const valRes = this.personalizationService.validatePersonalization(product.personalizationTemplate, itemQty, itemDto.personalization, product.personalizationConfig);
+                if (!valRes.isValid) {
+                    throw new common_1.BadRequestException(`Personalization validation failed for '${product.name}': ${valRes.errors.join('; ')}`);
+                }
+                validatedPersonalization = valRes.sanitized;
+            }
+            else if (itemDto.personalization?.templateId) {
+                const tmpl = await this.personalizationService.getTemplateById(itemDto.personalization.templateId);
+                const valRes = this.personalizationService.validatePersonalization(tmpl, itemQty, itemDto.personalization);
+                if (!valRes.isValid) {
+                    throw new common_1.BadRequestException(`Personalization validation failed: ${valRes.errors.join('; ')}`);
+                }
+                validatedPersonalization = valRes.sanitized;
+            }
             evaluatedItems.push({
                 productId: product.id,
                 sku: product.sku,
@@ -193,9 +282,12 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 quantity: quote.quantity,
                 unitPrice: quote.unitPrice,
                 totalPrice: quote.subtotal,
+                personalizationData: validatedPersonalization || null,
+                personalizationRecordsData: validatedPersonalization?.perItemEntries || null,
                 specifications: {
                     options: quote.selectedOptionsSummary,
                     specificationsSnapshot: quote.specificationsSnapshot,
+                    personalization: validatedPersonalization || null,
                     isMultiVariant: Boolean(quote.isMultiVariant),
                     variantLines: quote.variantLines || null,
                     basePrice: quote.basePrice,
@@ -272,9 +364,15 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 shippingAddressId = addr.id;
             }
             const isSplit = dto.paymentMode === 'SPLIT_50';
-            const initialPaid = dto.paidAmount !== undefined
-                ? Number(dto.paidAmount)
-                : (isSplit ? Math.round(totalAmount * 0.5 * 100) / 100 : 0.0);
+            const expectedAdvance = isSplit ? Math.round(totalAmount * 0.5 * 100) / 100 : totalAmount;
+            const expectedBalance = isSplit ? Math.round((totalAmount - expectedAdvance) * 100) / 100 : 0.0;
+            let initialPaid = 0.0;
+            if (dto.paidAmount !== undefined && Number(dto.paidAmount) > 0) {
+                initialPaid = isSplit ? expectedAdvance : totalAmount;
+            }
+            else if (dto.paymentMethod === 'ONLINE_PREPAID') {
+                initialPaid = isSplit ? expectedAdvance : totalAmount;
+            }
             const initialBalance = Math.max(0, Math.round((totalAmount - initialPaid) * 100) / 100);
             const initialPaymentStatus = isSplit
                 ? (initialPaid > 0 ? client_1.PaymentStatus.PARTIALLY_PAID : client_1.PaymentStatus.PENDING)
@@ -317,9 +415,10 @@ let OrdersService = OrdersService_1 = class OrdersService {
                     slaStatus: client_1.SlaStatus.ON_TIME,
                     dueAt,
                     customerNotes: dto.customerNotes || evaluatedItems[0]?.designNotes || null,
+                    internalNotes: dto.idempotencyKey ? `IDEMPOTENCY:${dto.idempotencyKey}` : null,
                     shippingAddressId,
                     items: {
-                        create: evaluatedItems.map(({ variantLinesData, ...it }) => it),
+                        create: evaluatedItems.map(({ variantLinesData, personalizationRecordsData, ...it }) => it),
                     },
                 },
                 include: {
@@ -342,6 +441,27 @@ let OrdersService = OrdersService_1 = class OrdersService {
                             totalPrice: new client_1.Prisma.Decimal(vl.lineSubtotal),
                             artworkUrl: vl.artworkUrl || null,
                             specifications: { optionsSummary: vl.optionsSummary },
+                        })),
+                    });
+                }
+            }
+            for (let i = 0; i < evaluatedItems.length; i++) {
+                const pRecords = evaluatedItems[i].personalizationRecordsData;
+                const pData = evaluatedItems[i].personalizationData;
+                const createdItem = createdOrder.items[i];
+                if (pRecords && pRecords.length > 0 && createdItem) {
+                    await tx.orderItemPersonalization.createMany({
+                        data: pRecords.map((entry) => ({
+                            orderItemId: createdItem.id,
+                            itemIndex: Number(entry.itemIndex) || 1,
+                            variantCombination: entry.variantCombination
+                                ? entry.variantCombination
+                                : client_1.Prisma.JsonNull,
+                            fieldValues: entry.values || {},
+                            sharedValues: pData?.sharedValues
+                                ? pData.sharedValues
+                                : client_1.Prisma.JsonNull,
+                            status: 'PENDING',
                         })),
                     });
                 }
@@ -623,6 +743,7 @@ exports.OrdersService = OrdersService = OrdersService_1 = __decorate([
         pricing_service_1.PricingService,
         shipping_gst_service_1.ShippingGstService,
         audit_service_1.AuditService,
-        event_emitter_1.EventEmitter2])
+        event_emitter_1.EventEmitter2,
+        personalization_template_service_1.PersonalizationTemplateService])
 ], OrdersService);
 //# sourceMappingURL=orders.service.js.map

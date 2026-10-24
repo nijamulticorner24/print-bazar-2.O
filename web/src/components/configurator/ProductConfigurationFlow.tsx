@@ -6,11 +6,14 @@ import {
   ProductOptionGroup,
   ProductOption,
   ProductConfigurationRule,
+  PersonalizationTemplate,
+  PersonalizationPayload,
   api,
   resolveImageUrl,
   ProductOptionRequirement,
 } from '@/lib/api';
 import { resolveArtworkConditions, matchesRuleCondition } from '@/lib/artwork-rule-resolver';
+import { evaluateProductConfiguration } from '@/lib/product-rules-engine';
 import { DynamicFieldRenderer } from './DynamicFieldRenderer';
 import { formatCurrency, getEstimatedDeliveryText } from '@/lib/utils';
 import {
@@ -34,6 +37,8 @@ import {
   RiMapPin2Line,
   RiCameraLine,
   RiCheckDoubleLine,
+  RiFileList3Line,
+  RiUpload2Line,
 } from 'react-icons/ri';
 import { Button, Badge, Modal } from '@/components/ui';
 
@@ -84,6 +89,7 @@ export interface ProductConfigurationResult {
   balanceAmount: number;
   subtotal: number;
   grandTotal: number;
+  personalization?: PersonalizationPayload | null;
   quote: any;
 }
 
@@ -316,19 +322,37 @@ export function ProductConfigurationFlow({
   // ---------------------------------------------------------------------------
   // 2. REAL-TIME CONDITIONAL RULES EVALUATION ENGINE
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // 2. REAL-TIME CONDITIONAL RULES EVALUATION ENGINE
+  // ---------------------------------------------------------------------------
+  const [ruleNotice, setRuleNotice] = useState<string | null>(null);
+
+  const evaluatedConfig = useMemo(() => {
+    return evaluateProductConfiguration(
+      rawGroups as any,
+      product.configurationRules || [],
+      selectedOptions
+    );
+  }, [product.configurationRules, rawGroups, selectedOptions]);
+
   const {
-    visibleGroups,
-    groupStatusMap,
-    optionStatusMap,
-    forcedArtworkRequired,
-    artworkConfigOverrides,
-  } = useMemo(() => {
+    visibleGroupCodes,
+    groupStatus: groupStatusMap,
+    optionStatus: optionStatusMap,
+    invalidCombinations,
+    sanitizedSelections,
+    changedSelections,
+    activeCharges,
+  } = evaluatedConfig;
+
+  // Resolve customer-visible option groups
+  const visibleGroups = useMemo(() => {
+    return rawGroups.filter((g) => visibleGroupCodes.includes(g.code));
+  }, [rawGroups, visibleGroupCodes]);
+
+  // Handle artwork overrides and forced requirement from rules
+  const { forcedArtworkRequired, artworkConfigOverrides } = useMemo(() => {
     const rules: ProductConfigurationRule[] = product.configurationRules || [];
-    const grpStatus: Record<
-      string,
-      { isRequired: boolean; isDisabled: boolean; disabledReason?: string; isHidden: boolean }
-    > = {};
-    const optStatus: Record<string, { isVisible: boolean; isDisabled: boolean }> = {};
     let forceArtwork = false;
     const overrides: Array<{
       artworkStatus?: 'REQUIRED' | 'OPTIONAL' | 'DISABLED';
@@ -339,82 +363,9 @@ export function ProductConfigurationFlow({
       designServicePolicy?: 'STANDARD' | 'REQUIRE_BRIEF' | 'SKIP_BRIEF';
     }> = [];
 
-    // Initialize group statuses from baseline
-    for (const g of rawGroups) {
-      grpStatus[g.code] = {
-        isRequired: g.isRequired,
-        isDisabled: false,
-        isHidden: g.isCustomerVisible === false,
-      };
-    }
-
-    // Evaluate rules deterministically
     for (const rule of rules) {
       if (!rule.isActive) continue;
       const conditionMet = matchesRuleCondition(rule, selectedOptions);
-
-      // 1. Group / Option Actions (Target Group specific)
-      if (rule.targetGroupCode && grpStatus[rule.targetGroupCode]) {
-        switch (rule.actionType) {
-          case 'HIDE':
-            if (conditionMet) {
-              // GUARD: Printing location must NOT be hidden solely because design is not required
-              const isPrintingLoc = /print(ing)?_?(loc(ation)?|side)/i.test(rule.targetGroupCode);
-              const isDesignCond = /design/i.test(rule.conditionGroupCode || '');
-              if (isPrintingLoc && isDesignCond) {
-                break;
-              }
-
-              if (rule.targetOptionValue) {
-                optStatus[`${rule.targetGroupCode}:${rule.targetOptionValue}`] = {
-                  isVisible: false,
-                  isDisabled: false,
-                };
-              } else {
-                grpStatus[rule.targetGroupCode].isHidden = true;
-              }
-            }
-            break;
-          case 'SHOW':
-            if (!conditionMet) {
-              const isPrintingLoc = /print(ing)?_?(loc(ation)?|side)/i.test(rule.targetGroupCode);
-              const isDesignCond = /design/i.test(rule.conditionGroupCode || '');
-              if (isPrintingLoc && isDesignCond) {
-                break;
-              }
-
-              if (rule.targetOptionValue) {
-                optStatus[`${rule.targetGroupCode}:${rule.targetOptionValue}`] = {
-                  isVisible: false,
-                  isDisabled: false,
-                };
-              } else {
-                grpStatus[rule.targetGroupCode].isHidden = true;
-              }
-            }
-            break;
-          case 'REQUIRE':
-            if (conditionMet) {
-              grpStatus[rule.targetGroupCode].isRequired = true;
-            }
-            break;
-          case 'DISABLE':
-            if (conditionMet) {
-              if (rule.targetOptionValue) {
-                optStatus[`${rule.targetGroupCode}:${rule.targetOptionValue}`] = {
-                  isVisible: true,
-                  isDisabled: true,
-                };
-              } else {
-                grpStatus[rule.targetGroupCode].isDisabled = true;
-                grpStatus[rule.targetGroupCode].disabledReason = `Conditional on ${rule.conditionGroupCode}`;
-              }
-            }
-            break;
-        }
-      }
-
-      // 2. Artwork Target Effects (Independent of targetGroupCode)
       if (conditionMet) {
         if (rule.actionType === 'REQUIRE_ARTWORK_FILES') {
           forceArtwork = true;
@@ -431,52 +382,25 @@ export function ProductConfigurationFlow({
       }
     }
 
-    const filtered = rawGroups.filter((g) => !grpStatus[g.code]?.isHidden);
     return {
-      visibleGroups: filtered,
-      groupStatusMap: grpStatus,
-      optionStatusMap: optStatus,
       forcedArtworkRequired: forceArtwork,
       artworkConfigOverrides: overrides,
     };
-  }, [rawGroups, product.configurationRules, selectedOptions]);
-
-  // Handle SET_DEFAULT conditional rules
-  useEffect(() => {
-    const rules: ProductConfigurationRule[] = product.configurationRules || [];
-    for (const rule of rules) {
-      if (!rule.isActive || rule.actionType !== 'SET_DEFAULT' || !rule.targetGroupCode || !rule.targetOptionValue) continue;
-      const conditionMet = matchesRuleCondition(rule, selectedOptions);
-      if (conditionMet && selectedOptions[rule.targetGroupCode] !== rule.targetOptionValue) {
-        setSelectedOptions((prev) => ({ ...prev, [rule.targetGroupCode!]: rule.targetOptionValue }));
-      }
-    }
   }, [product.configurationRules, selectedOptions]);
 
-  // Auto-sanitize selections if an option is hidden or disabled by rule
+  // Synchronize sanitized selections when an option becomes incompatible with controlling selections
   useEffect(() => {
-    let changed = false;
-    const sanitized = { ...selectedOptions };
-    for (const group of visibleGroups) {
-      const val = sanitized[group.code];
-      const optKey = `${group.code}:${val}`;
-      const isOptHidden = optionStatusMap[optKey]?.isVisible === false;
-      const isOptDisabled = optionStatusMap[optKey]?.isDisabled === true;
-      if (isOptHidden || isOptDisabled) {
-        const validOpt = group.options?.find((o) => {
-          const k = `${group.code}:${o.value}`;
-          return o.isActive && optionStatusMap[k]?.isVisible !== false && !optionStatusMap[k]?.isDisabled;
-        });
-        if (validOpt) {
-          sanitized[group.code] = validOpt.value;
-          changed = true;
-        }
+    if (changedSelections && changedSelections.length > 0) {
+      setSelectedOptions((prev) => ({
+        ...prev,
+        ...sanitizedSelections,
+      }));
+      const reasons = changedSelections.map((c) => c.reason).filter(Boolean);
+      if (reasons.length > 0) {
+        setRuleNotice(reasons.join(' • '));
       }
     }
-    if (changed) {
-      setSelectedOptions(sanitized);
-    }
-  }, [visibleGroups, optionStatusMap, selectedOptions]);
+  }, [changedSelections, sanitizedSelections]);
 
   const handleOptionChange = (groupCode: string, val: any) => {
     setSelectedOptions((prev) => ({
@@ -785,6 +709,100 @@ export function ProductConfigurationFlow({
     }
   }, [hasActiveCombinationTiers, validCombinationTiers, quantity, minQty]);
 
+  // ---------------------------------------------------------------------------
+  // 5b. PERSONALIZATION TEMPLATE ENGINE (Keepsakes, Wedding Frames, Occasions)
+  // ---------------------------------------------------------------------------
+  const [personalizationTemplate, setPersonalizationTemplate] = useState<PersonalizationTemplate | null>(
+    product.personalizationTemplate || null
+  );
+  const [personalizationSharedValues, setPersonalizationSharedValues] = useState<Record<string, any>>({});
+  const [personalizationPerItemEntries, setPersonalizationPerItemEntries] = useState<
+    Array<{ itemIndex: number; variantCombination?: any; values: Record<string, any> }>
+  >([]);
+  const [isBulkPasteModalOpen, setIsBulkPasteModalOpen] = useState(false);
+  const [bulkPasteText, setBulkPasteText] = useState('');
+  const [bulkPasteErrors, setBulkPasteErrors] = useState<string[]>([]);
+
+  // Load public template if product has templateId but not yet populated
+  useEffect(() => {
+    if (product.personalizationTemplateId && !personalizationTemplate) {
+      api
+        .getPublicPersonalizationTemplate(product.personalizationTemplateId)
+        .then((tmpl) => {
+          if (tmpl && tmpl.isActive) {
+            setPersonalizationTemplate(tmpl);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [product.personalizationTemplateId, personalizationTemplate]);
+
+  const effectiveQuantity = isMultiVariantEnabled ? totalVariantQuantity : quantity;
+
+  // Auto-synchronize PER_ITEM roster rows whenever ordered quantity changes
+  useEffect(() => {
+    if (!personalizationTemplate) return;
+    const perItemFields = personalizationTemplate.fields?.filter((f) => f.scope === 'PER_ITEM') || [];
+    if (perItemFields.length === 0) return;
+
+    setPersonalizationPerItemEntries((prev) => {
+      const targetCount = Math.max(1, effectiveQuantity);
+      const next = [...prev];
+      if (next.length < targetCount) {
+        for (let i = next.length; i < targetCount; i++) {
+          const defaults: Record<string, any> = {};
+          perItemFields.forEach((f) => {
+            defaults[f.code] = f.defaultValue || '';
+          });
+          next.push({ itemIndex: i + 1, values: defaults });
+        }
+        return next;
+      } else if (next.length > targetCount) {
+        return next.slice(0, targetCount);
+      }
+      return prev;
+    });
+  }, [effectiveQuantity, personalizationTemplate]);
+
+  // Bulk Paste / CSV Import Handler
+  const handleApplyBulkPaste = () => {
+    if (!personalizationTemplate) return;
+    const perItemFields = personalizationTemplate.fields?.filter((f) => f.scope === 'PER_ITEM') || [];
+    if (perItemFields.length === 0) return;
+
+    const lines = bulkPasteText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    const errors: string[] = [];
+    if (lines.length !== effectiveQuantity) {
+      errors.push(
+        `Bulk roster count mismatch: You have ordered ${effectiveQuantity} items, but provided ${lines.length} lines. Please provide exactly ${effectiveQuantity} lines.`
+      );
+    }
+
+    const newEntries: Array<{ itemIndex: number; values: Record<string, any> }> = [];
+    lines.forEach((line, idx) => {
+      const parts = line.includes('\t') ? line.split('\t') : line.split(',');
+      const rowValues: Record<string, any> = {};
+      perItemFields.forEach((f, fIdx) => {
+        rowValues[f.code] = (parts[fIdx] || '').trim();
+      });
+      newEntries.push({ itemIndex: idx + 1, values: rowValues });
+    });
+
+    if (errors.length > 0) {
+      setBulkPasteErrors(errors);
+      return;
+    }
+
+    setPersonalizationPerItemEntries(newEntries);
+    setIsBulkPasteModalOpen(false);
+    setBulkPasteText('');
+    setBulkPasteErrors([]);
+  };
+
   const quickPresets = useMemo(() => {
     const list = [
       minQty,
@@ -983,9 +1001,21 @@ export function ProductConfigurationFlow({
   // ---------------------------------------------------------------------------
   const validationErrors = useMemo(() => {
     const errors: string[] = [];
+    // 1. Prohibited / Invalid combination rules
+    for (const inv of invalidCombinations) {
+      errors.push(inv.message);
+    }
+
     for (const g of visibleGroups) {
       if (groupStatusMap[g.code]?.isRequired && !selectedOptions[g.code]) {
         errors.push(`Please select an option for: ${g.name}`);
+      }
+      const selectedVal = selectedOptions[g.code];
+      if (selectedVal) {
+        const optKey = `${g.code}:${selectedVal}`;
+        if (optionStatusMap[optKey]?.isDisabled) {
+          errors.push(`Selected option for ${g.name} (${selectedVal}) is not available with current selections.`);
+        }
       }
     }
     if (isMultiVariantEnabled) {
@@ -1040,6 +1070,49 @@ export function ProductConfigurationFlow({
     if (resolvedArtwork.requireDesignBrief && wantsDesignService && !designNotes.trim()) {
       errors.push('Design notes / content instructions are required for this service.');
     }
+
+    // Authoritative Personalization Validation (Templates with PER_ORDER & PER_ITEM)
+    if (personalizationTemplate && personalizationTemplate.isActive) {
+      const sharedFields = personalizationTemplate.fields?.filter((f) => f.scope === 'PER_ORDER') || [];
+      const perItemFields = personalizationTemplate.fields?.filter((f) => f.scope === 'PER_ITEM') || [];
+
+      for (const sf of sharedFields) {
+        const isReq =
+          product.personalizationConfig?.fieldOverrides?.[sf.code]?.isRequired !== undefined
+            ? Boolean(product.personalizationConfig.fieldOverrides[sf.code].isRequired)
+            : sf.isRequired;
+        const val = personalizationSharedValues[sf.code];
+        const valStr = val !== undefined && val !== null ? String(val).trim() : '';
+        if (isReq && !valStr) {
+          errors.push(`Personalization required: ${sf.name}`);
+        }
+      }
+
+      if (perItemFields.length > 0) {
+        if (personalizationPerItemEntries.length !== effectiveQuantity) {
+          errors.push(
+            `Personalization requires ${effectiveQuantity} entries to match product quantity (currently ${personalizationPerItemEntries.length}).`
+          );
+        }
+        for (let i = 0; i < personalizationPerItemEntries.length; i++) {
+          const entry = personalizationPerItemEntries[i];
+          const itemNum = i + 1;
+          for (const pif of perItemFields) {
+            const isReq =
+              product.personalizationConfig?.fieldOverrides?.[pif.code]?.isRequired !== undefined
+                ? Boolean(product.personalizationConfig.fieldOverrides[pif.code].isRequired)
+                : pif.isRequired;
+            const val = entry.values?.[pif.code];
+            const valStr = val !== undefined && val !== null ? String(val).trim() : '';
+            if (isReq && !valStr) {
+              errors.push(`Item #${itemNum}: '${pif.name}' is required.`);
+              break;
+            }
+          }
+        }
+      }
+    }
+
     if (!termsAccepted) {
       errors.push('Please confirm and accept the Design Proof Approval Policy.');
     }
@@ -1061,6 +1134,11 @@ export function ProductConfigurationFlow({
     activeSlotFiles,
     resolvedArtwork.requireDesignBrief,
     designNotes,
+    personalizationTemplate,
+    personalizationSharedValues,
+    personalizationPerItemEntries,
+    effectiveQuantity,
+    product.personalizationConfig,
     termsAccepted,
   ]);
 
@@ -1110,6 +1188,14 @@ export function ProductConfigurationFlow({
       balanceAmount: computedBalanceAmount,
       subtotal: computedSubtotal,
       grandTotal: computedGrandTotal,
+      personalization: personalizationTemplate && personalizationTemplate.isActive
+        ? {
+            templateId: personalizationTemplate.id,
+            templateCode: personalizationTemplate.code,
+            sharedValues: personalizationSharedValues,
+            perItemEntries: personalizationPerItemEntries,
+          }
+        : null,
       quote: {
         ...(quote || {}),
         variantLines: isMultiVariantEnabled ? (quote?.variantLines || variantLines) : undefined,
@@ -1121,6 +1207,14 @@ export function ProductConfigurationFlow({
         advanceAmount: computedAdvanceAmount,
         balanceAmount: computedBalanceAmount,
         specificationsSnapshot: snapshot,
+        personalization: personalizationTemplate && personalizationTemplate.isActive
+          ? {
+              templateId: personalizationTemplate.id,
+              templateCode: personalizationTemplate.code,
+              sharedValues: personalizationSharedValues,
+              perItemEntries: personalizationPerItemEntries,
+            }
+          : null,
       },
     };
   };
@@ -1180,6 +1274,42 @@ export function ProductConfigurationFlow({
         </div>
 
         <div className="space-y-6">
+          {/* Reactive Rule Notices (Option auto-updates / sanitization) */}
+          {ruleNotice && (
+            <div className="p-3.5 bg-amber-50 border border-amber-200/90 rounded-xl text-xs text-amber-950 flex items-start justify-between gap-3 shadow-2xs">
+              <div className="flex items-start gap-2.5">
+                <RiInformationLine className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block text-amber-950">Option Selection Updated</span>
+                  <span className="text-[11px] text-amber-900 leading-relaxed">{ruleNotice}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRuleNotice(null)}
+                className="text-amber-700 hover:text-amber-950 p-1 rounded-md transition"
+                title="Dismiss notice"
+              >
+                <RiCloseLine className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Incompatible Combination Warning */}
+          {invalidCombinations.length > 0 && (
+            <div className="p-4 bg-rose-50 border border-rose-200/90 rounded-xl text-xs text-rose-950 space-y-1.5 shadow-2xs">
+              <div className="flex items-center gap-2 font-bold text-rose-950">
+                <RiAlertFill className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>Incompatible Option Combination</span>
+              </div>
+              {invalidCombinations.map((inv, idx) => (
+                <p key={idx} className="text-[11px] text-rose-900 pl-6">
+                  • {inv.message}
+                </p>
+              ))}
+            </div>
+          )}
+
           {/* Standard Dimensions (if configured) */}
           {product.defaultSize && (
             <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-xl flex items-center justify-between gap-3 text-xs">
@@ -1205,12 +1335,29 @@ export function ProductConfigurationFlow({
             .filter((group) => !isMultiVariantEnabled || !effectiveVariantDimensions.includes(group.code))
             .map((group) => {
               const status = groupStatusMap[group.code];
+              // Map options according to conditional rules (filter hidden, mark disabled with reason)
+              const processedOptions = (group.options || [])
+                .filter((opt) => {
+                  const optKey = `${group.code}:${opt.value}`;
+                  return optionStatusMap[optKey]?.isVisible !== false;
+                })
+                .map((opt) => {
+                  const optKey = `${group.code}:${opt.value}`;
+                  const optStatus = optionStatusMap[optKey];
+                  return {
+                    ...opt,
+                    isDisabled: optStatus?.isDisabled || false,
+                    disabledReason: optStatus?.disabledReason,
+                  };
+                });
+
               return (
                 <div key={group.id} className="pb-5 border-b border-slate-100 last:border-0 last:pb-0">
                   <DynamicFieldRenderer
                     field={{
                       ...group,
                       isRequired: status?.isRequired ?? group.isRequired,
+                      options: processedOptions,
                     }}
                     value={selectedOptions[group.code]}
                     onChange={(val) => handleOptionChange(group.code, val)}
@@ -1322,11 +1469,16 @@ export function ProductConfigurationFlow({
                                 }
                                 className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-amber-500 cursor-pointer"
                               >
-                                {activeOptions.map((opt) => (
-                                  <option key={opt.value} value={opt.value}>
-                                    {opt.label} {opt.priceModifier ? `(+₹${opt.priceModifier})` : ''}
-                                  </option>
-                                ))}
+                                {activeOptions
+                                  .filter((opt) => optionStatusMap[`${dg.code}:${opt.value}`]?.isVisible !== false)
+                                  .map((opt) => {
+                                    const optDisabled = optionStatusMap[`${dg.code}:${opt.value}`]?.isDisabled;
+                                    return (
+                                      <option key={opt.value} value={opt.value} disabled={optDisabled}>
+                                        {opt.label} {opt.priceModifier ? `(+₹${opt.priceModifier})` : ''} {optDisabled ? ' (Unavailable)' : ''}
+                                      </option>
+                                    );
+                                  })}
                               </select>
                             </td>
                           );
@@ -1435,11 +1587,16 @@ export function ProductConfigurationFlow({
                               }
                               className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:border-amber-500"
                             >
-                              {activeOptions.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                  {opt.label} {opt.priceModifier ? `(+₹${opt.priceModifier})` : ''}
-                                </option>
-                              ))}
+                              {activeOptions
+                                .filter((opt) => optionStatusMap[`${dg.code}:${opt.value}`]?.isVisible !== false)
+                                .map((opt) => {
+                                  const optDisabled = optionStatusMap[`${dg.code}:${opt.value}`]?.isDisabled;
+                                  return (
+                                    <option key={opt.value} value={opt.value} disabled={optDisabled}>
+                                      {opt.label} {opt.priceModifier ? `(+₹${opt.priceModifier})` : ''} {optDisabled ? ' (Unavailable)' : ''}
+                                    </option>
+                                  );
+                                })}
                             </select>
                           </div>
                         );
@@ -1646,6 +1803,294 @@ export function ProductConfigurationFlow({
           </>
         )}
       </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* SECTION 2b: PERSONALIZATION & INSCRIPTIONS (Keepsakes / Frames)    */}
+      {/* ------------------------------------------------------------------ */}
+      {personalizationTemplate && personalizationTemplate.isActive && (
+        <div className="bg-gradient-to-br from-purple-50/40 via-white to-indigo-50/30 border border-purple-200/90 rounded-2xl p-6 sm:p-7 shadow-card space-y-6">
+          <div className="border-b border-purple-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono font-black uppercase text-purple-600 tracking-wider">
+                  Section 02b
+                </span>
+                <span className="text-slate-300">•</span>
+                <span className="text-xs font-bold text-purple-600 uppercase tracking-wider">
+                  Custom Personalization
+                </span>
+              </div>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight font-display mt-0.5 flex items-center gap-2">
+                <RiFileList3Line className="text-purple-600" />
+                {personalizationTemplate.name}
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {personalizationTemplate.description ||
+                  'Enter shared occasion details and personalized recipient names for your order.'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs bg-purple-100 text-purple-900 border border-purple-200 px-3 py-1 rounded-full font-semibold flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse" />
+                {personalizationTemplate.fields.filter((f) => f.scope === 'PER_ITEM').length > 0
+                  ? `${effectiveQuantity} Personalized Items`
+                  : 'Shared Order Details'}
+              </span>
+            </div>
+          </div>
+
+          {/* Shared Fields (PER_ORDER) */}
+          {personalizationTemplate.fields.filter((f) => f.scope === 'PER_ORDER').length > 0 && (
+            <div className="space-y-4 p-5 bg-white rounded-xl border border-purple-100 shadow-2xs">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2">
+                <span className="w-2 h-2 rounded-full bg-sky-500" />
+                Shared Event & Commemoration Details (Entered Once)
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {personalizationTemplate.fields
+                  .filter((f) => f.scope === 'PER_ORDER')
+                  .map((field) => {
+                    const isReq =
+                      product.personalizationConfig?.fieldOverrides?.[field.code]?.isRequired !== undefined
+                        ? Boolean(product.personalizationConfig.fieldOverrides[field.code].isRequired)
+                        : field.isRequired;
+
+                    return (
+                      <div key={field.code} className="space-y-1">
+                        <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                          <span>{field.name}</span>
+                          {isReq && <span className="text-rose-500 font-black">*</span>}
+                        </label>
+
+                        {field.inputType === 'TEXTAREA' ? (
+                          <textarea
+                            rows={2}
+                            placeholder={field.placeholder || ''}
+                            value={personalizationSharedValues[field.code] || ''}
+                            onChange={(e) =>
+                              setPersonalizationSharedValues({
+                                ...personalizationSharedValues,
+                                [field.code]: e.target.value,
+                              })
+                            }
+                            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:border-purple-500 focus:outline-none"
+                          />
+                        ) : field.inputType === 'SELECT' && field.options && field.options.length > 0 ? (
+                          <select
+                            value={personalizationSharedValues[field.code] || ''}
+                            onChange={(e) =>
+                              setPersonalizationSharedValues({
+                                ...personalizationSharedValues,
+                                [field.code]: e.target.value,
+                              })
+                            }
+                            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:border-purple-500 focus:outline-none"
+                          >
+                            <option value="">Select an option...</option>
+                            {field.options.map((opt, oIdx) => (
+                              <option key={oIdx} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type={
+                              field.inputType === 'NUMBER'
+                                ? 'number'
+                                : field.inputType === 'DATE'
+                                ? 'date'
+                                : 'text'
+                            }
+                            placeholder={field.placeholder || ''}
+                            value={personalizationSharedValues[field.code] || ''}
+                            onChange={(e) =>
+                              setPersonalizationSharedValues({
+                                ...personalizationSharedValues,
+                                [field.code]: e.target.value,
+                              })
+                            }
+                            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:border-purple-500 focus:outline-none"
+                          />
+                        )}
+
+                        {field.helperText && (
+                          <p className="text-[11px] text-slate-400 mt-0.5">{field.helperText}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
+          {/* Per-Item Fields (PER_ITEM) */}
+          {personalizationTemplate.fields.filter((f) => f.scope === 'PER_ITEM').length > 0 && (
+            <div className="space-y-4 p-5 bg-white rounded-xl border border-purple-100 shadow-2xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    <span className="w-2 h-2 rounded-full bg-purple-500" />
+                    Individual Item Personalization Roster ({effectiveQuantity} pieces)
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Provide the unique name or inscription for each ordered item
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBulkPasteErrors([]);
+                      setIsBulkPasteModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+                  >
+                    <RiUpload2Line className="w-4 h-4" />
+                    <span>Bulk Paste / CSV Import</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Roster Table */}
+              <div className="overflow-x-auto max-h-[420px] overflow-y-auto border border-slate-200 rounded-xl">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3 w-16 text-slate-500 font-bold uppercase tracking-wider">
+                        Item #
+                      </th>
+                      {personalizationTemplate.fields
+                        .filter((f) => f.scope === 'PER_ITEM')
+                        .map((field) => {
+                          const isReq =
+                            product.personalizationConfig?.fieldOverrides?.[field.code]?.isRequired !== undefined
+                              ? Boolean(product.personalizationConfig.fieldOverrides[field.code].isRequired)
+                              : field.isRequired;
+
+                          return (
+                            <th key={field.code} className="py-2.5 px-3 font-bold text-slate-700">
+                              <span>{field.name}</span>
+                              {isReq && <span className="text-rose-500 ml-0.5">*</span>}
+                            </th>
+                          );
+                        })}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {personalizationPerItemEntries.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-purple-50/20">
+                        <td className="py-2.5 px-3 font-mono font-bold text-slate-400">
+                          #{idx + 1}
+                        </td>
+                        {personalizationTemplate.fields
+                          .filter((f) => f.scope === 'PER_ITEM')
+                          .map((field) => (
+                            <td key={field.code} className="py-2 px-3">
+                              <input
+                                type={field.inputType === 'NUMBER' ? 'number' : 'text'}
+                                placeholder={field.placeholder || `Enter ${field.name}`}
+                                value={row.values?.[field.code] || ''}
+                                onChange={(e) => {
+                                  const next = [...personalizationPerItemEntries];
+                                  next[idx] = {
+                                    ...next[idx],
+                                    values: {
+                                      ...(next[idx]?.values || {}),
+                                      [field.code]: e.target.value,
+                                    },
+                                  };
+                                  setPersonalizationPerItemEntries(next);
+                                }}
+                                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:bg-white focus:border-purple-500 focus:outline-none"
+                              />
+                            </td>
+                          ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* BULK PASTE MODAL */}
+      {isBulkPasteModalOpen && personalizationTemplate && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl flex flex-col gap-4 border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <RiUpload2Line className="text-purple-600" />
+                Bulk Paste Roster ({effectiveQuantity} pieces)
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsBulkPasteModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700"
+              >
+                <RiCloseLine size={20} />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600">
+              Paste rows copied directly from Excel, Google Sheets, or CSV. Each line will populate one ordered piece.
+              Expected columns:{' '}
+              <strong className="text-purple-700">
+                {personalizationTemplate.fields
+                  .filter((f) => f.scope === 'PER_ITEM')
+                  .map((f) => f.name)
+                  .join(' , ')}
+              </strong>
+            </p>
+
+            {bulkPasteErrors.length > 0 && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex flex-col gap-1">
+                {bulkPasteErrors.map((err, i) => (
+                  <div key={i} className="flex items-center gap-1.5 font-medium">
+                    <RiAlertFill className="text-rose-600 shrink-0" />
+                    <span>{err}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <textarea
+              rows={8}
+              placeholder={`Uncle David & Family\nAunt Sarah\nGrandpa Arthur`}
+              value={bulkPasteText}
+              onChange={(e) => setBulkPasteText(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs text-slate-900 placeholder-slate-400 focus:border-purple-600 focus:outline-none"
+            />
+
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-xs font-mono font-medium text-slate-500">
+                {bulkPasteText.split('\n').filter((l) => l.trim()).length} of {effectiveQuantity} lines entered
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBulkPasteModalOpen(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyBulkPaste}
+                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md shadow-purple-600/30"
+                >
+                  Apply to {effectiveQuantity} Items
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* SECTION 3: ARTWORK & PREPRESS SETUP                                */}

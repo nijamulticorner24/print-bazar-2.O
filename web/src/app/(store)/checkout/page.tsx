@@ -30,50 +30,65 @@ import { useAuth } from '@/lib/auth-context';
 import { CustomerAuthModal } from '@/components/auth/CustomerAuthModal';
 import { Button, Input, Badge } from '@/components/ui';
 
+export interface CheckoutCartItem {
+  productId?: string;
+  productName: string;
+  sku: string;
+  quantity: number;
+  paymentMode?: 'FULL' | 'SPLIT_50';
+  advanceAmount?: number;
+  balanceAmount?: number;
+  fieldValues?: Record<string, any>;
+  specificationsSnapshot?: Record<string, any>;
+  specifications?: Record<string, any>;
+  options?: any[];
+  selectedOptionsSummary?: Array<{
+    fieldLabel?: string;
+    optionLabel?: string;
+    value?: string;
+    optionName?: string;
+    valueName?: string;
+    priceModifier?: number;
+  }>;
+  variantLines?: Array<{
+    combination: Record<string, string>;
+    quantity: number;
+    unitPrice?: number;
+    lineSubtotal?: number;
+  }>;
+  quote?: {
+    subtotal?: number;
+    totalTax?: number;
+    estimatedShipping?: number;
+    grandTotal?: number;
+    unitPrice?: number;
+    variantLines?: any[];
+    productionDays?: number;
+  };
+  artworkFile?: any;
+  artworkFiles?: any;
+  artworkUrl?: string;
+  artworkStorageKey?: string;
+  referenceImage?: any;
+  referenceImageUrl?: string;
+  selectedDesignService?: boolean;
+  hasDesignService?: boolean;
+  designNotes?: string;
+  customerNotes?: string;
+  totalPrice?: number;
+  subtotal?: number;
+  personalization?: any;
+  productionDays?: number;
+  shippingPincode?: string;
+}
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { user, isLoading: isAuthLoading } = useAuth();
 
-  const [cart, setCart] = useState<{
-    productId?: string;
-    productName: string;
-    sku: string;
-    quantity: number;
-    paymentMode?: 'FULL' | 'SPLIT_50';
-    advanceAmount?: number;
-    balanceAmount?: number;
-    fieldValues?: Record<string, any>;
-    specificationsSnapshot?: Record<string, any>;
-    selectedOptionsSummary?: Array<{
-      fieldLabel?: string;
-      optionLabel?: string;
-      value?: string;
-      optionName?: string;
-      valueName?: string;
-      priceModifier?: number;
-    }>;
-    variantLines?: Array<{
-      combination: Record<string, string>;
-      quantity: number;
-      unitPrice?: number;
-      lineSubtotal?: number;
-    }>;
-    quote?: {
-      subtotal?: number;
-      totalTax?: number;
-      estimatedShipping?: number;
-      grandTotal?: number;
-      unitPrice?: number;
-      variantLines?: any[];
-    };
-    artworkFile?: any;
-    artworkFiles?: any;
-    referenceImage?: any;
-    selectedDesignService?: boolean;
-    designNotes?: string;
-    customerNotes?: string;
-    totalPrice?: number;
-  } | null>(null);
+  const [cartItems, setCartItems] = useState<CheckoutCartItem[]>([]);
+  // Backward-compatible reference to primary item
+  const cart = cartItems[0] || null;
 
   const [paymentMode, setPaymentMode] = useState<'FULL' | 'SPLIT_50'>('FULL');
 
@@ -104,25 +119,43 @@ export default function CheckoutPage() {
   const [shippingTaxQuote, setShippingTaxQuote] = useState<ShippingTaxCalculationResult | null>(null);
   const [isCalculatingQuote, setIsCalculatingQuote] = useState(false);
 
-  // Load cart from sessionStorage or fallback to localStorage
+  // Load complete cart from sessionStorage or fallback to localStorage
   useEffect(() => {
-    let parsed: any = null;
+    let itemsList: CheckoutCartItem[] = [];
+    let initialMode: 'FULL' | 'SPLIT_50' | null = null;
+    let initialPincode = '';
+
     const rawActive = sessionStorage.getItem('pb2_active_cart');
     if (rawActive) {
       try {
-        parsed = JSON.parse(rawActive);
+        const parsed = JSON.parse(rawActive);
+        if (parsed) {
+          if (Array.isArray(parsed.items) && parsed.items.length > 0) {
+            itemsList = parsed.items;
+          } else if (Array.isArray(parsed) && parsed.length > 0) {
+            itemsList = parsed;
+          } else if (parsed.productId || parsed.productName) {
+            itemsList = [parsed];
+          }
+          if (parsed.paymentMode === 'SPLIT_50' || parsed.paymentMode === 'FULL') {
+            initialMode = parsed.paymentMode;
+          }
+          if (parsed.shippingPincode) {
+            initialPincode = parsed.shippingPincode;
+          }
+        }
       } catch (e) {
         console.error('Error parsing pb2_active_cart:', e);
       }
     }
 
-    if (!parsed) {
+    if (itemsList.length === 0) {
       const rawStored = localStorage.getItem('pb2_cart');
       if (rawStored) {
         try {
           const storedList = JSON.parse(rawStored);
           if (Array.isArray(storedList) && storedList.length > 0) {
-            parsed = storedList[0];
+            itemsList = storedList;
           }
         } catch (e) {
           console.error('Error parsing pb2_cart:', e);
@@ -130,12 +163,14 @@ export default function CheckoutPage() {
       }
     }
 
-    if (parsed) {
-      setCart(parsed);
-      if (parsed.paymentMode === 'SPLIT_50') {
+    if (itemsList.length > 0) {
+      setCartItems(itemsList);
+      if (initialMode === 'SPLIT_50' || itemsList.some((it) => it.paymentMode === 'SPLIT_50')) {
         setPaymentMode('SPLIT_50');
       }
-      const initialPincode = parsed.shippingPincode || (typeof window !== 'undefined' ? localStorage.getItem('pb2_user_pincode') : '') || '';
+      if (!initialPincode) {
+        initialPincode = itemsList[0]?.shippingPincode || (typeof window !== 'undefined' ? localStorage.getItem('pb2_user_pincode') || '' : '') || '';
+      }
       if (initialPincode) {
         setShippingAddress((prev) => ({ ...prev, postalCode: prev.postalCode || initialPincode }));
       }
@@ -159,30 +194,35 @@ export default function CheckoutPage() {
     }
   }, [user]);
 
-  const subtotal = Number(cart?.quote?.subtotal || cart?.totalPrice || 1475);
+  // Aggregate authoritative subtotal across all cart items
+  const subtotal = cartItems.reduce(
+    (acc, it) => acc + Number(it.quote?.subtotal || it.totalPrice || it.subtotal || 0),
+    0
+  );
+  const totalQuantity = cartItems.reduce((acc, it) => acc + Number(it.quantity || 1), 0);
+  const maxProductionDays = cartItems.length > 0
+    ? Math.max(...cartItems.map((it) => Number(it.productionDays || it.quote?.productionDays || 2)))
+    : 2;
 
   // Recalculate shipping & GST authoritatively on delivery pincode or delivery method change
   useEffect(() => {
     let isCancelled = false;
     const fetchQuote = async () => {
+      if (subtotal <= 0) return;
       setIsCalculatingQuote(true);
       try {
         const res = await api.calculateShippingAndTax({
           subtotal,
           postalCode: shippingAddress.postalCode,
           deliveryMethod,
-          items: cart
-            ? [
-                {
-                  productId: cart.productId,
-                  productName: cart.productName,
-                  quantity: cart.quantity || 500,
-                  unitPrice: cart.quote?.unitPrice || subtotal / (cart.quantity || 500),
-                  totalPrice: subtotal,
-                },
-              ]
-            : undefined,
-          totalQuantity: cart?.quantity || 500,
+          items: cartItems.map((it) => ({
+            productId: it.productId || 'custom-item',
+            productName: it.productName || 'Print Product',
+            quantity: Number(it.quantity) || 1,
+            unitPrice: Number(it.quote?.unitPrice || (it.totalPrice ? it.totalPrice / (it.quantity || 1) : 0)),
+            totalPrice: Number(it.quote?.subtotal || it.totalPrice || it.subtotal || 0),
+          })),
+          totalQuantity: totalQuantity || 1,
         });
         if (!isCancelled && res) {
           setShippingTaxQuote(res);
@@ -199,7 +239,7 @@ export default function CheckoutPage() {
     return () => {
       isCancelled = true;
     };
-  }, [subtotal, shippingAddress.postalCode, deliveryMethod]);
+  }, [subtotal, totalQuantity, shippingAddress.postalCode, deliveryMethod, cartItems.length]);
 
   const gstRatePercent = shippingTaxQuote?.gstRatePercent ?? 18;
   const tax = shippingTaxQuote?.gstAmount ?? Math.round(subtotal * (gstRatePercent / 100) * 100) / 100;
@@ -240,7 +280,10 @@ export default function CheckoutPage() {
     setIsProcessing(true);
 
     try {
-      // 1. Create Master Order Record via Authoritative API
+      // Generate client idempotency key to prevent accidental duplicate submission
+      const idempotencyKey = `chk_${customerDetails.email.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+      // 1. Create Master Order Record via Authoritative API preserving EVERY cart item
       const orderPayload = {
         customerId: user?.customerId || undefined,
         customerDetails: {
@@ -263,26 +306,28 @@ export default function CheckoutPage() {
                 country: 'India',
               }
             : null,
-        items: [
-          {
-            productId: cart?.productId,
-            productName: cart?.productName || 'Premium Commercial Print Job',
-            sku: cart?.sku || 'PB-COMM-01',
-            quantity: cart?.quantity || 500,
-            unitPrice: cart?.quote?.unitPrice || subtotal / (cart?.quantity || 500),
-            totalPrice: subtotal,
-            specifications: cart?.specificationsSnapshot || cart?.fieldValues || {},
-            variantLines: cart?.variantLines || cart?.quote?.variantLines || null,
-            artworkFile: cart?.artworkFile || null,
-            artworkFiles: cart?.artworkFiles || null,
-            referenceImage: cart?.referenceImage || null,
-            artworkUrl: cart?.artworkFile?.fileUrl || null,
-            artworkStorageKey: cart?.artworkFile?.storageKey || null,
-            referenceImageUrl: cart?.referenceImage?.fileUrl || null,
-            hasDesignService: Boolean(cart?.selectedDesignService),
-            designNotes: cart?.designNotes || null,
-          },
-        ],
+        items: cartItems.map((item) => ({
+          productId: item.productId,
+          productName: item.productName || 'Premium Commercial Print Job',
+          sku: item.sku || 'PB-COMM-01',
+          quantity: item.quantity || 100,
+          unitPrice: item.quote?.unitPrice || (item.totalPrice ? item.totalPrice / (item.quantity || 1) : 0),
+          totalPrice: item.totalPrice || item.subtotal || 0,
+          specifications: item.specificationsSnapshot || item.fieldValues || item.specifications || {},
+          options: item.options || [],
+          fieldValues: item.fieldValues || {},
+          variantLines: item.variantLines || item.quote?.variantLines || null,
+          artworkFile: item.artworkFile || null,
+          artworkFiles: item.artworkFiles || null,
+          referenceImage: item.referenceImage || null,
+          artworkUrl: item.artworkFile?.fileUrl || item.artworkUrl || null,
+          artworkStorageKey: item.artworkFile?.storageKey || item.artworkStorageKey || null,
+          referenceImageUrl: item.referenceImage?.fileUrl || item.referenceImageUrl || null,
+          selectedDesignService: Boolean(item.selectedDesignService),
+          hasDesignService: Boolean(item.selectedDesignService || item.hasDesignService),
+          designNotes: item.designNotes || null,
+          personalization: item.personalization || null,
+        })),
         subtotal,
         taxAmount: tax,
         shippingAmount: shipping,
@@ -291,25 +336,31 @@ export default function CheckoutPage() {
         paidAmount: amountToCharge,
         advanceAmount,
         balanceAmount,
-        customerNotes: cart?.designNotes || cart?.customerNotes || null,
+        customerNotes: cartItems.map((it) => it.designNotes).filter(Boolean).join(' | ') || null,
         paymentMethod: 'ONLINE_PREPAID',
+        idempotencyKey,
       };
 
       const res: any = await api.createOrder(orderPayload);
+      const finalOrderNumber = res?.orderNumber || res?.data?.orderNumber;
 
-      // Clear Cart
+      if (!finalOrderNumber) {
+        throw new Error('Order creation was not acknowledged by the server. Your selections have been saved.');
+      }
+
+      // Establish durable order: clear cart ONLY on confirmed success
       localStorage.removeItem('pb2_cart');
       sessionStorage.removeItem('pb2_active_cart');
       window.dispatchEvent(new Event('cart-updated'));
 
       // Redirect to Confirmation
-      const finalOrderNumber = res?.orderNumber || res?.data?.orderNumber || 'PB-2026-0001';
       router.push(
         `/checkout/confirmation?orderNumber=${finalOrderNumber}&paymentMode=${paymentMode}&paid=${amountToCharge}&balance=${balanceAmount}`
       );
     } catch (err: any) {
       console.error('Order placement failed:', err);
-      setErrorMessage(err?.message || 'Failed to place order. Please check your details and try again.');
+      // Cart is strictly PRESERVED on failure so customer can retry safely
+      setErrorMessage(err?.message || 'Failed to place order. Your cart and selections have been preserved.');
     } finally {
       setIsProcessing(false);
     }
@@ -609,33 +660,46 @@ export default function CheckoutPage() {
                 Order Review
               </h3>
 
-              {/* Item Snapshot */}
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-1 text-xs">
-                <div className="flex justify-between font-bold text-slate-900">
-                  <span>{cart?.productName || 'Custom Print Order'}</span>
-                  <span>{formatCurrency(subtotal)}</span>
+              {/* Multi-Item Snapshot */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-mono font-semibold text-slate-500 uppercase pb-1">
+                  <span>Order Items</span>
+                  <span>{cartItems.length} {cartItems.length === 1 ? 'Product' : 'Products'}</span>
                 </div>
-                <div className="text-[11px] text-slate-500 font-mono">
-                  Quantity: {cart?.quantity || 500} units • {cart?.sku || 'COMM-01'}
-                </div>
-                {cart?.variantLines && cart.variantLines.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-slate-200/60 space-y-1">
-                    <span className="text-[10px] font-mono font-bold text-amber-900 uppercase block">
-                      Multi-Variant Lines ({cart.quantity} pcs total):
-                    </span>
-                    {cart.variantLines.map((vl: any, idx: number) => {
-                      const desc = Object.entries(vl.combination || {})
-                        .map(([k, v]) => `${k.toUpperCase()}: ${v}`)
-                        .join(' • ');
-                      return (
-                        <div key={idx} className="flex justify-between text-[11px] text-slate-700">
-                          <span>{desc}</span>
-                          <span className="font-mono font-bold text-slate-900">{vl.quantity} pcs</span>
-                        </div>
-                      );
-                    })}
+                {cartItems.map((item, idx) => (
+                  <div key={idx} className="p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-1 text-xs">
+                    <div className="flex justify-between font-bold text-slate-900">
+                      <span>{item.productName || 'Custom Print Order'}</span>
+                      <span className="font-mono">{formatCurrency(Number(item.quote?.subtotal || item.totalPrice || item.subtotal || 0))}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-mono flex items-center justify-between">
+                      <span>Quantity: {item.quantity || 100} units • {item.sku || 'PB-COMM-01'}</span>
+                      {item.hasDesignService && (
+                        <span className="text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-sans font-semibold">
+                          Design Service
+                        </span>
+                      )}
+                    </div>
+                    {item.variantLines && item.variantLines.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-slate-200/60 space-y-1">
+                        <span className="text-[10px] font-mono font-bold text-amber-900 uppercase block">
+                          Multi-Variant Lines ({item.quantity} pcs total):
+                        </span>
+                        {item.variantLines.map((vl: any, vIdx: number) => {
+                          const desc = Object.entries(vl.combination || {})
+                            .map(([k, v]) => `${k.toUpperCase()}: ${v}`)
+                            .join(' • ');
+                          return (
+                            <div key={vIdx} className="flex justify-between text-[11px] text-slate-700">
+                              <span>{desc}</span>
+                              <span className="font-mono font-bold text-slate-900">{vl.quantity} pcs</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
 
               {/* Price Calculation */}

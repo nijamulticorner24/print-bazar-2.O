@@ -69,15 +69,35 @@ const SAMPLE_ORDERS = [
   },
 ];
 
+interface SalesOrderCustomer {
+  fullName?: string | null;
+  companyName?: string | null;
+  phone?: string | null;
+  email?: string | null;
+}
+
+interface SalesOrder {
+  id: string;
+  orderNumber: string;
+  customer?: SalesOrderCustomer | null;
+  status: string;
+  paymentStatus: string;
+  priority: string;
+  slaStatus: string;
+  totalAmount: number;
+  itemSummary: string;
+  dueAt: string;
+}
+
 export default function AdminOrdersPage() {
-  const [orders, setOrders] = useState(SAMPLE_ORDERS);
+  const [orders, setOrders] = useState<SalesOrder[]>(SAMPLE_ORDERS);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
   useEffect(() => {
     async function fetchOrders() {
       try {
-        const res = (await api.listOrders()) as { data: typeof SAMPLE_ORDERS };
+        const res = (await api.listOrders()) as { data: SalesOrder[] };
         if (res?.data && res.data.length > 0) {
           setOrders(res.data);
         }
@@ -89,10 +109,13 @@ export default function AdminOrdersPage() {
   }, []);
 
   const filteredOrders = orders.filter((o) => {
+    const query = searchQuery.trim().toLowerCase();
     const matchesSearch =
-      o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      o.customer.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      o.customer.companyName.toLowerCase().includes(searchQuery.toLowerCase());
+      !query ||
+      (o.orderNumber || '').toLowerCase().includes(query) ||
+      (o.customer?.fullName || '').toLowerCase().includes(query) ||
+      (o.customer?.companyName || '').toLowerCase().includes(query) ||
+      (o.customer?.phone || '').toLowerCase().includes(query);
     const matchesStatus = statusFilter === 'ALL' || o.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -174,9 +197,13 @@ export default function AdminOrdersPage() {
                     <span className="text-[10px] text-slate-400 font-mono">MASTER RECORD</span>
                   </td>
                   <td className="py-3.5 px-4">
-                    <span className="font-medium text-slate-900 block text-[13px]">{ord.customer.fullName}</span>
-                    <span className="text-[12px] text-slate-500 block">{ord.customer.companyName}</span>
-                    <span className="text-[11px] font-mono text-slate-400">{ord.customer.phone}</span>
+                    <span className="font-medium text-slate-900 block text-[13px]">{ord.customer?.fullName || 'Direct Customer'}</span>
+                    {ord.customer?.companyName && (
+                      <span className="text-[12px] text-slate-500 block">{ord.customer.companyName}</span>
+                    )}
+                    {ord.customer?.phone && (
+                      <span className="text-[11px] font-mono text-slate-400">{ord.customer.phone}</span>
+                    )}
                   </td>
                   <td className="py-3.5 px-4 max-w-xs">
                     <span className="text-[13px] font-normal text-slate-800 line-clamp-1">

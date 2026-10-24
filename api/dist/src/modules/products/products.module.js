@@ -13,15 +13,29 @@ const products_controller_1 = require("./products.controller");
 const admin_catalogue_service_1 = require("./admin-catalogue.service");
 const admin_catalogue_controller_1 = require("./admin-catalogue.controller");
 const audit_module_1 = require("../audit/audit.module");
+const personalization_template_service_1 = require("./personalization/personalization-template.service");
+const personalization_template_controller_1 = require("./personalization/personalization-template.controller");
 let ProductsModule = class ProductsModule {
 };
 exports.ProductsModule = ProductsModule;
 exports.ProductsModule = ProductsModule = __decorate([
     (0, common_1.Module)({
         imports: [audit_module_1.AuditModule],
-        controllers: [products_controller_1.ProductsController, admin_catalogue_controller_1.AdminCatalogueController],
-        providers: [products_service_1.ProductsService, admin_catalogue_service_1.AdminCatalogueService],
-        exports: [products_service_1.ProductsService, admin_catalogue_service_1.AdminCatalogueService],
+        controllers: [
+            products_controller_1.ProductsController,
+            admin_catalogue_controller_1.AdminCatalogueController,
+            personalization_template_controller_1.PersonalizationTemplateController,
+        ],
+        providers: [
+            products_service_1.ProductsService,
+            admin_catalogue_service_1.AdminCatalogueService,
+            personalization_template_service_1.PersonalizationTemplateService,
+        ],
+        exports: [
+            products_service_1.ProductsService,
+            admin_catalogue_service_1.AdminCatalogueService,
+            personalization_template_service_1.PersonalizationTemplateService,
+        ],
     })
 ], ProductsModule);
 //# sourceMappingURL=products.module.js.map

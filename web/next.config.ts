@@ -35,10 +35,6 @@ const nextConfig: NextConfig = {
       { source: '/dispatch', destination: '/dispatch/manifest', permanent: true },
       { source: '/admin/finance', destination: '/finance/payments', permanent: true },
       { source: '/finance', destination: '/finance/payments', permanent: true },
-      { source: '/admin/customers', destination: '/sales/customers', permanent: true },
-      { source: '/customers', destination: '/sales/customers', permanent: true },
-      { source: '/admin/pricing', destination: '/sales/pricing', permanent: true },
-      { source: '/pricing', destination: '/sales/pricing', permanent: true },
       { source: '/admin/inventory', destination: '/production/inventory', permanent: true },
       { source: '/inventory', destination: '/production/inventory', permanent: true },
     ];

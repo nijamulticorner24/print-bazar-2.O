@@ -42,10 +42,21 @@ export default function DispatchStationPage() {
   const [collectorPhone, setCollectorPhone] = useState('+919876543210');
   const [pickupSuccess, setPickupSuccess] = useState(false);
 
+  // Submission & Error Feedback States
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [feedbackSuccess, setFeedbackSuccess] = useState('');
+
   const handleCompletePacking = async () => {
+    if (!orderNumber?.trim()) {
+      setErrorMessage('Please enter a valid Order Number to finalize packaging.');
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage('');
     try {
       await api.completePacking({
-        orderId: 'ord-001',
+        orderId: orderNumber.trim(),
         packages: [
           {
             sequenceNumber: 1,
@@ -58,35 +69,67 @@ export default function DispatchStationPage() {
         courierName,
       });
       setPackingComplete(true);
-    } catch {
-      setPackingComplete(true);
+      setFeedbackSuccess(`Order #${orderNumber.trim()} packaging finalized and moved to READY_FOR_DISPATCH.`);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to complete packaging. Please check the order status.');
+      setPackingComplete(false);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleConfirmCourierHandover = async () => {
+    if (!orderNumber?.trim()) {
+      setErrorMessage('Please specify an Order Number for courier handover.');
+      return;
+    }
+    if (!scannedBarcode?.trim()) {
+      setErrorMessage('Please scan parcel barcode before confirming courier handover.');
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage('');
     try {
       await api.confirmCourierHandover({
-        orderId: 'ord-001',
+        orderId: orderNumber.trim(),
         courierName,
         manifestReference: manifestRef,
-        scannedBarcodes: [scannedBarcode],
+        scannedBarcodes: [scannedBarcode.trim()],
       });
       setHandoverSuccess(true);
-    } catch {
-      setHandoverSuccess(true);
+      setFeedbackSuccess(`Order #${orderNumber.trim()} successfully handed to ${courierName}. Status advanced to OUT_FOR_DELIVERY.`);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Courier handover failed. Order remains in READY_FOR_DISPATCH state.');
+      setHandoverSuccess(false);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleConfirmStorePickup = async () => {
+    if (!orderNumber?.trim()) {
+      setErrorMessage('Please specify an Order Number for store counter pickup.');
+      return;
+    }
+    if (!collectorName?.trim()) {
+      setErrorMessage('Please specify the collector name.');
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage('');
     try {
       await api.confirmStorePickup({
-        orderId: 'ord-001',
-        collectorName,
-        collectorPhone,
+        orderId: orderNumber.trim(),
+        collectorName: collectorName.trim(),
+        collectorPhone: collectorPhone.trim(),
       });
       setPickupSuccess(true);
-    } catch {
-      setPickupSuccess(true);
+      setFeedbackSuccess(`Store pickup confirmed for Order #${orderNumber.trim()} handed over to ${collectorName.trim()}.`);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Store pickup failed. Please ensure all balance payments are cleared.');
+      setPickupSuccess(false);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -103,6 +146,23 @@ export default function DispatchStationPage() {
           Carton weigh-in • Thermal barcode generation • Courier manifest verification • Store handover
         </p>
       </div>
+
+      {/* Action Error Banner */}
+      {errorMessage && (
+        <div className="rounded-lg bg-rose-50 border border-rose-300 p-4 text-xs font-semibold text-rose-800 flex items-center justify-between shadow-2xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setErrorMessage('')}
+            className="text-rose-600 hover:text-rose-900 font-bold ml-2 text-sm"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Mode Tabs */}
       <div className="flex border-b border-slate-200">
@@ -244,11 +304,12 @@ export default function DispatchStationPage() {
               {/* Primary Action */}
               <button
                 type="button"
+                disabled={isSubmitting}
                 onClick={handleCompletePacking}
-                className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-[13px] sm:text-[14px] py-3 rounded-lg shadow-sm transition active:scale-[0.98]"
+                className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-semibold text-[13px] sm:text-[14px] py-3 rounded-lg shadow-sm transition active:scale-[0.98]"
               >
                 <Package className="h-4 w-4" />
-                <span>FINALIZE PACKAGING & PRINT THERMAL BARCODE LABEL</span>
+                <span>{isSubmitting ? 'FINALIZING PACKAGING...' : 'FINALIZE PACKAGING & PRINT THERMAL BARCODE LABEL'}</span>
               </button>
             </>
           )}
@@ -300,11 +361,12 @@ export default function DispatchStationPage() {
 
               <button
                 type="button"
+                disabled={isSubmitting}
                 onClick={handleConfirmCourierHandover}
-                className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-[13px] sm:text-[14px] py-3 rounded-lg shadow-sm transition"
+                className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-semibold text-[13px] sm:text-[14px] py-3 rounded-lg shadow-sm transition"
               >
                 <ScanLine className="h-4 w-4" />
-                <span>VERIFY SCAN & DISPATCH COURIER MANIFEST</span>
+                <span>{isSubmitting ? 'VERIFYING & CONFIRMING...' : 'VERIFY SCAN & DISPATCH COURIER MANIFEST'}</span>
               </button>
             </>
           )}
@@ -358,11 +420,12 @@ export default function DispatchStationPage() {
 
               <button
                 type="button"
+                disabled={isSubmitting}
                 onClick={handleConfirmStorePickup}
-                className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-[13px] sm:text-[14px] py-3 rounded-lg shadow-sm transition"
+                className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-semibold text-[13px] sm:text-[14px] py-3 rounded-lg shadow-sm transition"
               >
                 <Store className="h-4 w-4" />
-                <span>CONFIRM STORE HANDOVER & MARK DELIVERED</span>
+                <span>{isSubmitting ? 'VERIFYING & CONFIRMING...' : 'CONFIRM STORE HANDOVER & MARK DELIVERED'}</span>
               </button>
             </>
           )}

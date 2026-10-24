@@ -17,9 +17,9 @@ export declare class OrdersController {
         };
         shippingAddress: {
             id: string;
+            customerId: string;
             createdAt: Date;
             updatedAt: Date;
-            customerId: string;
             phone: string;
             type: string;
             contactName: string;
@@ -41,6 +41,7 @@ export declare class OrdersController {
             unitPrice: import("@prisma/client/runtime/library").Decimal;
             totalPrice: import("@prisma/client/runtime/library").Decimal;
             specifications: import("@prisma/client/runtime/library").JsonValue;
+            personalizationData: import("@prisma/client/runtime/library").JsonValue | null;
             approvedArtworkVersionId: string | null;
             designNotes: string | null;
             productId: string;
@@ -49,6 +50,7 @@ export declare class OrdersController {
     } & {
         id: string;
         orderNumber: string;
+        customerId: string;
         sourceChannel: import(".prisma/client").$Enums.OrderChannel;
         status: import(".prisma/client").$Enums.OrderStatus;
         customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
@@ -66,11 +68,10 @@ export declare class OrdersController {
         dueAt: Date | null;
         customerNotes: string | null;
         internalNotes: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-        customerId: string;
         shippingAddressId: string | null;
         billingAddressId: string | null;
+        createdAt: Date;
+        updatedAt: Date;
     }>;
     listOrders(query: OrderQueryFilters, user: JwtPayload): Promise<{
         data: ({
@@ -132,6 +133,7 @@ export declare class OrdersController {
                 unitPrice: import("@prisma/client/runtime/library").Decimal;
                 totalPrice: import("@prisma/client/runtime/library").Decimal;
                 specifications: import("@prisma/client/runtime/library").JsonValue;
+                personalizationData: import("@prisma/client/runtime/library").JsonValue | null;
                 approvedArtworkVersionId: string | null;
                 designNotes: string | null;
                 productId: string;
@@ -145,6 +147,7 @@ export declare class OrdersController {
         } & {
             id: string;
             orderNumber: string;
+            customerId: string;
             sourceChannel: import(".prisma/client").$Enums.OrderChannel;
             status: import(".prisma/client").$Enums.OrderStatus;
             customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
@@ -162,11 +165,10 @@ export declare class OrdersController {
             dueAt: Date | null;
             customerNotes: string | null;
             internalNotes: string | null;
-            createdAt: Date;
-            updatedAt: Date;
-            customerId: string;
             shippingAddressId: string | null;
             billingAddressId: string | null;
+            createdAt: Date;
+            updatedAt: Date;
         })[];
         meta: {
             page: number;
@@ -189,9 +191,9 @@ export declare class OrdersController {
         };
         shippingAddress: {
             id: string;
+            customerId: string;
             createdAt: Date;
             updatedAt: Date;
-            customerId: string;
             phone: string;
             type: string;
             contactName: string;
@@ -205,9 +207,9 @@ export declare class OrdersController {
         } | null;
         billingAddress: {
             id: string;
+            customerId: string;
             createdAt: Date;
             updatedAt: Date;
-            customerId: string;
             phone: string;
             type: string;
             contactName: string;
@@ -317,6 +319,7 @@ export declare class OrdersController {
             unitPrice: import("@prisma/client/runtime/library").Decimal;
             totalPrice: import("@prisma/client/runtime/library").Decimal;
             specifications: import("@prisma/client/runtime/library").JsonValue;
+            personalizationData: import("@prisma/client/runtime/library").JsonValue | null;
             approvedArtworkVersionId: string | null;
             designNotes: string | null;
             productId: string;
@@ -443,6 +446,7 @@ export declare class OrdersController {
     } & {
         id: string;
         orderNumber: string;
+        customerId: string;
         sourceChannel: import(".prisma/client").$Enums.OrderChannel;
         status: import(".prisma/client").$Enums.OrderStatus;
         customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
@@ -460,10 +464,9 @@ export declare class OrdersController {
         dueAt: Date | null;
         customerNotes: string | null;
         internalNotes: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-        customerId: string;
         shippingAddressId: string | null;
         billingAddressId: string | null;
+        createdAt: Date;
+        updatedAt: Date;
     }>;
 }

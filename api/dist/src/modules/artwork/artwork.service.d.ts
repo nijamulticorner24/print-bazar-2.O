@@ -23,8 +23,10 @@ export interface ApproveProofDto {
 }
 export interface RequestRevisionDto {
     orderItemId: string;
-    artworkVersionId: string;
-    revisionFeedback: string;
+    artworkVersionId?: string;
+    revisionFeedback?: string;
+    reason?: string;
+    customerNotes?: string;
 }
 export declare class ArtworkService {
     private readonly prisma;
@@ -34,15 +36,13 @@ export declare class ArtworkService {
     constructor(prisma: PrismaService, auditService: AuditService, eventEmitter: EventEmitter2);
     registerArtworkVersion(dto: RegisterArtworkDto, uploaderId: string): Promise<{
         id: string;
-        createdAt: Date;
-        status: import(".prisma/client").$Enums.ArtworkStatus;
+        versionNumber: number;
         storageKey: string;
         originalFileName: string;
-        customerNotes: string | null;
-        versionNumber: number;
         mimeType: string;
         fileSize: number;
         checksum: string;
+        status: import(".prisma/client").$Enums.ArtworkStatus;
         resolutionDpi: number | null;
         widthMm: import("@prisma/client/runtime/library").Decimal | null;
         heightMm: import("@prisma/client/runtime/library").Decimal | null;
@@ -55,22 +55,22 @@ export declare class ArtworkService {
         colorProfile: string | null;
         proofUrl: string | null;
         isApproved: boolean;
+        customerNotes: string | null;
         prepressNotes: string | null;
         uploadedBy: string;
         approvedAt: Date | null;
+        createdAt: Date;
         orderItemId: string;
     }>;
     submitForCustomerApproval(artworkVersionId: string, prepressNotes: string, user: JwtPayload | string): Promise<{
         id: string;
-        createdAt: Date;
-        status: import(".prisma/client").$Enums.ArtworkStatus;
+        versionNumber: number;
         storageKey: string;
         originalFileName: string;
-        customerNotes: string | null;
-        versionNumber: number;
         mimeType: string;
         fileSize: number;
         checksum: string;
+        status: import(".prisma/client").$Enums.ArtworkStatus;
         resolutionDpi: number | null;
         widthMm: import("@prisma/client/runtime/library").Decimal | null;
         heightMm: import("@prisma/client/runtime/library").Decimal | null;
@@ -83,22 +83,22 @@ export declare class ArtworkService {
         colorProfile: string | null;
         proofUrl: string | null;
         isApproved: boolean;
+        customerNotes: string | null;
         prepressNotes: string | null;
         uploadedBy: string;
         approvedAt: Date | null;
+        createdAt: Date;
         orderItemId: string;
     }>;
     approveProof(dto: ApproveProofDto, customerId: string): Promise<{
         id: string;
-        createdAt: Date;
-        status: import(".prisma/client").$Enums.ArtworkStatus;
+        versionNumber: number;
         storageKey: string;
         originalFileName: string;
-        customerNotes: string | null;
-        versionNumber: number;
         mimeType: string;
         fileSize: number;
         checksum: string;
+        status: import(".prisma/client").$Enums.ArtworkStatus;
         resolutionDpi: number | null;
         widthMm: import("@prisma/client/runtime/library").Decimal | null;
         heightMm: import("@prisma/client/runtime/library").Decimal | null;
@@ -111,23 +111,23 @@ export declare class ArtworkService {
         colorProfile: string | null;
         proofUrl: string | null;
         isApproved: boolean;
+        customerNotes: string | null;
         prepressNotes: string | null;
         uploadedBy: string;
         approvedAt: Date | null;
+        createdAt: Date;
         orderItemId: string;
     }>;
     requestRevision(dto: RequestRevisionDto, customerId: string): Promise<boolean>;
     getVersionsForItem(orderItemId: string): Promise<{
         id: string;
-        createdAt: Date;
-        status: import(".prisma/client").$Enums.ArtworkStatus;
+        versionNumber: number;
         storageKey: string;
         originalFileName: string;
-        customerNotes: string | null;
-        versionNumber: number;
         mimeType: string;
         fileSize: number;
         checksum: string;
+        status: import(".prisma/client").$Enums.ArtworkStatus;
         resolutionDpi: number | null;
         widthMm: import("@prisma/client/runtime/library").Decimal | null;
         heightMm: import("@prisma/client/runtime/library").Decimal | null;
@@ -140,9 +140,11 @@ export declare class ArtworkService {
         colorProfile: string | null;
         proofUrl: string | null;
         isApproved: boolean;
+        customerNotes: string | null;
         prepressNotes: string | null;
         uploadedBy: string;
         approvedAt: Date | null;
+        createdAt: Date;
         orderItemId: string;
     }[]>;
     processArtworkUpload(file: Express.Multer.File, productId?: string, customMinMegapixels?: number): Promise<{
@@ -191,15 +193,13 @@ export declare class ArtworkService {
             designNotes: any;
             approvedArtworkVersion: {
                 id: string;
-                createdAt: Date;
-                status: import(".prisma/client").$Enums.ArtworkStatus;
+                versionNumber: number;
                 storageKey: string;
                 originalFileName: string;
-                customerNotes: string | null;
-                versionNumber: number;
                 mimeType: string;
                 fileSize: number;
                 checksum: string;
+                status: import(".prisma/client").$Enums.ArtworkStatus;
                 resolutionDpi: number | null;
                 widthMm: import("@prisma/client/runtime/library").Decimal | null;
                 heightMm: import("@prisma/client/runtime/library").Decimal | null;
@@ -212,9 +212,11 @@ export declare class ArtworkService {
                 colorProfile: string | null;
                 proofUrl: string | null;
                 isApproved: boolean;
+                customerNotes: string | null;
                 prepressNotes: string | null;
                 uploadedBy: string;
                 approvedAt: Date | null;
+                createdAt: Date;
                 orderItemId: string;
             };
         }[];
@@ -236,15 +238,13 @@ export declare class ArtworkService {
         dueAt: Date | null;
         latestArtworkVersion: {
             id: string;
-            createdAt: Date;
-            status: import(".prisma/client").$Enums.ArtworkStatus;
+            versionNumber: number;
             storageKey: string;
             originalFileName: string;
-            customerNotes: string | null;
-            versionNumber: number;
             mimeType: string;
             fileSize: number;
             checksum: string;
+            status: import(".prisma/client").$Enums.ArtworkStatus;
             resolutionDpi: number | null;
             widthMm: import("@prisma/client/runtime/library").Decimal | null;
             heightMm: import("@prisma/client/runtime/library").Decimal | null;
@@ -257,9 +257,11 @@ export declare class ArtworkService {
             colorProfile: string | null;
             proofUrl: string | null;
             isApproved: boolean;
+            customerNotes: string | null;
             prepressNotes: string | null;
             uploadedBy: string;
             approvedAt: Date | null;
+            createdAt: Date;
             orderItemId: string;
         };
         assignedDesignerId: string | null;
@@ -285,15 +287,13 @@ export declare class ArtworkService {
     }, user: JwtPayload | string): Promise<{
         artwork: {
             id: string;
-            createdAt: Date;
-            status: import(".prisma/client").$Enums.ArtworkStatus;
+            versionNumber: number;
             storageKey: string;
             originalFileName: string;
-            customerNotes: string | null;
-            versionNumber: number;
             mimeType: string;
             fileSize: number;
             checksum: string;
+            status: import(".prisma/client").$Enums.ArtworkStatus;
             resolutionDpi: number | null;
             widthMm: import("@prisma/client/runtime/library").Decimal | null;
             heightMm: import("@prisma/client/runtime/library").Decimal | null;
@@ -306,25 +306,28 @@ export declare class ArtworkService {
             colorProfile: string | null;
             proofUrl: string | null;
             isApproved: boolean;
+            customerNotes: string | null;
             prepressNotes: string | null;
             uploadedBy: string;
             approvedAt: Date | null;
+            createdAt: Date;
             orderItemId: string;
         };
         order: {
             id: string;
+            status: import(".prisma/client").$Enums.OrderStatus;
+            customerNotes: string | null;
             createdAt: Date;
             updatedAt: Date;
-            customerId: string;
-            status: import(".prisma/client").$Enums.OrderStatus;
-            subtotal: import("@prisma/client/runtime/library").Decimal;
-            deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
-            discountAmount: import("@prisma/client/runtime/library").Decimal;
             orderNumber: string;
+            customerId: string;
             sourceChannel: import(".prisma/client").$Enums.OrderChannel;
             customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+            deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+            subtotal: import("@prisma/client/runtime/library").Decimal;
             taxAmount: import("@prisma/client/runtime/library").Decimal;
             shippingAmount: import("@prisma/client/runtime/library").Decimal;
+            discountAmount: import("@prisma/client/runtime/library").Decimal;
             totalAmount: import("@prisma/client/runtime/library").Decimal;
             paidAmount: import("@prisma/client/runtime/library").Decimal;
             balanceAmount: import("@prisma/client/runtime/library").Decimal;
@@ -332,7 +335,6 @@ export declare class ArtworkService {
             priority: import(".prisma/client").$Enums.Priority;
             slaStatus: import(".prisma/client").$Enums.SlaStatus;
             dueAt: Date | null;
-            customerNotes: string | null;
             internalNotes: string | null;
             shippingAddressId: string | null;
             billingAddressId: string | null;

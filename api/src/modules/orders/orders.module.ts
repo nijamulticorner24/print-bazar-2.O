@@ -3,9 +3,10 @@ import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
 import { PricingModule } from '../pricing/pricing.module';
 import { ShippingGstModule } from '../shipping-gst/shipping-gst.module';
+import { ProductsModule } from '../products/products.module';
 
 @Module({
-  imports: [PricingModule, ShippingGstModule],
+  imports: [PricingModule, ShippingGstModule, ProductsModule],
   controllers: [OrdersController],
   providers: [OrdersService],
   exports: [OrdersService],

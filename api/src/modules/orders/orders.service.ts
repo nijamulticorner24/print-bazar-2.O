@@ -23,7 +23,10 @@ import {
   Prisma,
 } from '@prisma/client';
 import { JwtPayload } from '../../common/types/roles';
+import { evaluateProductConfiguration } from '../products/rules/product-rules-engine';
 import * as crypto from 'crypto';
+import { PersonalizationTemplateService } from '../products/personalization/personalization-template.service';
+import { PersonalizationPayload } from '../products/personalization/personalization-template.dto';
 
 export interface CreateOrderItemDto {
   productId: string;
@@ -34,6 +37,7 @@ export interface CreateOrderItemDto {
   totalPrice?: number;
   options?: OptionSelectionDto[];
   fieldValues?: Record<string, any>;
+  personalization?: PersonalizationPayload;
   variantLines?: Array<{
     id?: string;
     sku?: string;
@@ -117,6 +121,7 @@ export interface CreateOrderDto {
   items: CreateOrderItemDto[];
   customerNotes?: string;
   priority?: Priority;
+  idempotencyKey?: string;
 }
 
 export interface OrderQueryFilters {
@@ -142,6 +147,7 @@ export class OrdersService {
     private readonly shippingGstService: ShippingGstService,
     private readonly auditService: AuditService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly personalizationService: PersonalizationTemplateService,
   ) {}
 
   /**
@@ -151,6 +157,24 @@ export class OrdersService {
   async createOrder(dto: CreateOrderDto, creatorUserId?: string) {
     if (!dto.items || dto.items.length === 0) {
       throw new BadRequestException('An order must contain at least one product item.');
+    }
+
+    // 0. Idempotency Check: Prevent duplicate order creation on network retries or double-clicks
+    if (dto.idempotencyKey) {
+      const existing = await this.prisma.order.findFirst({
+        where: {
+          internalNotes: { contains: `IDEMPOTENCY:${dto.idempotencyKey}` },
+        },
+        include: {
+          items: true,
+          customer: true,
+          shippingAddress: true,
+        },
+      });
+      if (existing) {
+        this.logger.warn(`Idempotent order replay detected for key ${dto.idempotencyKey}: returning existing order ${existing.orderNumber}`);
+        return existing;
+      }
     }
 
     // 1. Resolve or Create Authoritative Customer
@@ -214,8 +238,10 @@ export class OrdersService {
       unitPrice: number;
       totalPrice: number;
       specifications: Prisma.InputJsonValue;
+      personalizationData?: any;
       designNotes?: string;
       variantLinesData?: any[] | null;
+      personalizationRecordsData?: any[] | null;
     }> = [];
 
     for (const itemDto of dto.items) {
@@ -224,6 +250,22 @@ export class OrdersService {
         ? itemDto.variantLines!.reduce((sum, v) => sum + Math.max(1, Number(v.quantity) || 1), 0)
         : Math.max(1, Number(itemDto.quantity) || 100);
       let product = null;
+
+      const productInclude = {
+        optionGroups: {
+          include: {
+            options: true,
+          },
+        },
+        configurationRules: true,
+        personalizationTemplate: {
+          include: {
+            fields: {
+              orderBy: { sortOrder: 'asc' as const },
+            },
+          },
+        },
+      };
 
       if (itemDto.productId) {
         product = await this.prisma.product.findFirst({
@@ -234,23 +276,28 @@ export class OrdersService {
               { sku: itemDto.productId },
             ],
           },
+          include: productInclude,
         });
       }
 
       if (!product && itemDto.sku) {
         product = await this.prisma.product.findFirst({
           where: { sku: itemDto.sku },
+          include: productInclude,
         });
       }
 
       if (!product) {
         product = await this.prisma.product.findFirst({
           where: { status: 'PUBLISHED' },
+          include: productInclude,
         });
       }
 
       if (!product) {
-        product = await this.prisma.product.findFirst();
+        product = await this.prisma.product.findFirst({
+          include: productInclude,
+        });
       }
 
       if (!product) {
@@ -317,6 +364,54 @@ export class OrdersService {
       const workflowRoute: 'CUSTOMER_ARTWORK' | 'DESIGN_SERVICE' =
         wantsDesign ? 'DESIGN_SERVICE' : 'CUSTOMER_ARTWORK';
 
+      // Authoritative Product Configuration Rules Validation
+      const configRules: any[] = (product as any).configurationRules || [];
+      const optionGroups: any[] = (product as any).optionGroups || [];
+      if (configRules.length > 0 && optionGroups.length > 0) {
+        const rawChoices = itemDto.options || itemDto.fieldValues || {};
+        const ruleEval = evaluateProductConfiguration(
+          optionGroups.map((g: any) => ({
+            id: g.id,
+            name: g.name,
+            code: g.code,
+            isRequired: g.isRequired,
+            isCustomerVisible: g.isCustomerVisible,
+            options: (g.options || []).map((o: any) => ({
+              id: o.id,
+              label: o.label || o.name,
+              value: o.value || o.code,
+              isActive: o.isActive,
+              isDefault: o.isDefault,
+            })),
+          })),
+          configRules,
+          rawChoices,
+        );
+
+        if (!ruleEval.isValid && ruleEval.invalidCombinations.length > 0) {
+          throw new BadRequestException(
+            `Invalid option configuration for '${product.name}': ${ruleEval.invalidCombinations.map((c) => c.message).join('; ')}`,
+          );
+        }
+
+        // Verify client did not attempt to force a disabled choice or hidden group
+        for (const [grpCode, chosenVal] of Object.entries(rawChoices)) {
+          if (chosenVal) {
+            const optKey = `${grpCode}:${chosenVal}`;
+            if (ruleEval.optionStatus[optKey]?.isDisabled) {
+              throw new BadRequestException(
+                `Selected option '${chosenVal}' for '${grpCode}' is disabled by product configuration rules.`,
+              );
+            }
+            if (ruleEval.groupStatus[grpCode]?.isVisible === false) {
+              throw new BadRequestException(
+                `Option group '${grpCode}' is not available with current selections.`,
+              );
+            }
+          }
+        }
+      }
+
       // Calculate server-side price quote with dynamic field & flow engine support
       const quote = await this.pricingService.calculateQuote({
         productId: product.id,
@@ -335,6 +430,39 @@ export class OrdersService {
         maxProductionDays = quote.productionDays;
       }
 
+      // Authoritative Personalization Validation (Templates with PER_ORDER & PER_ITEM)
+      let validatedPersonalization: any = null;
+      if (product.personalizationTemplate && product.personalizationTemplate.isActive) {
+        const valRes = this.personalizationService.validatePersonalization(
+          product.personalizationTemplate as any,
+          itemQty,
+          itemDto.personalization,
+          product.personalizationConfig,
+        );
+
+        if (!valRes.isValid) {
+          throw new BadRequestException(
+            `Personalization validation failed for '${product.name}': ${valRes.errors.join('; ')}`,
+          );
+        }
+        validatedPersonalization = valRes.sanitized;
+      } else if (itemDto.personalization?.templateId) {
+        const tmpl = await this.personalizationService.getTemplateById(
+          itemDto.personalization.templateId,
+        );
+        const valRes = this.personalizationService.validatePersonalization(
+          tmpl as any,
+          itemQty,
+          itemDto.personalization,
+        );
+        if (!valRes.isValid) {
+          throw new BadRequestException(
+            `Personalization validation failed: ${valRes.errors.join('; ')}`,
+          );
+        }
+        validatedPersonalization = valRes.sanitized;
+      }
+
       evaluatedItems.push({
         productId: product.id,
         sku: product.sku,
@@ -342,9 +470,12 @@ export class OrdersService {
         quantity: quote.quantity,
         unitPrice: quote.unitPrice,
         totalPrice: quote.subtotal,
+        personalizationData: validatedPersonalization || null,
+        personalizationRecordsData: validatedPersonalization?.perItemEntries || null,
         specifications: {
           options: quote.selectedOptionsSummary,
           specificationsSnapshot: quote.specificationsSnapshot,
+          personalization: validatedPersonalization || null,
           isMultiVariant: Boolean(quote.isMultiVariant),
           variantLines: quote.variantLines || null,
           basePrice: quote.basePrice,
@@ -441,11 +572,19 @@ export class OrdersService {
         shippingAddressId = addr.id;
       }
 
-      // Calculate payment breakdown based on settlement mode
+      // Calculate authoritative payment breakdown based on settlement mode
       const isSplit = dto.paymentMode === 'SPLIT_50';
-      const initialPaid = dto.paidAmount !== undefined
-        ? Number(dto.paidAmount)
-        : (isSplit ? Math.round(totalAmount * 0.5 * 100) / 100 : 0.0);
+      const expectedAdvance = isSplit ? Math.round(totalAmount * 0.5 * 100) / 100 : totalAmount;
+      const expectedBalance = isSplit ? Math.round((totalAmount - expectedAdvance) * 100) / 100 : 0.0;
+
+      // Authoritative payment verification: Client-supplied prices or paidAmounts are NEVER trusted blindly
+      let initialPaid = 0.0;
+      if (dto.paidAmount !== undefined && Number(dto.paidAmount) > 0) {
+        // Reconcile client payment attempt with authoritative server-calculated order total
+        initialPaid = isSplit ? expectedAdvance : totalAmount;
+      } else if (dto.paymentMethod === 'ONLINE_PREPAID') {
+        initialPaid = isSplit ? expectedAdvance : totalAmount;
+      }
       const initialBalance = Math.max(0, Math.round((totalAmount - initialPaid) * 100) / 100);
       const initialPaymentStatus = isSplit
         ? (initialPaid > 0 ? PaymentStatus.PARTIALLY_PAID : PaymentStatus.PENDING)
@@ -491,9 +630,10 @@ export class OrdersService {
           slaStatus: SlaStatus.ON_TIME,
           dueAt,
           customerNotes: dto.customerNotes || (evaluatedItems[0] as any)?.designNotes || null,
+          internalNotes: dto.idempotencyKey ? `IDEMPOTENCY:${dto.idempotencyKey}` : null,
           shippingAddressId,
           items: {
-            create: evaluatedItems.map(({ variantLinesData, ...it }) => it),
+            create: evaluatedItems.map(({ variantLinesData, personalizationRecordsData, ...it }) => it),
           },
         },
         include: {
@@ -518,6 +658,29 @@ export class OrdersService {
               totalPrice: new Prisma.Decimal(vl.lineSubtotal),
               artworkUrl: vl.artworkUrl || null,
               specifications: { optionsSummary: vl.optionsSummary } as Prisma.InputJsonValue,
+            })),
+          });
+        }
+      }
+
+      // Persist OrderItemPersonalization records for per-item personalizations
+      for (let i = 0; i < evaluatedItems.length; i++) {
+        const pRecords = evaluatedItems[i].personalizationRecordsData;
+        const pData = evaluatedItems[i].personalizationData;
+        const createdItem = createdOrder.items[i];
+        if (pRecords && pRecords.length > 0 && createdItem) {
+          await tx.orderItemPersonalization.createMany({
+            data: pRecords.map((entry: any) => ({
+              orderItemId: createdItem.id,
+              itemIndex: Number(entry.itemIndex) || 1,
+              variantCombination: entry.variantCombination
+                ? (entry.variantCombination as Prisma.InputJsonValue)
+                : Prisma.JsonNull,
+              fieldValues: (entry.values as Prisma.InputJsonValue) || {},
+              sharedValues: pData?.sharedValues
+                ? (pData.sharedValues as Prisma.InputJsonValue)
+                : Prisma.JsonNull,
+              status: 'PENDING',
             })),
           });
         }

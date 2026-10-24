@@ -25,6 +25,7 @@ import {
   RiImageLine,
   RiChat1Line,
   RiPriceTag3Line,
+  RiDownload2Line,
 } from 'react-icons/ri';
 import { api } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -608,6 +609,114 @@ export default function OperationalOrderDetailPage({
               )}
             </div>
           </div>
+
+          {/* Personalization Details & Production CSV Export Card */}
+          {order.items?.some((it: any) => it.personalizationData) && (
+            <div className="bg-white border-2 border-purple-900/40 rounded-xl p-5 shadow-xs space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-purple-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="p-2 bg-purple-100 text-purple-700 rounded-lg">
+                    <RiFileList3Line className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      Personalization Roster & Custom Inscriptions
+                      <span className="text-[10px] bg-purple-100 text-purple-800 font-mono font-bold px-2 py-0.5 rounded border border-purple-200">
+                        PRODUCTION READY
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Unique engraving/keepsake names and shared occasion details for manufacturing.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {order.items
+                .filter((it: any) => it.personalizationData)
+                .map((it: any, itIdx: number) => {
+                  const pData = it.personalizationData;
+                  const shared = pData.sharedValues || {};
+                  const perItem = pData.perItemEntries || [];
+
+                  return (
+                    <div key={it.id || itIdx} className="space-y-3 bg-purple-50/30 p-4 rounded-xl border border-purple-100">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-100 pb-2">
+                        <span className="font-bold text-xs text-purple-950 font-mono">
+                          {it.productName} ({it.sku}) • Qty: {it.quantity}
+                        </span>
+
+                        <a
+                          href={`/api/admin/orders/${order.id}/items/${it.id}/personalization/export`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs transition"
+                        >
+                          <RiDownload2Line className="w-3.5 h-3.5" />
+                          <span>Export Print-Ready CSV</span>
+                        </a>
+                      </div>
+
+                      {/* Shared Values */}
+                      {Object.keys(shared).length > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-mono uppercase font-bold text-slate-500">
+                            Shared Details (PER_ORDER):
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(shared).map(([k, v]) => (
+                              <span
+                                key={k}
+                                className="text-xs px-2.5 py-1 rounded-md bg-white border border-purple-200 text-slate-800 font-medium"
+                              >
+                                <strong className="text-purple-700 font-semibold">{k}:</strong> {String(v)}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Per-Item Table */}
+                      {perItem.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-mono uppercase font-bold text-slate-500">
+                            Individual Inscription Roster ({perItem.length} Items):
+                          </span>
+                          <div className="overflow-x-auto max-h-56 overflow-y-auto border border-purple-100 rounded-lg bg-white">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead className="bg-purple-50/60 sticky top-0 border-b border-purple-100 text-slate-600">
+                                <tr>
+                                  <th className="py-2 px-3 w-16 font-bold">#</th>
+                                  {Object.keys(perItem[0]?.values || {}).map((col) => (
+                                    <th key={col} className="py-2 px-3 font-bold">
+                                      {col}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-purple-50">
+                                {perItem.map((row: any, rIdx: number) => (
+                                  <tr key={rIdx} className="hover:bg-purple-50/40">
+                                    <td className="py-1.5 px-3 font-mono text-slate-400 font-bold">
+                                      #{row.itemIndex || rIdx + 1}
+                                    </td>
+                                    {Object.keys(perItem[0]?.values || {}).map((col) => (
+                                      <td key={col} className="py-1.5 px-3 text-slate-800 font-medium">
+                                        {String(row.values?.[col] ?? '—')}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          )}
 
           {/* ═══════════════════════════════════════════════════════════════ */}
           {/* OE PRIMARY OPERATIONAL ASSIGNMENT & DISPATCH CONTROL              */}

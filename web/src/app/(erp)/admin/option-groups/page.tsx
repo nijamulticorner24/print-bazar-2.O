@@ -21,7 +21,12 @@ import {
   RiArrowRightLine,
   RiFileTextLine,
   RiRefreshLine,
+  RiInputMethodLine,
+  RiEyeLine,
 } from 'react-icons/ri';
+
+const isTextInputType = (type?: string) =>
+  ['TEXT', 'TEXTAREA', 'NUMBER', 'DATE', 'EMAIL', 'PHONE'].includes((type || '').toUpperCase());
 
 interface OptionValueItem {
   id?: string;
@@ -579,7 +584,11 @@ export default function OptionGroupsLibraryPage() {
                         <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono mt-0.5">
                           <span>{group.code}</span>
                           <span>•</span>
-                          <span className="font-sans font-semibold text-slate-600">
+                          <span className={`px-1.5 py-0.2 text-[10px] font-bold rounded font-sans ${
+                            isTextInputType(group.inputType)
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}>
                             {group.inputType}
                           </span>
                           <span>•</span>
@@ -608,8 +617,14 @@ export default function OptionGroupsLibraryPage() {
                       </div>
 
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="px-2 py-0.5 text-[11px] font-bold bg-slate-100 text-slate-700 rounded-md border border-slate-200">
-                          {optsCount} {optsCount === 1 ? 'val' : 'vals'}
+                        <span className={`px-2 py-0.5 text-[11px] font-bold rounded-md border ${
+                          isTextInputType(group.inputType) && optsCount === 0
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {isTextInputType(group.inputType) && optsCount === 0
+                            ? 'Freeform'
+                            : `${optsCount} ${isTextInputType(group.inputType) ? (optsCount === 1 ? 'preset' : 'presets') : (optsCount === 1 ? 'val' : 'vals')}`}
                         </span>
                       </div>
                     </div>
@@ -727,14 +742,24 @@ export default function OptionGroupsLibraryPage() {
                     <select
                       value={formInputType}
                       onChange={(e) => setFormInputType(e.target.value)}
-                      className="w-full h-9 px-3 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
+                      className="w-full h-9 px-3 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black cursor-pointer"
                     >
-                      <option value="SELECT">Dropdown Select (SELECT)</option>
-                      <option value="RADIO">Radio Buttons (RADIO)</option>
-                      <option value="CHECKBOX">Checkboxes (CHECKBOX)</option>
-                      <option value="TOGGLE">Toggle Switch (TOGGLE)</option>
+                      <optgroup label="Choice & Selection Controls">
+                        <option value="SELECT">Dropdown Select (SELECT)</option>
+                        <option value="RADIO">Radio Buttons (RADIO)</option>
+                        <option value="CHECKBOX">Checkboxes (CHECKBOX)</option>
+                        <option value="TOGGLE">Toggle Switch (TOGGLE)</option>
+                      </optgroup>
+                      <optgroup label="Text & Freeform Inputs">
+                        <option value="TEXT">Single-Line Text Input (TEXT)</option>
+                        <option value="TEXTAREA">Multi-Line Text Area (TEXTAREA)</option>
+                        <option value="NUMBER">Numeric Input (NUMBER)</option>
+                        <option value="DATE">Date Picker (DATE)</option>
+                        <option value="EMAIL">Email Address (EMAIL)</option>
+                        <option value="PHONE">Phone Number (PHONE)</option>
+                      </optgroup>
                     </select>
-                    <p className="text-[11px] text-slate-600">Visual display widget for customer selection</p>
+                    <p className="text-[11px] text-slate-600">Visual display widget for customer selection / input</p>
                   </div>
 
                   {/* Selection Behavior (Semantics) */}
@@ -745,7 +770,7 @@ export default function OptionGroupsLibraryPage() {
                     <select
                       value={formSelectionBehavior}
                       onChange={(e) => setFormSelectionBehavior(e.target.value)}
-                      className="w-full h-9 px-3 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
+                      className="w-full h-9 px-3 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black cursor-pointer"
                     >
                       <option value="SINGLE">Single Selection (SINGLE)</option>
                       <option value="MULTIPLE">Multiple Selection (MULTIPLE)</option>
@@ -756,15 +781,177 @@ export default function OptionGroupsLibraryPage() {
                         ? 'Eligible as a dimension in multi-variant product ordering (e.g., Size, Color)'
                         : formSelectionBehavior === 'MULTIPLE'
                         ? 'Allows selecting multiple values from the same group'
-                        : 'Select exactly one value for the configuration'}
+                        : 'Select exactly one value or enter freeform text for configuration'}
                     </p>
+                  </div>
+
+                  {/* Live Interactive Storefront Widget Preview */}
+                  <div className="md:col-span-2 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
+                        <RiEyeLine className="w-3.5 h-3.5 text-amber-500" />
+                        Live Storefront Widget Preview
+                      </span>
+                      <span className="text-slate-500 font-mono text-[10px]">
+                        Widget: <strong className="text-slate-800">{formInputType}</strong>
+                      </span>
+                    </div>
+
+                    <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-slate-900 uppercase tracking-tight">
+                          {formName || 'Group Label Preview'}
+                        </label>
+                        <span className="text-[10px] text-slate-400 font-mono">(Storefront Customer View)</span>
+                      </div>
+
+                      {formInputType === 'TEXT' && (
+                        <div className="space-y-1.5">
+                          <input
+                            type="text"
+                            disabled
+                            placeholder={`Enter ${formName || 'custom text'}...`}
+                            className="w-full h-9 px-3 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg"
+                          />
+                          {formOptions.length > 0 && (
+                            <div className="flex flex-wrap gap-1 items-center pt-0.5">
+                              <span className="text-[10px] uppercase font-bold text-slate-400">Presets:</span>
+                              {formOptions.map((o, idx) => (
+                                <span key={idx} className="px-2 py-0.5 text-[10px] bg-slate-100 text-slate-700 rounded-md border border-slate-200 font-medium">
+                                  {o.label}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {formInputType === 'TEXTAREA' && (
+                        <div className="space-y-1.5">
+                          <textarea
+                            rows={2}
+                            disabled
+                            placeholder={`Enter ${formName || 'instructions or custom text'}...`}
+                            className="w-full p-2.5 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg resize-none"
+                          />
+                          {formOptions.length > 0 && (
+                            <div className="flex flex-wrap gap-1 items-center pt-0.5">
+                              <span className="text-[10px] uppercase font-bold text-slate-400">Suggestions:</span>
+                              {formOptions.map((o, idx) => (
+                                <span key={idx} className="px-2 py-0.5 text-[10px] bg-slate-100 text-slate-700 rounded-md border border-slate-200 font-medium">
+                                  {o.label}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {formInputType === 'NUMBER' && (
+                        <div className="space-y-1.5">
+                          <input
+                            type="number"
+                            disabled
+                            placeholder="e.g. 100"
+                            className="w-full h-9 px-3 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg"
+                          />
+                          {formOptions.length > 0 && (
+                            <div className="flex flex-wrap gap-1 items-center pt-0.5">
+                              <span className="text-[10px] uppercase font-bold text-slate-400">Presets:</span>
+                              {formOptions.map((o, idx) => (
+                                <span key={idx} className="px-2 py-0.5 text-[10px] bg-slate-100 text-slate-700 rounded-md border border-slate-200 font-medium">
+                                  {o.label}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {formInputType === 'DATE' && (
+                        <input
+                          type="date"
+                          disabled
+                          className="w-full h-9 px-3 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg"
+                        />
+                      )}
+
+                      {(formInputType === 'EMAIL' || formInputType === 'PHONE') && (
+                        <input
+                          type={formInputType === 'EMAIL' ? 'email' : 'tel'}
+                          disabled
+                          placeholder={formInputType === 'EMAIL' ? 'customer@example.com' : '+91 98765 43210'}
+                          className="w-full h-9 px-3 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg"
+                        />
+                      )}
+
+                      {formInputType === 'SELECT' && (
+                        <select disabled className="w-full h-9 px-3 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg">
+                          {formOptions.length > 0 ? (
+                            formOptions.map((o, idx) => (
+                              <option key={idx}>{o.label}</option>
+                            ))
+                          ) : (
+                            <option>Choose {formName || 'Option'}...</option>
+                          )}
+                        </select>
+                      )}
+
+                      {formInputType === 'RADIO' && (
+                        <div className="grid grid-cols-2 gap-2">
+                          {(formOptions.length > 0 ? formOptions.slice(0, 4) : [{ label: 'Choice Alpha' }, { label: 'Choice Beta' }]).map((o, idx) => (
+                            <div key={idx} className={`p-2 rounded-lg border text-xs flex items-center gap-2 ${idx === 0 ? 'bg-black text-white border-black font-semibold' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
+                              <div className={`w-3 h-3 rounded-full border ${idx === 0 ? 'border-[#FFED00] bg-[#FFED00]' : 'border-slate-300'}`} />
+                              <span className="truncate">{o.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {formInputType === 'CHECKBOX' && (
+                        <div className="space-y-1.5">
+                          {(formOptions.length > 0 ? formOptions.slice(0, 3) : [{ label: 'Option A' }, { label: 'Option B' }]).map((o, idx) => (
+                            <div key={idx} className={`p-2 rounded-lg border text-xs flex items-center justify-between ${idx === 0 ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
+                              <span className="truncate font-medium">{o.label}</span>
+                              <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${idx === 0 ? 'bg-[#FFED00] border-[#FFED00] text-black' : 'border-slate-300 bg-white'}`}>
+                                {idx === 0 && <RiCheckLine className="w-3 h-3 stroke-[2]" />}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {formInputType === 'TOGGLE' && (
+                        <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                          <span className="text-xs font-semibold text-slate-800">
+                            {formOptions[0]?.label || 'Enable setting'}
+                          </span>
+                          <div className="w-10 h-5 bg-slate-900 rounded-full relative p-0.5">
+                            <div className="w-4 h-4 bg-white rounded-full ml-auto shadow-xs" />
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Informational Guidance Banner */}
                   <div className="md:col-span-2 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-[11px] flex items-center gap-2">
                     <RiInformationLine className="w-4 h-4 text-slate-500 shrink-0" />
                     <span>
-                      {formSelectionBehavior === 'VARIANT_WISE' ? (
+                      {isTextInputType(formInputType) ? (
+                        <>
+                          <strong className="text-emerald-800">
+                            {formInputType === 'TEXTAREA'
+                              ? 'Multi-line Text Area:'
+                              : formInputType === 'NUMBER'
+                              ? 'Numeric Input:'
+                              : formInputType === 'DATE'
+                              ? 'Date Picker:'
+                              : 'Freeform Text Input:'}
+                          </strong>{' '}
+                          Customers type freeform input directly in the product order configurator. Predefined values inside this group are <em>optional</em> and serve as clickable quick-fill suggestion chips.
+                        </>
+                      ) : formSelectionBehavior === 'VARIANT_WISE' ? (
                         <>
                           <strong className="text-purple-700">Variant Dimension:</strong> When attached to a product with <em>Multiple Variants per Order</em> enabled, this group forms a variant dimension (e.g. Size or Color) for independent quantity breakdown.
                         </>
@@ -855,10 +1042,14 @@ export default function OptionGroupsLibraryPage() {
                   <div>
                     <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                       <RiFileTextLine className="w-4 h-4 text-[#D4AF37]" />
-                      Values Inside This Group ({formOptions.length})
+                      {isTextInputType(formInputType)
+                        ? `Preset Suggestions / Chips (${formOptions.length})`
+                        : `Values Inside This Group (${formOptions.length})`}
                     </h3>
                     <p className="text-xs text-slate-600">
-                      Configure the specific choices available for this group (e.g. 130 GSM, 170 GSM, 250 GSM, 300 GSM).
+                      {isTextInputType(formInputType)
+                        ? 'Optional quick-fill preset chips for customer convenience (e.g. "Standard Size", "Rush Delivery", "N/A"). Customers can click them to auto-fill the field, or leave empty for freeform typing.'
+                        : 'Configure the specific choices available for this group (e.g. 130 GSM, 170 GSM, 250 GSM, 300 GSM).'}
                     </p>
                   </div>
 
@@ -866,19 +1057,19 @@ export default function OptionGroupsLibraryPage() {
                     <button
                       type="button"
                       onClick={() => setIsBulkModalOpen(true)}
-                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg flex items-center gap-1.5 border border-slate-300 transition-colors"
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg flex items-center gap-1.5 border border-slate-300 transition-colors cursor-pointer"
                     >
                       <RiFileCopyLine className="w-3.5 h-3.5" />
-                      Bulk Add Values
+                      {isTextInputType(formInputType) ? 'Bulk Add Presets' : 'Bulk Add Values'}
                     </button>
 
                     <button
                       type="button"
                       onClick={() => handleOpenAddValueModal()}
-                      className="px-3.5 py-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg flex items-center gap-1.5 border border-neutral-300 shadow-xs transition-colors"
+                      className="px-3.5 py-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg flex items-center gap-1.5 border border-neutral-300 shadow-xs transition-colors cursor-pointer"
                     >
                       <RiAddLine className="w-4 h-4" />
-                      Add Value
+                      {isTextInputType(formInputType) ? 'Add Preset' : 'Add Value'}
                     </button>
                   </div>
                 </div>
@@ -888,21 +1079,27 @@ export default function OptionGroupsLibraryPage() {
                   <div className="p-8 border-2 border-dashed border-slate-300 rounded-xl text-center space-y-3 bg-slate-50/50">
                     <RiMagicLine className="w-8 h-8 mx-auto text-slate-600" />
                     <div>
-                      <p className="text-xs font-bold text-slate-800">No option values added yet</p>
-                      <p className="text-xs text-slate-600 mt-0.5">
-                        Add values individually or paste multiple lines in bulk to quickly populate this group.
+                      <p className="text-xs font-bold text-slate-800">
+                        {isTextInputType(formInputType)
+                          ? 'Freeform Input Mode (No presets added yet)'
+                          : 'No option values added yet'}
+                      </p>
+                      <p className="text-xs text-slate-600 mt-0.5 max-w-md mx-auto">
+                        {isTextInputType(formInputType)
+                          ? 'This text field is ready to use! Customers can type freeform input on the storefront. You can optionally add quick-fill suggestion chips below for customer convenience.'
+                          : 'Add values individually or paste multiple lines in bulk to quickly populate this group.'}
                       </p>
                     </div>
                     <div className="flex items-center justify-center gap-2 pt-1">
                       <button
                         onClick={() => handleOpenAddValueModal()}
-                        className="px-3 py-1.5 bg-[#FFED00] text-black text-xs font-bold rounded-lg border border-neutral-300 shadow-xs"
+                        className="px-3 py-1.5 bg-[#FFED00] text-black text-xs font-bold rounded-lg border border-neutral-300 shadow-xs cursor-pointer"
                       >
-                        + Add First Value
+                        {isTextInputType(formInputType) ? '+ Add Suggestion Preset' : '+ Add First Value'}
                       </button>
                       <button
                         onClick={() => setIsBulkModalOpen(true)}
-                        className="px-3 py-1.5 bg-white text-slate-700 text-xs font-semibold rounded-lg border border-slate-300"
+                        className="px-3 py-1.5 bg-white text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 cursor-pointer"
                       >
                         Paste Bulk Lines
                       </button>
@@ -914,7 +1111,7 @@ export default function OptionGroupsLibraryPage() {
                       <thead className="bg-slate-100/80 text-slate-600 font-bold uppercase text-[11px] tracking-wider border-b border-slate-200">
                         <tr>
                           <th className="py-2.5 px-3 w-12 text-center">Order</th>
-                          <th className="py-2.5 px-3">Option Label</th>
+                          <th className="py-2.5 px-3">{isTextInputType(formInputType) ? 'Preset Label / Suggestion' : 'Option Label'}</th>
                           <th className="py-2.5 px-3">Value Code</th>
                           <th className="py-2.5 px-3 text-center w-20">Default</th>
                           <th className="py-2.5 px-3 text-right w-24">Actions</th>
@@ -1041,11 +1238,17 @@ export default function OptionGroupsLibraryPage() {
           <div className="bg-white rounded-xl border border-slate-200 max-w-md w-full p-5 space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="text-sm font-bold text-slate-900">
-                {editingValueIdx !== null ? 'Edit Option Value' : 'Add New Option Value'}
+                {editingValueIdx !== null
+                  ? isTextInputType(formInputType)
+                    ? 'Edit Suggestion Preset'
+                    : 'Edit Option Value'
+                  : isTextInputType(formInputType)
+                  ? 'Add New Suggestion Preset'
+                  : 'Add New Option Value'}
               </h3>
               <button
                 onClick={() => setIsAddValueModalOpen(false)}
-                className="text-slate-600 hover:text-black"
+                className="text-slate-600 hover:text-black cursor-pointer"
               >
                 <RiCloseLine className="w-5 h-5" />
               </button>
@@ -1054,7 +1257,8 @@ export default function OptionGroupsLibraryPage() {
             <div className="space-y-3">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-700">
-                  Option Label <span className="text-rose-500">*</span>
+                  {isTextInputType(formInputType) ? 'Preset Label / Text' : 'Option Label'}{' '}
+                  <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -1066,7 +1270,11 @@ export default function OptionGroupsLibraryPage() {
                       setValFormValue(l.toLowerCase().replace(/[^a-z0-9_]+/g, '_'));
                     }
                   }}
-                  placeholder="e.g. 300 GSM Velvet Card, Gloss UV"
+                  placeholder={
+                    isTextInputType(formInputType)
+                      ? 'e.g. Standard, Custom Name, N/A'
+                      : 'e.g. 300 GSM Velvet Card, Gloss UV'
+                  }
                   className="w-full h-9 px-3 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
                 />
               </div>
@@ -1077,7 +1285,9 @@ export default function OptionGroupsLibraryPage() {
                   type="text"
                   value={valFormValue}
                   onChange={(e) => setValFormValue(e.target.value.toLowerCase().replace(/[^a-z0-9_]+/g, '_'))}
-                  placeholder="e.g. 300_gsm_velvet_card"
+                  placeholder={
+                    isTextInputType(formInputType) ? 'e.g. standard, custom_name' : 'e.g. 300_gsm_velvet_card'
+                  }
                   className="w-full h-9 px-3 text-xs font-mono bg-slate-50 text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
                 />
               </div>
@@ -1101,16 +1311,22 @@ export default function OptionGroupsLibraryPage() {
               <button
                 type="button"
                 onClick={() => setIsAddValueModalOpen(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleSaveSingleValue}
-                className="px-4 py-2 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg border border-neutral-300"
+                className="px-4 py-2 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg border border-neutral-300 cursor-pointer"
               >
-                {editingValueIdx !== null ? 'Update Value' : 'Add Value'}
+                {editingValueIdx !== null
+                  ? isTextInputType(formInputType)
+                    ? 'Update Preset'
+                    : 'Update Value'
+                  : isTextInputType(formInputType)
+                  ? 'Add Preset'
+                  : 'Add Value'}
               </button>
             </div>
           </div>
@@ -1123,14 +1339,16 @@ export default function OptionGroupsLibraryPage() {
           <div className="bg-white rounded-xl border border-slate-200 max-w-lg w-full p-5 space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Bulk Add Option Values</h3>
+                <h3 className="text-sm font-bold text-slate-900">
+                  {isTextInputType(formInputType) ? 'Bulk Add Preset Suggestions' : 'Bulk Add Option Values'}
+                </h3>
                 <p className="text-xs text-slate-600 mt-0.5">
-                  Paste multiple options at once (one per line).
+                  Paste multiple options or presets at once (one per line).
                 </p>
               </div>
               <button
                 onClick={() => setIsBulkModalOpen(false)}
-                className="text-slate-600 hover:text-black"
+                className="text-slate-600 hover:text-black cursor-pointer"
               >
                 <RiCloseLine className="w-5 h-5" />
               </button>
@@ -1140,14 +1358,24 @@ export default function OptionGroupsLibraryPage() {
               <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg text-xs space-y-1">
                 <span className="font-bold">Format:</span>
                 <code className="block bg-amber-100/70 p-1 rounded font-mono text-[11px]">
-                  Option Label, value_code (or simply Option Label)
+                  {isTextInputType(formInputType) ? 'Preset Label, value_code (or simply Preset Label)' : 'Option Label, value_code (or simply Option Label)'}
                 </code>
                 <span className="text-[11px] text-amber-800">
                   Example:
                   <br />
-                  130 GSM Gloss Art, 130_gsm<br />
-                  170 GSM Matte Art, 170_gsm<br />
-                  250 GSM Premium Card, 250_gsm
+                  {isTextInputType(formInputType) ? (
+                    <>
+                      Standard Print, standard<br />
+                      Rush 24h Delivery, rush_24h<br />
+                      Custom Inscription, custom_note
+                    </>
+                  ) : (
+                    <>
+                      130 GSM Gloss Art, 130_gsm<br />
+                      170 GSM Matte Art, 170_gsm<br />
+                      250 GSM Premium Card, 250_gsm
+                    </>
+                  )}
                 </span>
               </div>
 
@@ -1155,7 +1383,11 @@ export default function OptionGroupsLibraryPage() {
                 rows={7}
                 value={bulkInputText}
                 onChange={(e) => setBulkInputText(e.target.value)}
-                placeholder="130 GSM Gloss Art&#10;170 GSM Matte Art&#10;250 GSM Premium Card"
+                placeholder={
+                  isTextInputType(formInputType)
+                    ? 'Standard Delivery&#10;Rush Delivery&#10;Express 24h'
+                    : '130 GSM Gloss Art&#10;170 GSM Matte Art&#10;250 GSM Premium Card'
+                }
                 className="w-full p-3 text-xs font-mono bg-slate-50 text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
               />
             </div>

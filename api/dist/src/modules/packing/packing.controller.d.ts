@@ -6,18 +6,17 @@ export declare class PackingController {
     getPackingQueue(search?: string, priority?: string): Promise<({
         customer: {
             id: string;
-            email: string;
             fullName: string;
+            email: string;
             phone: string;
         };
         shippingAddress: {
             id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
             customerId: string;
+            createdAt: Date;
+            updatedAt: Date;
+            phone: string;
             type: string;
-            isDefault: boolean;
             contactName: string;
             street: string;
             landmark: string | null;
@@ -25,15 +24,15 @@ export declare class PackingController {
             state: string;
             postalCode: string;
             country: string;
+            isDefault: boolean;
         } | null;
         billingAddress: {
             id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
             customerId: string;
+            createdAt: Date;
+            updatedAt: Date;
+            phone: string;
             type: string;
-            isDefault: boolean;
             contactName: string;
             street: string;
             landmark: string | null;
@@ -41,6 +40,7 @@ export declare class PackingController {
             state: string;
             postalCode: string;
             country: string;
+            isDefault: boolean;
         } | null;
         items: ({
             product: {
@@ -51,12 +51,14 @@ export declare class PackingController {
             };
             artworkVersions: {
                 id: string;
-                createdAt: Date;
                 status: import(".prisma/client").$Enums.ArtworkStatus;
+                customerNotes: string | null;
+                createdAt: Date;
+                isApproved: boolean;
+                versionNumber: number;
+                orderItemId: string;
                 storageKey: string;
                 originalFileName: string;
-                customerNotes: string | null;
-                versionNumber: number;
                 mimeType: string;
                 fileSize: number;
                 checksum: string;
@@ -71,33 +73,32 @@ export declare class PackingController {
                 hasBleed: boolean | null;
                 colorProfile: string | null;
                 proofUrl: string | null;
-                isApproved: boolean;
                 prepressNotes: string | null;
                 uploadedBy: string;
                 approvedAt: Date | null;
-                orderItemId: string;
             }[];
         } & {
             id: string;
             createdAt: Date;
-            orderId: string;
             updatedAt: Date;
             sku: string;
+            orderId: string;
+            approvedArtworkVersionId: string | null;
             productId: string;
-            totalPrice: import("@prisma/client/runtime/library").Decimal;
+            productName: string;
             quantity: number;
             unitPrice: import("@prisma/client/runtime/library").Decimal;
-            productName: string;
+            totalPrice: import("@prisma/client/runtime/library").Decimal;
             specifications: import("@prisma/client/runtime/library").JsonValue;
-            approvedArtworkVersionId: string | null;
+            personalizationData: import("@prisma/client/runtime/library").JsonValue | null;
             designNotes: string | null;
         })[];
         packages: ({
             shipment: {
                 id: string;
+                status: import(".prisma/client").$Enums.ShipmentStatus;
                 createdAt: Date;
                 updatedAt: Date;
-                status: import(".prisma/client").$Enums.ShipmentStatus;
                 shipmentNumber: string;
                 courierName: string;
                 awbNumber: string;
@@ -109,12 +110,12 @@ export declare class PackingController {
             } | null;
         } & {
             id: string;
-            createdAt: Date;
-            orderId: string;
-            updatedAt: Date;
             status: import(".prisma/client").$Enums.PackageStatus;
-            packageNumber: string;
+            createdAt: Date;
+            updatedAt: Date;
             sequenceNumber: number;
+            orderId: string;
+            packageNumber: string;
             totalPackages: number;
             grossWeightGrams: number;
             lengthCm: import("@prisma/client/runtime/library").Decimal;
@@ -140,29 +141,27 @@ export declare class PackingController {
         } & {
             id: string;
             createdAt: Date;
+            items: import("@prisma/client/runtime/library").JsonValue;
             orderId: string;
             type: import(".prisma/client").$Enums.QCInspectionType;
-            notes: string | null;
-            items: import("@prisma/client/runtime/library").JsonValue;
             jobCardId: string | null;
             outcome: import(".prisma/client").$Enums.QCOutcome;
             inspectorId: string;
             defects: import(".prisma/client").$Enums.DefectCategory[];
+            notes: string | null;
         })[];
     } & {
         id: string;
-        createdAt: Date;
-        updatedAt: Date;
-        customerId: string;
-        status: import(".prisma/client").$Enums.OrderStatus;
-        subtotal: import("@prisma/client/runtime/library").Decimal;
-        deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
-        discountAmount: import("@prisma/client/runtime/library").Decimal;
         orderNumber: string;
+        customerId: string;
         sourceChannel: import(".prisma/client").$Enums.OrderChannel;
+        status: import(".prisma/client").$Enums.OrderStatus;
         customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+        deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+        subtotal: import("@prisma/client/runtime/library").Decimal;
         taxAmount: import("@prisma/client/runtime/library").Decimal;
         shippingAmount: import("@prisma/client/runtime/library").Decimal;
+        discountAmount: import("@prisma/client/runtime/library").Decimal;
         totalAmount: import("@prisma/client/runtime/library").Decimal;
         paidAmount: import("@prisma/client/runtime/library").Decimal;
         balanceAmount: import("@prisma/client/runtime/library").Decimal;
@@ -174,28 +173,29 @@ export declare class PackingController {
         internalNotes: string | null;
         shippingAddressId: string | null;
         billingAddressId: string | null;
+        createdAt: Date;
+        updatedAt: Date;
     })[]>;
     getPackagingMaterials(): import("./packing.service").PackagingMaterialDto[];
     getPackingJob(id: string): Promise<{
         customer: {
             id: string;
             createdAt: Date;
-            email: string;
-            fullName: string;
-            phone: string;
             updatedAt: Date;
+            userId: string | null;
+            fullName: string;
+            email: string;
+            phone: string;
             companyName: string | null;
             gstin: string | null;
-            userId: string | null;
         };
         shippingAddress: {
             id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
             customerId: string;
+            createdAt: Date;
+            updatedAt: Date;
+            phone: string;
             type: string;
-            isDefault: boolean;
             contactName: string;
             street: string;
             landmark: string | null;
@@ -203,15 +203,15 @@ export declare class PackingController {
             state: string;
             postalCode: string;
             country: string;
+            isDefault: boolean;
         } | null;
         billingAddress: {
             id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
             customerId: string;
+            createdAt: Date;
+            updatedAt: Date;
+            phone: string;
             type: string;
-            isDefault: boolean;
             contactName: string;
             street: string;
             landmark: string | null;
@@ -219,20 +219,19 @@ export declare class PackingController {
             state: string;
             postalCode: string;
             country: string;
+            isDefault: boolean;
         } | null;
         items: ({
             product: {
                 id: string;
+                status: import(".prisma/client").$Enums.ProductStatus;
                 createdAt: Date;
-                name: string;
-                isActive: boolean;
                 updatedAt: Date;
-                tags: string[];
-                description: string | null;
                 categoryId: string;
+                name: string;
                 slug: string;
                 sku: string;
-                status: import(".prisma/client").$Enums.ProductStatus;
+                description: string | null;
                 pricingModel: string;
                 basePrice: import("@prisma/client/runtime/library").Decimal;
                 minQuantity: number;
@@ -241,11 +240,13 @@ export declare class PackingController {
                 productionDays: number;
                 sortOrder: number;
                 isFeatured: boolean;
+                tags: string[];
                 seoTitle: string | null;
                 seoDescription: string | null;
                 trackInventory: boolean;
                 stockQuantity: number;
                 lowStockAlert: number;
+                isActive: boolean;
                 defaultSize: string | null;
                 artworkRequirement: import(".prisma/client").$Enums.ProductOptionRequirement;
                 artworkPrice: import("@prisma/client/runtime/library").Decimal | null;
@@ -269,15 +270,19 @@ export declare class PackingController {
                 designServiceFee: import("@prisma/client/runtime/library").Decimal | null;
                 allowMultipleVariants: boolean;
                 variantDimensions: string[];
+                personalizationTemplateId: string | null;
+                personalizationConfig: import("@prisma/client/runtime/library").JsonValue | null;
             };
             artworkVersions: {
                 id: string;
-                createdAt: Date;
                 status: import(".prisma/client").$Enums.ArtworkStatus;
+                customerNotes: string | null;
+                createdAt: Date;
+                isApproved: boolean;
+                versionNumber: number;
+                orderItemId: string;
                 storageKey: string;
                 originalFileName: string;
-                customerNotes: string | null;
-                versionNumber: number;
                 mimeType: string;
                 fileSize: number;
                 checksum: string;
@@ -292,33 +297,32 @@ export declare class PackingController {
                 hasBleed: boolean | null;
                 colorProfile: string | null;
                 proofUrl: string | null;
-                isApproved: boolean;
                 prepressNotes: string | null;
                 uploadedBy: string;
                 approvedAt: Date | null;
-                orderItemId: string;
             }[];
         } & {
             id: string;
             createdAt: Date;
-            orderId: string;
             updatedAt: Date;
             sku: string;
+            orderId: string;
+            approvedArtworkVersionId: string | null;
             productId: string;
-            totalPrice: import("@prisma/client/runtime/library").Decimal;
+            productName: string;
             quantity: number;
             unitPrice: import("@prisma/client/runtime/library").Decimal;
-            productName: string;
+            totalPrice: import("@prisma/client/runtime/library").Decimal;
             specifications: import("@prisma/client/runtime/library").JsonValue;
-            approvedArtworkVersionId: string | null;
+            personalizationData: import("@prisma/client/runtime/library").JsonValue | null;
             designNotes: string | null;
         })[];
         packages: ({
             shipment: {
                 id: string;
+                status: import(".prisma/client").$Enums.ShipmentStatus;
                 createdAt: Date;
                 updatedAt: Date;
-                status: import(".prisma/client").$Enums.ShipmentStatus;
                 shipmentNumber: string;
                 courierName: string;
                 awbNumber: string;
@@ -330,12 +334,12 @@ export declare class PackingController {
             } | null;
         } & {
             id: string;
-            createdAt: Date;
-            orderId: string;
-            updatedAt: Date;
             status: import(".prisma/client").$Enums.PackageStatus;
-            packageNumber: string;
+            createdAt: Date;
+            updatedAt: Date;
             sequenceNumber: number;
+            orderId: string;
+            packageNumber: string;
             totalPackages: number;
             grossWeightGrams: number;
             lengthCm: import("@prisma/client/runtime/library").Decimal;
@@ -349,11 +353,11 @@ export declare class PackingController {
             machine: {
                 id: string;
                 createdAt: Date;
+                updatedAt: Date;
                 name: string;
                 isActive: boolean;
-                updatedAt: Date;
-                code: string;
                 type: string;
+                code: string;
                 hourlyCapacity: number;
             } | null;
             operator: {
@@ -363,15 +367,15 @@ export declare class PackingController {
             } | null;
         } & {
             id: string;
-            createdAt: Date;
-            orderId: string;
-            updatedAt: Date;
             status: import(".prisma/client").$Enums.JobCardStatus;
             priority: import(".prisma/client").$Enums.Priority;
             dueAt: Date;
-            approvedArtworkVersionId: string | null;
-            orderItemId: string;
+            createdAt: Date;
+            updatedAt: Date;
             jobNumber: string;
+            orderId: string;
+            orderItemId: string;
+            approvedArtworkVersionId: string | null;
             preHoldStatus: import(".prisma/client").$Enums.JobCardStatus | null;
             currentStation: string;
             machineId: string | null;
@@ -389,29 +393,27 @@ export declare class PackingController {
         } & {
             id: string;
             createdAt: Date;
+            items: import("@prisma/client/runtime/library").JsonValue;
             orderId: string;
             type: import(".prisma/client").$Enums.QCInspectionType;
-            notes: string | null;
-            items: import("@prisma/client/runtime/library").JsonValue;
             jobCardId: string | null;
             outcome: import(".prisma/client").$Enums.QCOutcome;
             inspectorId: string;
             defects: import(".prisma/client").$Enums.DefectCategory[];
+            notes: string | null;
         })[];
     } & {
         id: string;
-        createdAt: Date;
-        updatedAt: Date;
-        customerId: string;
-        status: import(".prisma/client").$Enums.OrderStatus;
-        subtotal: import("@prisma/client/runtime/library").Decimal;
-        deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
-        discountAmount: import("@prisma/client/runtime/library").Decimal;
         orderNumber: string;
+        customerId: string;
         sourceChannel: import(".prisma/client").$Enums.OrderChannel;
+        status: import(".prisma/client").$Enums.OrderStatus;
         customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+        deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+        subtotal: import("@prisma/client/runtime/library").Decimal;
         taxAmount: import("@prisma/client/runtime/library").Decimal;
         shippingAmount: import("@prisma/client/runtime/library").Decimal;
+        discountAmount: import("@prisma/client/runtime/library").Decimal;
         totalAmount: import("@prisma/client/runtime/library").Decimal;
         paidAmount: import("@prisma/client/runtime/library").Decimal;
         balanceAmount: import("@prisma/client/runtime/library").Decimal;
@@ -423,13 +425,15 @@ export declare class PackingController {
         internalNotes: string | null;
         shippingAddressId: string | null;
         billingAddressId: string | null;
+        createdAt: Date;
+        updatedAt: Date;
     }>;
     getPackages(orderId: string): Promise<({
         shipment: {
             id: string;
+            status: import(".prisma/client").$Enums.ShipmentStatus;
             createdAt: Date;
             updatedAt: Date;
-            status: import(".prisma/client").$Enums.ShipmentStatus;
             shipmentNumber: string;
             courierName: string;
             awbNumber: string;
@@ -441,12 +445,12 @@ export declare class PackingController {
         } | null;
     } & {
         id: string;
-        createdAt: Date;
-        orderId: string;
-        updatedAt: Date;
         status: import(".prisma/client").$Enums.PackageStatus;
-        packageNumber: string;
+        createdAt: Date;
+        updatedAt: Date;
         sequenceNumber: number;
+        orderId: string;
+        packageNumber: string;
         totalPackages: number;
         grossWeightGrams: number;
         lengthCm: import("@prisma/client/runtime/library").Decimal;
@@ -458,12 +462,12 @@ export declare class PackingController {
     })[]>;
     completePacking(body: CompletePackingDto, user: JwtPayload): Promise<{
         id: string;
-        createdAt: Date;
-        orderId: string;
-        updatedAt: Date;
         status: import(".prisma/client").$Enums.PackageStatus;
-        packageNumber: string;
+        createdAt: Date;
+        updatedAt: Date;
         sequenceNumber: number;
+        orderId: string;
+        packageNumber: string;
         totalPackages: number;
         grossWeightGrams: number;
         lengthCm: import("@prisma/client/runtime/library").Decimal;

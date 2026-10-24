@@ -7,18 +7,16 @@ import {
   RiCheckboxCircleLine,
   RiBox3Line,
   RiTruckLine,
-  RiBuilding4Line,
-  RiPriceTag3Line,
   RiExchangeDollarLine,
   RiShieldUserLine,
   RiSettings4Line,
   RiArchiveDrawerLine,
   RiFoldersLine,
-  RiStackLine,
   RiStore2Line,
   RiPulseLine,
   RiListCheck2,
   RiListSettingsLine,
+  RiFileList3Line,
 } from 'react-icons/ri';
 
 export interface AdminNavItem {
@@ -112,6 +110,19 @@ export const CANONICAL_ADMIN_NAV: AdminNavItem[] = [
     description: 'Central reusable option groups library & default values',
   },
   {
+    id: 'personalization-templates',
+    label: 'Personalization Templates',
+    href: '/admin/personalization-templates',
+    icon: RiFileList3Line,
+    requiredPermissions: ['orders.read', 'production.read'],
+    matchMode: 'any',
+    section: 'CATALOGUE_INVENTORY',
+    order: 17,
+    badge: 'TEMPLATES',
+    badgeVariant: 'emerald',
+    description: 'Reusable frames, keepsakes, and gift personalization templates',
+  },
+  {
     id: 'categories',
     label: 'Categories & Taxonomies',
     href: '/admin/categories',
@@ -119,21 +130,10 @@ export const CANONICAL_ADMIN_NAV: AdminNavItem[] = [
     requiredPermissions: ['orders.read', 'production.read'],
     matchMode: 'any',
     section: 'CATALOGUE_INVENTORY',
-    order: 17,
+    order: 18,
     description: 'Storefront categories & ordering',
   },
-  {
-    id: 'inventory',
-    label: 'Materials & Substrates',
-    href: '/production/inventory',
-    icon: RiStackLine,
-    requiredPermissions: ['production.read', 'orders.read'],
-    matchMode: 'any',
-    section: 'CATALOGUE_INVENTORY',
-    order: 17,
-    badgeVariant: 'amber',
-    description: 'Raw paper, greyboard, films & stock movements',
-  },
+
 
   // SECTION: CORE OPERATIONS
   {
@@ -224,41 +224,7 @@ export const CANONICAL_ADMIN_NAV: AdminNavItem[] = [
   },
 
   // SECTION: COMMERCIAL & FINANCE
-  {
-    id: 'customers',
-    label: 'Corporate Customers',
-    href: '/sales/customers',
-    icon: RiBuilding4Line,
-    requiredPermissions: ['customers.read'],
-    matchMode: 'all',
-    section: 'COMMERCIAL',
-    order: 80,
-    badge: 'B2B',
-    badgeVariant: 'zinc',
-    description: 'B2B client directories & custom SLAs',
-  },
-  {
-    id: 'pricing',
-    label: 'Pricing & Substrates',
-    href: '/sales/pricing',
-    icon: RiPriceTag3Line,
-    requiredPermissions: ['pricing.read'],
-    matchMode: 'all',
-    section: 'COMMERCIAL',
-    order: 90,
-    description: 'Substrate GSM tables, slabs & cost formulas',
-  },
-  {
-    id: 'shipping-gst',
-    label: 'Shipping & GST',
-    href: '/admin/shipping-gst',
-    icon: RiTruckLine,
-    requiredPermissions: ['settings.read'],
-    matchMode: 'all',
-    section: 'COMMERCIAL',
-    order: 95,
-    description: 'Regional pincode courier charges, GST tax rates & free shipping rules',
-  },
+
   {
     id: 'finance',
     label: 'Payments & Invoices',

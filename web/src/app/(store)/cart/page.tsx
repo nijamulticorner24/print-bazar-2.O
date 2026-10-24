@@ -128,17 +128,23 @@ export default function CartPage() {
   const handleProceedToCheckout = () => {
     if (cartItems.length === 0) return;
 
-    const activeItem = {
-      ...cartItems[0],
+    // Preserve the complete cart with all configured items and financial breakdown
+    const checkoutSession = {
+      ...cartItems[0], // Backward-compatibility for any legacy single-item reader
+      items: cartItems, // Authoritative array of all configured products
       paymentMode: cartPaymentMode,
-      advanceAmount: advanceAmountDue,
-      balanceAmount: balanceAmountDue,
-      totalPrice: subtotal,
+      discountApplied,
+      promoCode,
+      subtotal,
+      discountAmount,
+      taxableAmount,
       taxAmount: gstAmount,
       grandTotal: totalAmount,
+      advanceAmount: advanceAmountDue,
+      balanceAmount: balanceAmountDue,
     };
 
-    sessionStorage.setItem('pb2_active_cart', JSON.stringify(activeItem));
+    sessionStorage.setItem('pb2_active_cart', JSON.stringify(checkoutSession));
 
     if (user && user.role === 'CUSTOMER') {
       router.push('/checkout');

@@ -107,6 +107,13 @@ let ProductsService = class ProductsService {
                 additionalPricings: {
                     orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
                 },
+                personalizationTemplate: {
+                    include: {
+                        fields: {
+                            orderBy: { sortOrder: 'asc' },
+                        },
+                    },
+                },
                 pricingSource: true,
             },
         });

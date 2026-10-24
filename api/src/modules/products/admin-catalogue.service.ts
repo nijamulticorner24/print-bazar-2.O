@@ -278,6 +278,13 @@ export class AdminCatalogueService {
         additionalPricings: {
           orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
         },
+        personalizationTemplate: {
+          include: {
+            fields: {
+              orderBy: { sortOrder: 'asc' },
+            },
+          },
+        },
         pricingSource: {
           include: {
             syncLogs: {
@@ -355,6 +362,8 @@ export class AdminCatalogueService {
           designServiceFee: dto.designServiceFee !== undefined ? dto.designServiceFee : (dto.designServicePrice || 0),
           allowMultipleVariants: dto.allowMultipleVariants ?? false,
           variantDimensions: dto.variantDimensions || [],
+          personalizationTemplateId: dto.personalizationTemplateId || null,
+          personalizationConfig: (dto.personalizationConfig as any) || null,
           shippingChargeType: dto.shippingChargeType || 'DEFAULT',
           unitWeightGrams: dto.unitWeightGrams !== undefined ? dto.unitWeightGrams : 0,
           courierCharge: dto.courierCharge !== undefined ? dto.courierCharge : 100,
@@ -527,6 +536,8 @@ export class AdminCatalogueService {
         designServiceFee: dto.designServiceFee,
         allowMultipleVariants: dto.allowMultipleVariants !== undefined ? dto.allowMultipleVariants : current.allowMultipleVariants,
         variantDimensions: dto.variantDimensions !== undefined ? dto.variantDimensions : current.variantDimensions,
+        personalizationTemplateId: dto.personalizationTemplateId !== undefined ? (dto.personalizationTemplateId || null) : current.personalizationTemplateId,
+        personalizationConfig: dto.personalizationConfig !== undefined ? (dto.personalizationConfig as any) : current.personalizationConfig,
         referenceImageRequirement: dto.referenceImageRequirement as any,
         designServiceRequirement: dto.designServiceRequirement as any,
         designServicePrice: dto.designServicePrice,

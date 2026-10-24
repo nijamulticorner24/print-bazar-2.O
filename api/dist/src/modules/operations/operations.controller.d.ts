@@ -63,9 +63,16 @@ export declare class OperationsController {
             id: string;
             createdAt: Date;
             status: import(".prisma/client").$Enums.OrderStatus;
-            deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+            jobCards: {
+                id: string;
+                status: import(".prisma/client").$Enums.JobCardStatus;
+                jobNumber: string;
+                currentStation: string;
+                operatorId: string | null;
+            }[];
             orderNumber: string;
             customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+            deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
             totalAmount: import("@prisma/client/runtime/library").Decimal;
             paidAmount: import("@prisma/client/runtime/library").Decimal;
             balanceAmount: import("@prisma/client/runtime/library").Decimal;
@@ -97,13 +104,6 @@ export declare class OperationsController {
             packages: {
                 id: string;
                 status: import(".prisma/client").$Enums.PackageStatus;
-            }[];
-            jobCards: {
-                id: string;
-                status: import(".prisma/client").$Enums.JobCardStatus;
-                jobNumber: string;
-                currentStation: string;
-                operatorId: string | null;
             }[];
             qcChecklists: {
                 id: string;
@@ -172,9 +172,16 @@ export declare class OperationsController {
             id: string;
             createdAt: Date;
             status: import(".prisma/client").$Enums.OrderStatus;
-            deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+            jobCards: {
+                id: string;
+                status: import(".prisma/client").$Enums.JobCardStatus;
+                jobNumber: string;
+                currentStation: string;
+                operatorId: string | null;
+            }[];
             orderNumber: string;
             customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+            deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
             totalAmount: import("@prisma/client/runtime/library").Decimal;
             paidAmount: import("@prisma/client/runtime/library").Decimal;
             balanceAmount: import("@prisma/client/runtime/library").Decimal;
@@ -206,13 +213,6 @@ export declare class OperationsController {
             packages: {
                 id: string;
                 status: import(".prisma/client").$Enums.PackageStatus;
-            }[];
-            jobCards: {
-                id: string;
-                status: import(".prisma/client").$Enums.JobCardStatus;
-                jobNumber: string;
-                currentStation: string;
-                operatorId: string | null;
             }[];
             qcChecklists: {
                 id: string;
@@ -281,9 +281,16 @@ export declare class OperationsController {
             id: string;
             createdAt: Date;
             status: import(".prisma/client").$Enums.OrderStatus;
-            deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+            jobCards: {
+                id: string;
+                status: import(".prisma/client").$Enums.JobCardStatus;
+                jobNumber: string;
+                currentStation: string;
+                operatorId: string | null;
+            }[];
             orderNumber: string;
             customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+            deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
             totalAmount: import("@prisma/client/runtime/library").Decimal;
             paidAmount: import("@prisma/client/runtime/library").Decimal;
             balanceAmount: import("@prisma/client/runtime/library").Decimal;
@@ -315,13 +322,6 @@ export declare class OperationsController {
             packages: {
                 id: string;
                 status: import(".prisma/client").$Enums.PackageStatus;
-            }[];
-            jobCards: {
-                id: string;
-                status: import(".prisma/client").$Enums.JobCardStatus;
-                jobNumber: string;
-                currentStation: string;
-                operatorId: string | null;
             }[];
             qcChecklists: {
                 id: string;
@@ -390,9 +390,16 @@ export declare class OperationsController {
             id: string;
             createdAt: Date;
             status: import(".prisma/client").$Enums.OrderStatus;
-            deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+            jobCards: {
+                id: string;
+                status: import(".prisma/client").$Enums.JobCardStatus;
+                jobNumber: string;
+                currentStation: string;
+                operatorId: string | null;
+            }[];
             orderNumber: string;
             customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+            deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
             totalAmount: import("@prisma/client/runtime/library").Decimal;
             paidAmount: import("@prisma/client/runtime/library").Decimal;
             balanceAmount: import("@prisma/client/runtime/library").Decimal;
@@ -424,13 +431,6 @@ export declare class OperationsController {
             packages: {
                 id: string;
                 status: import(".prisma/client").$Enums.PackageStatus;
-            }[];
-            jobCards: {
-                id: string;
-                status: import(".prisma/client").$Enums.JobCardStatus;
-                jobNumber: string;
-                currentStation: string;
-                operatorId: string | null;
             }[];
             qcChecklists: {
                 id: string;
@@ -499,9 +499,16 @@ export declare class OperationsController {
             id: string;
             createdAt: Date;
             status: import(".prisma/client").$Enums.OrderStatus;
-            deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+            jobCards: {
+                id: string;
+                status: import(".prisma/client").$Enums.JobCardStatus;
+                jobNumber: string;
+                currentStation: string;
+                operatorId: string | null;
+            }[];
             orderNumber: string;
             customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+            deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
             totalAmount: import("@prisma/client/runtime/library").Decimal;
             paidAmount: import("@prisma/client/runtime/library").Decimal;
             balanceAmount: import("@prisma/client/runtime/library").Decimal;
@@ -533,13 +540,6 @@ export declare class OperationsController {
             packages: {
                 id: string;
                 status: import(".prisma/client").$Enums.PackageStatus;
-            }[];
-            jobCards: {
-                id: string;
-                status: import(".prisma/client").$Enums.JobCardStatus;
-                jobNumber: string;
-                currentStation: string;
-                operatorId: string | null;
             }[];
             qcChecklists: {
                 id: string;
@@ -652,14 +652,14 @@ export declare class OperationsController {
                 phone: string;
                 updatedAt: Date;
                 customerId: string;
-                type: string;
                 isDefault: boolean;
+                type: string;
+                postalCode: string;
                 contactName: string;
                 street: string;
                 landmark: string | null;
                 city: string;
                 state: string;
-                postalCode: string;
                 country: string;
             }[];
         } & {
@@ -688,14 +688,14 @@ export declare class OperationsController {
             phone: string;
             updatedAt: Date;
             customerId: string;
-            type: string;
             isDefault: boolean;
+            type: string;
+            postalCode: string;
             contactName: string;
             street: string;
             landmark: string | null;
             city: string;
             state: string;
-            postalCode: string;
             country: string;
         } | null;
         billingAddress: {
@@ -704,14 +704,14 @@ export declare class OperationsController {
             phone: string;
             updatedAt: Date;
             customerId: string;
-            type: string;
             isDefault: boolean;
+            type: string;
+            postalCode: string;
             contactName: string;
             street: string;
             landmark: string | null;
             city: string;
             state: string;
-            postalCode: string;
             country: string;
         } | null;
         items: ({
@@ -721,6 +721,34 @@ export declare class OperationsController {
                 slug: string;
                 sku: string;
             };
+            artworkVersions: {
+                id: string;
+                createdAt: Date;
+                status: import(".prisma/client").$Enums.ArtworkStatus;
+                storageKey: string;
+                orderItemId: string;
+                customerNotes: string | null;
+                originalFileName: string;
+                versionNumber: number;
+                mimeType: string;
+                fileSize: number;
+                checksum: string;
+                resolutionDpi: number | null;
+                widthMm: import("@prisma/client/runtime/library").Decimal | null;
+                heightMm: import("@prisma/client/runtime/library").Decimal | null;
+                widthPixels: number | null;
+                heightPixels: number | null;
+                actualMegapixels: number | null;
+                qualityStatus: string | null;
+                warningAccepted: boolean;
+                hasBleed: boolean | null;
+                colorProfile: string | null;
+                proofUrl: string | null;
+                isApproved: boolean;
+                prepressNotes: string | null;
+                uploadedBy: string;
+                approvedAt: Date | null;
+            }[];
             jobCards: ({
                 machine: {
                     id: string;
@@ -750,10 +778,10 @@ export declare class OperationsController {
                 orderId: string;
                 updatedAt: Date;
                 status: import(".prisma/client").$Enums.JobCardStatus;
-                priority: import(".prisma/client").$Enums.Priority;
-                dueAt: Date;
                 approvedArtworkVersionId: string | null;
                 orderItemId: string;
+                priority: import(".prisma/client").$Enums.Priority;
+                dueAt: Date;
                 jobNumber: string;
                 preHoldStatus: import(".prisma/client").$Enums.JobCardStatus | null;
                 currentStation: string;
@@ -764,46 +792,19 @@ export declare class OperationsController {
                 startedAt: Date | null;
                 completedAt: Date | null;
             })[];
-            artworkVersions: {
-                id: string;
-                createdAt: Date;
-                status: import(".prisma/client").$Enums.ArtworkStatus;
-                storageKey: string;
-                originalFileName: string;
-                customerNotes: string | null;
-                versionNumber: number;
-                mimeType: string;
-                fileSize: number;
-                checksum: string;
-                resolutionDpi: number | null;
-                widthMm: import("@prisma/client/runtime/library").Decimal | null;
-                heightMm: import("@prisma/client/runtime/library").Decimal | null;
-                widthPixels: number | null;
-                heightPixels: number | null;
-                actualMegapixels: number | null;
-                qualityStatus: string | null;
-                warningAccepted: boolean;
-                hasBleed: boolean | null;
-                colorProfile: string | null;
-                proofUrl: string | null;
-                isApproved: boolean;
-                prepressNotes: string | null;
-                uploadedBy: string;
-                approvedAt: Date | null;
-                orderItemId: string;
-            }[];
         } & {
             id: string;
             createdAt: Date;
             orderId: string;
             updatedAt: Date;
             sku: string;
-            productId: string;
-            totalPrice: import("@prisma/client/runtime/library").Decimal;
             quantity: number;
             unitPrice: import("@prisma/client/runtime/library").Decimal;
+            productId: string;
+            totalPrice: import("@prisma/client/runtime/library").Decimal;
             productName: string;
             specifications: import("@prisma/client/runtime/library").JsonValue;
+            personalizationData: import("@prisma/client/runtime/library").JsonValue | null;
             approvedArtworkVersionId: string | null;
             designNotes: string | null;
         })[];
@@ -811,9 +812,9 @@ export declare class OperationsController {
             id: string;
             createdAt: Date;
             status: import(".prisma/client").$Enums.PaymentStatus;
+            amount: import("@prisma/client/runtime/library").Decimal;
             transactionId: string;
             method: import(".prisma/client").$Enums.PaymentMethod;
-            amount: import("@prisma/client/runtime/library").Decimal;
             capturedAt: Date | null;
         }[];
         invoices: {
@@ -891,8 +892,8 @@ export declare class OperationsController {
             id: string;
             createdAt: Date;
             orderId: string;
-            type: import(".prisma/client").$Enums.QCInspectionType;
             notes: string | null;
+            type: import(".prisma/client").$Enums.QCInspectionType;
             items: import("@prisma/client/runtime/library").JsonValue;
             jobCardId: string | null;
             outcome: import(".prisma/client").$Enums.QCOutcome;
@@ -930,14 +931,14 @@ export declare class OperationsController {
         updatedAt: Date;
         customerId: string;
         status: import(".prisma/client").$Enums.OrderStatus;
-        subtotal: import("@prisma/client/runtime/library").Decimal;
-        deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
-        discountAmount: import("@prisma/client/runtime/library").Decimal;
         orderNumber: string;
         sourceChannel: import(".prisma/client").$Enums.OrderChannel;
         customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+        deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+        subtotal: import("@prisma/client/runtime/library").Decimal;
         taxAmount: import("@prisma/client/runtime/library").Decimal;
         shippingAmount: import("@prisma/client/runtime/library").Decimal;
+        discountAmount: import("@prisma/client/runtime/library").Decimal;
         totalAmount: import("@prisma/client/runtime/library").Decimal;
         paidAmount: import("@prisma/client/runtime/library").Decimal;
         balanceAmount: import("@prisma/client/runtime/library").Decimal;
@@ -1118,10 +1119,10 @@ export declare class OperationsController {
             orderId: string;
             updatedAt: Date;
             status: import(".prisma/client").$Enums.JobCardStatus;
-            priority: import(".prisma/client").$Enums.Priority;
-            dueAt: Date;
             approvedArtworkVersionId: string | null;
             orderItemId: string;
+            priority: import(".prisma/client").$Enums.Priority;
+            dueAt: Date;
             jobNumber: string;
             preHoldStatus: import(".prisma/client").$Enums.JobCardStatus | null;
             currentStation: string;
