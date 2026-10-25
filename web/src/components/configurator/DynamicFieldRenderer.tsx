@@ -155,45 +155,41 @@ export function DynamicFieldRenderer({
                   disabled={isOptDisabled}
                   title={opt.disabledReason || (opt.isDisabled ? 'Not available with current selection' : undefined)}
                   onClick={() => !isOptDisabled && onChange(opt.value)}
-                  className={`group w-full flex items-center justify-between p-3 rounded-xl border text-left transition-all duration-150 ${
+                  className={`group w-full flex items-center justify-between p-3.5 rounded-xl border text-left transition-all duration-150 ${
                     opt.isDisabled
                       ? 'border-slate-200 bg-slate-50/70 text-slate-400 opacity-60 cursor-not-allowed'
                       : isSelected
-                      ? 'border-slate-950 bg-slate-950 text-white ring-1.5 ring-slate-950 shadow-xs cursor-pointer'
-                      : 'border-slate-200/90 bg-white hover:border-slate-400 hover:bg-slate-50/70 text-slate-800 cursor-pointer'
+                      ? 'border-[#FFED00] bg-[#FFFEF0] ring-2 ring-[#FFED00] shadow-xs cursor-pointer'
+                      : 'border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/70 text-slate-800 cursor-pointer'
                   } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                    <div
-                      className={`h-4 w-4 rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${
-                        opt.isDisabled
-                          ? 'border-slate-300 bg-slate-200 text-slate-400'
-                          : isSelected
-                          ? 'border-[#FFED00] bg-[#FFED00] text-slate-950'
-                          : 'border-slate-300 bg-white group-hover:border-slate-400'
-                      }`}
-                    >
-                      {isSelected && !opt.isDisabled && <RiCheckLine className="h-3 w-3 stroke-[3]" />}
-                    </div>
                     <span
                       className={`text-xs sm:text-[13px] block truncate transition-colors ${
                         opt.isDisabled
                           ? 'font-medium text-slate-400 line-through'
                           : isSelected
-                          ? 'font-black text-white'
+                          ? 'font-black text-slate-950'
                           : 'font-semibold text-slate-800'
                       }`}
                     >
                       {opt.label}
                     </span>
                   </div>
-                  {opt.isDisabled ? (
-                    <span className="text-[10px] font-mono bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold shrink-0">
-                      Unavailable
-                    </span>
-                  ) : (
-                    badge && <div className="flex-shrink-0">{badge}</div>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {opt.isDisabled ? (
+                      <span className="text-[10px] font-mono bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold shrink-0">
+                        Unavailable
+                      </span>
+                    ) : (
+                      badge && <div className="flex-shrink-0">{badge}</div>
+                    )}
+                    {isSelected && !opt.isDisabled && (
+                      <div className="h-5 w-5 rounded-md bg-[#FFED00] text-slate-950 flex items-center justify-center font-bold shadow-2xs border border-[#E3A008]/40 shrink-0">
+                        <RiCheckLine className="h-3.5 w-3.5 stroke-[3]" />
+                      </div>
+                    )}
+                  </div>
                 </button>
               );
             })}

@@ -19,6 +19,7 @@ import {
   RiCloseLine,
   RiCheckLine,
   RiSettings4Line,
+  RiRefreshLine,
 } from 'react-icons/ri';
 import { formatCurrency } from '@/lib/utils';
 import {
@@ -285,16 +286,16 @@ export default function AdminProductsPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-700">
-              <thead className="bg-slate-50 text-[11px] text-slate-600 font-semibold uppercase tracking-wider border-b border-slate-200">
+            <table className="w-full text-left text-xs text-slate-700 table-fixed">
+              <thead className="bg-slate-50 text-[11px] text-slate-600 font-semibold uppercase tracking-wider border-b border-slate-200 sticky top-0 z-10 shadow-2xs">
                 <tr>
-                  <th className="p-3.5">Product</th>
-                  <th className="p-3.5">SKU</th>
-                  <th className="p-3.5">Category</th>
-                  <th className="p-3.5">Option Groups</th>
-                  <th className="p-3.5">Base Price</th>
-                  <th className="p-3.5">Status</th>
-                  <th className="p-3.5 text-right">Studio Actions</th>
+                  <th className="p-3.5 w-[28%] min-w-[240px]">Product</th>
+                  <th className="p-3.5 w-[14%] min-w-[120px]">SKU</th>
+                  <th className="p-3.5 w-[17%] min-w-[140px]">Category</th>
+                  <th className="p-3.5 w-[11%] min-w-[105px]">Option Groups</th>
+                  <th className="p-3.5 w-[10%] min-w-[90px]">Base Price</th>
+                  <th className="p-3.5 w-[9%] min-w-[85px]">Status</th>
+                  <th className="p-3.5 w-[11%] min-w-[180px] text-right pr-4">Studio Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono">
@@ -304,8 +305,8 @@ export default function AdminProductsPage() {
 
                   return (
                     <tr key={prod.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="p-3.5 font-sans">
-                        <div className="flex items-center gap-3">
+                      <td className="p-3.5 font-sans align-middle">
+                        <div className="flex items-center gap-3 min-w-0">
                           <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden flex-shrink-0 flex items-center justify-center">
                             {primaryImg ? (
                               <img src={primaryImg.url} alt={prod.name} className="w-full h-full object-cover" />
@@ -313,34 +314,40 @@ export default function AdminProductsPage() {
                               <span className="text-[10px] text-slate-400 font-semibold">NO IMG</span>
                             )}
                           </div>
-                          <div>
-                            <div className="font-bold text-slate-900 hover:text-amber-600 transition-colors">
-                              <Link href={`/admin/products/${prod.id}`}>{prod.name}</Link>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-slate-900 hover:text-amber-600 transition-colors truncate">
+                              <Link href={`/admin/products/${prod.id}`} title={prod.name}>
+                                {prod.name}
+                              </Link>
                             </div>
-                            <div className="text-[10px] text-slate-400 font-mono">/{prod.slug}</div>
+                            <div className="text-[10px] text-slate-400 font-mono truncate" title={`/${prod.slug}`}>
+                              /{prod.slug}
+                            </div>
                           </div>
                         </div>
                       </td>
 
-                      <td className="p-3.5 text-slate-600">{prod.sku}</td>
+                      <td className="p-3.5 text-slate-600 align-middle font-mono truncate" title={prod.sku}>
+                        {prod.sku}
+                      </td>
 
-                      <td className="p-3.5 font-sans text-slate-600">
+                      <td className="p-3.5 font-sans text-slate-600 align-middle truncate" title={prod.category?.name || 'Unassigned'}>
                         {prod.category?.name || 'Unassigned'}
                       </td>
 
-                      <td className="p-3.5">
+                      <td className="p-3.5 align-middle whitespace-nowrap">
                         <span className="inline-flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-[11px] text-slate-700 border border-slate-200 font-medium">
-                          {groupsCount} groups
+                          {groupsCount} {groupsCount === 1 ? 'group' : 'groups'}
                         </span>
                       </td>
 
-                      <td className="p-3.5 font-bold text-slate-900 font-mono">
+                      <td className="p-3.5 font-bold text-slate-900 font-mono align-middle whitespace-nowrap">
                         {formatCurrency(Number(prod.basePrice))}
                       </td>
 
-                      <td className="p-3.5">
+                      <td className="p-3.5 align-middle whitespace-nowrap">
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
                             prod.status === 'PUBLISHED'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                               : prod.status === 'DRAFT'
@@ -352,8 +359,8 @@ export default function AdminProductsPage() {
                         </span>
                       </td>
 
-                      <td className="p-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5 font-sans">
+                      <td className="p-3.5 text-right align-middle pr-4">
+                        <div className="flex items-center justify-end gap-1.5 font-sans whitespace-nowrap">
                           <Link
                             href={`/admin/products/${prod.id}`}
                             className="p-1.5 px-2.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 hover:bg-[#FFED00] hover:text-black transition-colors text-xs font-bold flex items-center gap-1 shadow-2xs"
@@ -387,7 +394,7 @@ export default function AdminProductsPage() {
                               onClick={() => handlePublish(prod.id)}
                               disabled={actionLoadingId === prod.id}
                               className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors"
-                              title="Publish"
+                              title="Publish Product"
                             >
                               <RiCheckboxCircleLine className="w-4 h-4" />
                             </button>
@@ -397,18 +404,28 @@ export default function AdminProductsPage() {
                               onClick={() => handleArchive(prod.id)}
                               disabled={actionLoadingId === prod.id}
                               className="p-1.5 rounded-lg text-slate-500 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                              title="Archive"
+                              title="Archive Product"
                             >
                               <RiArchiveLine className="w-4 h-4" />
                             </button>
-                          ) : null}
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handlePublish(prod.id)}
+                              disabled={actionLoadingId === prod.id}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                              title="Restore / Publish Product"
+                            >
+                              <RiRefreshLine className="w-4 h-4" />
+                            </button>
+                          )}
 
                           <button
                             type="button"
                             onClick={() => handleDelete(prod.id, prod.name)}
                             disabled={actionLoadingId === prod.id}
                             className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
-                            title="Delete"
+                            title="Delete Product"
                           >
                             <RiDeleteBin7Line className="w-4 h-4" />
                           </button>

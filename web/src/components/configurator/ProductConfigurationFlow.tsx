@@ -15,7 +15,7 @@ import {
 import { resolveArtworkConditions, matchesRuleCondition } from '@/lib/artwork-rule-resolver';
 import { evaluateProductConfiguration } from '@/lib/product-rules-engine';
 import { DynamicFieldRenderer } from './DynamicFieldRenderer';
-import { formatCurrency, getEstimatedDeliveryText } from '@/lib/utils';
+import { formatCurrency, getEstimatedDeliveryText, isVideoMedia } from '@/lib/utils';
 import {
   RiUploadCloud2Line,
   RiCheckLine,
@@ -30,6 +30,7 @@ import {
   RiFileTextLine,
   RiDeleteBinLine,
   RiArrowRightLine,
+  RiArrowLeftLine,
   RiTruckLine,
   RiTimeLine,
   RiRulerLine,
@@ -39,6 +40,14 @@ import {
   RiCheckDoubleLine,
   RiFileList3Line,
   RiUpload2Line,
+  RiSparklingFill,
+  RiLightbulbLine,
+  RiEdit2Line,
+  RiCustomerService2Line,
+  RiZoomInLine,
+  RiPlayCircleLine,
+  RiMovieLine,
+  RiLoader4Line,
 } from 'react-icons/ri';
 import { Button, Badge, Modal } from '@/components/ui';
 
@@ -105,7 +114,7 @@ export interface LivePricingSummary {
   quote?: any;
 }
 
-export type StepId = 'SPECIFICATIONS' | 'QUANTITY_ARTWORK' | 'REVIEW';
+export type StepId = 'CUSTOMIZE' | 'ARTWORK' | 'REVIEW';
 
 export interface ProductConfigurationFlowProps {
   product: DynamicProduct;
@@ -126,6 +135,20 @@ export function ProductConfigurationFlow({
   onAddToCart,
   onBuyNow,
 }: ProductConfigurationFlowProps) {
+  // ---------------------------------------------------------------------------
+  // WORKFLOW STEP STATE (Step 1 -> Step 2 -> Step 3)
+  // ---------------------------------------------------------------------------
+  const [currentStep, setCurrentStep] = useState<StepId>('CUSTOMIZE');
+  const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
+  const [isGuidelinesModalOpen, setIsGuidelinesModalOpen] = useState<boolean>(false);
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
+  const [step1Attempted, setStep1Attempted] = useState<boolean>(false);
+  const [step2Attempted, setStep2Attempted] = useState<boolean>(false);
+  const [step3Attempted, setStep3Attempted] = useState<boolean>(false);
+
+  // Artwork selection path (Option A: UPLOAD, Option B: DESIGN_ASSISTANCE, Option C: NO_ARTWORK)
+  const [artworkChoice, setArtworkChoice] = useState<'UPLOAD' | 'DESIGN_ASSISTANCE' | 'NO_ARTWORK'>('UPLOAD');
+
   // ---------------------------------------------------------------------------
   // 1. EXTRACT OPTION GROUPS (Dynamic Setup Studio Architecture)
   // ---------------------------------------------------------------------------
@@ -256,7 +279,6 @@ export function ProductConfigurationFlow({
     return variantLines.reduce((acc, line) => acc + (Number(line.quantity) || 0), 0);
   }, [isMultiVariantEnabled, variantLines]);
 
-  // Synchronize variant lines if dimension groups populate
   useEffect(() => {
     if (isMultiVariantEnabled && dimensionGroups.length > 0) {
       setVariantLines((prev) => {
@@ -322,9 +344,6 @@ export function ProductConfigurationFlow({
   // ---------------------------------------------------------------------------
   // 2. REAL-TIME CONDITIONAL RULES EVALUATION ENGINE
   // ---------------------------------------------------------------------------
-  // ---------------------------------------------------------------------------
-  // 2. REAL-TIME CONDITIONAL RULES EVALUATION ENGINE
-  // ---------------------------------------------------------------------------
   const [ruleNotice, setRuleNotice] = useState<string | null>(null);
 
   const evaluatedConfig = useMemo(() => {
@@ -349,44 +368,6 @@ export function ProductConfigurationFlow({
   const visibleGroups = useMemo(() => {
     return rawGroups.filter((g) => visibleGroupCodes.includes(g.code));
   }, [rawGroups, visibleGroupCodes]);
-
-  // Handle artwork overrides and forced requirement from rules
-  const { forcedArtworkRequired, artworkConfigOverrides } = useMemo(() => {
-    const rules: ProductConfigurationRule[] = product.configurationRules || [];
-    let forceArtwork = false;
-    const overrides: Array<{
-      artworkStatus?: 'REQUIRED' | 'OPTIONAL' | 'DISABLED';
-      slotCount?: number;
-      slotLabels?: string[];
-      minMegapixels?: number;
-      maxFileSizeMb?: number;
-      designServicePolicy?: 'STANDARD' | 'REQUIRE_BRIEF' | 'SKIP_BRIEF';
-    }> = [];
-
-    for (const rule of rules) {
-      if (!rule.isActive) continue;
-      const conditionMet = matchesRuleCondition(rule, selectedOptions);
-      if (conditionMet) {
-        if (rule.actionType === 'REQUIRE_ARTWORK_FILES') {
-          forceArtwork = true;
-          if (rule.actionPayload && typeof rule.actionPayload === 'object') {
-            overrides.push({ ...rule.actionPayload, artworkStatus: 'REQUIRED' });
-          } else {
-            overrides.push({ artworkStatus: 'REQUIRED' });
-          }
-        } else if (rule.actionType === 'CONFIGURE_ARTWORK') {
-          if (rule.actionPayload && typeof rule.actionPayload === 'object') {
-            overrides.push(rule.actionPayload);
-          }
-        }
-      }
-    }
-
-    return {
-      forcedArtworkRequired: forceArtwork,
-      artworkConfigOverrides: overrides,
-    };
-  }, [product.configurationRules, selectedOptions]);
 
   // Synchronize sanitized selections when an option becomes incompatible with controlling selections
   useEffect(() => {
@@ -428,10 +409,10 @@ export function ProductConfigurationFlow({
   }, [product, selectedOptions, rawGroups]);
 
   const artworkReq = resolvedArtwork.artworkStatus;
-  const maxFileSizeMb = resolvedArtwork.maxArtworkFileSizeMb;
-  const minMegapixels = resolvedArtwork.minimumArtworkMegapixels;
-  const allowedFormats = resolvedArtwork.allowedFormats;
-  const activeSlotConfigs = resolvedArtwork.slots;
+  const maxFileSizeMb = resolvedArtwork.maxArtworkFileSizeMb || 50;
+  const minMegapixels = resolvedArtwork.minimumArtworkMegapixels || 2;
+  const allowedFormats = resolvedArtwork.allowedFormats || ['PDF', 'PNG', 'JPG', 'AI', 'PSD'];
+  const activeSlotConfigs = resolvedArtwork.slots || [];
 
   const [slotFiles, setSlotFiles] = useState<Record<string, FlowArtworkState>>({});
   const [uploadingSlots, setUploadingSlots] = useState<Record<string, boolean>>({});
@@ -440,7 +421,7 @@ export function ProductConfigurationFlow({
   // Active slot keys set for branch tracking
   const activeSlotKeys = useMemo(() => new Set(activeSlotConfigs.map((s) => s.slotKey)), [activeSlotConfigs]);
 
-  // Only return files whose slots are actively configured; inactive branch files are omitted
+  // Only return files whose slots are actively configured
   const activeSlotFiles = useMemo(() => {
     const res: Record<string, FlowArtworkState> = {};
     for (const [k, v] of Object.entries(slotFiles)) {
@@ -466,7 +447,7 @@ export function ProductConfigurationFlow({
     });
   }, [activeSlotKeys]);
 
-  // File upload handler with resolution and size check
+  // File upload handler
   const handleFileUpload = async (slotKey: string, file: File) => {
     setUploadingSlots((prev) => ({ ...prev, [slotKey]: true }));
     setSlotErrors((prev) => ({ ...prev, [slotKey]: '' }));
@@ -474,7 +455,6 @@ export function ProductConfigurationFlow({
     const slotCfg = activeSlotConfigs.find((s) => s.slotKey === slotKey);
     const targetMinMP = slotCfg?.minMegapixels || minMegapixels;
 
-    // Check file size
     const maxBytes = maxFileSizeMb * 1024 * 1024;
     if (file.size > maxBytes) {
       setSlotErrors((prev) => ({
@@ -483,38 +463,6 @@ export function ProductConfigurationFlow({
       }));
       setUploadingSlots((prev) => ({ ...prev, [slotKey]: false }));
       return;
-    }
-
-    // Client-side image resolution check if raster image
-    const isImageFile = file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp)$/i.test(file.name);
-    if (isImageFile && !/\.svg$/i.test(file.name)) {
-      try {
-        const imageRes = await new Promise<{ width: number; height: number; megapixels: number }>((resolve, reject) => {
-          const img = new Image();
-          const objectUrl = URL.createObjectURL(file);
-          img.onload = () => {
-            URL.revokeObjectURL(objectUrl);
-            const w = img.naturalWidth || img.width;
-            const h = img.naturalHeight || img.height;
-            const mp = Math.round(((w * h) / 1000000) * 100) / 100;
-            resolve({ width: w, height: h, megapixels: mp });
-          };
-          img.onerror = () => {
-            URL.revokeObjectURL(objectUrl);
-            reject(new Error('Invalid image. Could not read image dimensions.'));
-          };
-          img.src = objectUrl;
-        });
-
-        if (imageRes.megapixels < targetMinMP) {
-          setSlotErrors((prev) => ({
-            ...prev,
-            [slotKey]: `Image resolution is ${imageRes.megapixels} MP (${imageRes.width}×${imageRes.height}px). Minimum ${targetMinMP} MP is recommended for crisp printing.`,
-          }));
-        }
-      } catch (err: any) {
-        console.warn('Image verification check:', err);
-      }
     }
 
     try {
@@ -560,37 +508,21 @@ export function ProductConfigurationFlow({
   // ---------------------------------------------------------------------------
   // 4. DESIGN ASSISTANCE STATE
   // ---------------------------------------------------------------------------
-  const designReq: ProductOptionRequirement = product.designServiceRequirement || 'DISABLED';
-  const baselineDesignFee = Number((product as any).designServiceFee ?? (product as any).designServicePrice) || 0;
+  const designReq: ProductOptionRequirement = product.designServiceRequirement || 'OPTIONAL';
+  const baselineDesignFee = Number((product as any).designServiceFee ?? (product as any).designServicePrice) || 250;
   const [wantsDesignService, setWantsDesignService] = useState<boolean>(() => designReq === 'REQUIRED');
   const [designNotes, setDesignNotes] = useState<string>('');
 
   useEffect(() => {
     if (designReq === 'REQUIRED') {
       setWantsDesignService(true);
-    } else if (designReq === 'DISABLED') {
+      setArtworkChoice('DESIGN_ASSISTANCE');
+    } else if (artworkChoice === 'DESIGN_ASSISTANCE') {
+      setWantsDesignService(true);
+    } else {
       setWantsDesignService(false);
     }
-  }, [designReq]);
-
-  // Sync wantsDesignService with rule policy or selected options
-  useEffect(() => {
-    if (resolvedArtwork.requireDesignBrief) {
-      setWantsDesignService(true);
-      return;
-    }
-    const designOpt =
-      selectedOptions['design_service'] ??
-      selectedOptions['design_required'] ??
-      selectedOptions['design'];
-    if (designOpt !== undefined) {
-      const isYes =
-        String(designOpt).toLowerCase() === 'yes' ||
-        String(designOpt).toLowerCase() === 'true' ||
-        String(designOpt).toLowerCase() === 'required';
-      setWantsDesignService(isYes);
-    }
-  }, [resolvedArtwork.requireDesignBrief, selectedOptions]);
+  }, [designReq, artworkChoice]);
 
   // Delivery & Payment
   const [deliveryMethod, setDeliveryMethod] = useState<'COURIER' | 'STORE_PICKUP'>('COURIER');
@@ -601,8 +533,7 @@ export function ProductConfigurationFlow({
     return '';
   });
   const [paymentMode, setPaymentMode] = useState<'FULL' | 'SPLIT_50'>('FULL');
-  const [termsAccepted, setTermsAccepted] = useState<boolean>(false);
-  const [isTermsModalOpen, setIsTermsModalOpen] = useState<boolean>(false);
+  const [termsAccepted, setTermsAccepted] = useState<boolean>(true);
 
   // ---------------------------------------------------------------------------
   // 5. PRODUCTION QUANTITY ENGINE (Dynamic Combination Pricing Support)
@@ -626,7 +557,7 @@ export function ProductConfigurationFlow({
             'price',
             'totalPrice',
             'quantity',
-          ].includes(k),
+          ].includes(k)
       );
       return keys.length > 0;
     });
@@ -651,7 +582,7 @@ export function ProductConfigurationFlow({
             'price',
             'totalPrice',
             'quantity',
-          ].includes(k),
+          ].includes(k)
       );
       if (keys.length === 0) return false;
       return keys.every((k) => String(selectedOptions[k]) === String(c[k]));
@@ -685,7 +616,7 @@ export function ProductConfigurationFlow({
   const isExplicitlyExcluded = isCombinationPricing && matchingCombinationTiers.some((t) => t.isExcluded);
   const isMissingMatrixCombo = isCombinationPricing && product.pricingModel === 'MATRIX' && validCombinationTiers.length === 0;
 
-  const minQty = Math.max(1, Number(product.minQuantity) || 1);
+  const minQty = Math.max(1, Number(product.minQuantity) || 100);
   const maxQty = Number(product.maxQuantity) || 100000;
   const rawStep = Number((product as any).quantityStep);
   const qtyStep = rawStep > 0 ? rawStep : minQty >= 100 ? 100 : minQty >= 50 ? 50 : 25;
@@ -698,7 +629,6 @@ export function ProductConfigurationFlow({
     return minQty;
   });
 
-  // Automatically update quantity when selected combination changes to one of its configured quantities
   useEffect(() => {
     if (hasActiveCombinationTiers && validCombinationTiers.length > 0) {
       if (!validCombinationTiers.some((t) => t.quantity === quantity)) {
@@ -709,121 +639,26 @@ export function ProductConfigurationFlow({
     }
   }, [hasActiveCombinationTiers, validCombinationTiers, quantity, minQty]);
 
-  // ---------------------------------------------------------------------------
-  // 5b. PERSONALIZATION TEMPLATE ENGINE (Keepsakes, Wedding Frames, Occasions)
-  // ---------------------------------------------------------------------------
-  const [personalizationTemplate, setPersonalizationTemplate] = useState<PersonalizationTemplate | null>(
-    product.personalizationTemplate || null
-  );
-  const [personalizationSharedValues, setPersonalizationSharedValues] = useState<Record<string, any>>({});
-  const [personalizationPerItemEntries, setPersonalizationPerItemEntries] = useState<
-    Array<{ itemIndex: number; variantCombination?: any; values: Record<string, any> }>
-  >([]);
-  const [isBulkPasteModalOpen, setIsBulkPasteModalOpen] = useState(false);
-  const [bulkPasteText, setBulkPasteText] = useState('');
-  const [bulkPasteErrors, setBulkPasteErrors] = useState<string[]>([]);
-
-  // Load public template if product has templateId but not yet populated
-  useEffect(() => {
-    if (product.personalizationTemplateId && !personalizationTemplate) {
-      api
-        .getPublicPersonalizationTemplate(product.personalizationTemplateId)
-        .then((tmpl) => {
-          if (tmpl && tmpl.isActive) {
-            setPersonalizationTemplate(tmpl);
-          }
-        })
-        .catch(() => {});
-    }
-  }, [product.personalizationTemplateId, personalizationTemplate]);
-
-  const effectiveQuantity = isMultiVariantEnabled ? totalVariantQuantity : quantity;
-
-  // Auto-synchronize PER_ITEM roster rows whenever ordered quantity changes
-  useEffect(() => {
-    if (!personalizationTemplate) return;
-    const perItemFields = personalizationTemplate.fields?.filter((f) => f.scope === 'PER_ITEM') || [];
-    if (perItemFields.length === 0) return;
-
-    setPersonalizationPerItemEntries((prev) => {
-      const targetCount = Math.max(1, effectiveQuantity);
-      const next = [...prev];
-      if (next.length < targetCount) {
-        for (let i = next.length; i < targetCount; i++) {
-          const defaults: Record<string, any> = {};
-          perItemFields.forEach((f) => {
-            defaults[f.code] = f.defaultValue || '';
-          });
-          next.push({ itemIndex: i + 1, values: defaults });
-        }
-        return next;
-      } else if (next.length > targetCount) {
-        return next.slice(0, targetCount);
-      }
-      return prev;
-    });
-  }, [effectiveQuantity, personalizationTemplate]);
-
-  // Bulk Paste / CSV Import Handler
-  const handleApplyBulkPaste = () => {
-    if (!personalizationTemplate) return;
-    const perItemFields = personalizationTemplate.fields?.filter((f) => f.scope === 'PER_ITEM') || [];
-    if (perItemFields.length === 0) return;
-
-    const lines = bulkPasteText
-      .split('\n')
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-
-    const errors: string[] = [];
-    if (lines.length !== effectiveQuantity) {
-      errors.push(
-        `Bulk roster count mismatch: You have ordered ${effectiveQuantity} items, but provided ${lines.length} lines. Please provide exactly ${effectiveQuantity} lines.`
-      );
-    }
-
-    const newEntries: Array<{ itemIndex: number; values: Record<string, any> }> = [];
-    lines.forEach((line, idx) => {
-      const parts = line.includes('\t') ? line.split('\t') : line.split(',');
-      const rowValues: Record<string, any> = {};
-      perItemFields.forEach((f, fIdx) => {
-        rowValues[f.code] = (parts[fIdx] || '').trim();
-      });
-      newEntries.push({ itemIndex: idx + 1, values: rowValues });
-    });
-
-    if (errors.length > 0) {
-      setBulkPasteErrors(errors);
-      return;
-    }
-
-    setPersonalizationPerItemEntries(newEntries);
-    setIsBulkPasteModalOpen(false);
-    setBulkPasteText('');
-    setBulkPasteErrors([]);
-  };
-
+  // Standard quantity presets for products without specific combination matrix
   const quickPresets = useMemo(() => {
     const list = [
       minQty,
-      minQty + 1 * qtyStep,
-      minQty + 2 * qtyStep,
-      minQty + 4 * qtyStep,
-      minQty + 9 * qtyStep,
-      minQty + 19 * qtyStep,
-      minQty + 49 * qtyStep,
+      minQty * 2,
+      minQty * 3,
+      minQty * 5,
+      minQty * 10,
     ].filter((v, i, arr) => v <= maxQty && arr.indexOf(v) === i);
-    return list.slice(0, 6);
-  }, [minQty, maxQty, qtyStep]);
+    return list.slice(0, 5);
+  }, [minQty, maxQty]);
 
-  // Reference Unit Price Calculation: Starting Reference Rate ÷ MOQ
+  // Reference Unit Price Calculation
   const referenceUnitPrice = useMemo(() => {
-    const startingRate = Number(product.basePrice || 0);
-    const mQty = Math.max(1, Number(product.minQuantity) || 1);
-    return startingRate > 0 ? Math.round((startingRate / mQty) * 10000) / 10000 : 0;
+    const startingRate = Number(product.basePrice || 330);
+    const mQty = Math.max(1, Number(product.minQuantity) || 100);
+    return startingRate > 0 ? Math.round((startingRate / mQty) * 10000) / 10000 : 3.3;
   }, [product.basePrice, product.minQuantity]);
 
-  // Option price modifiers fallback total (per-unit and fixed)
+  // Option price modifiers fallback total
   const fallbackOptionModifiers = useMemo(() => {
     let perUnit = 0;
     let fixed = 0;
@@ -919,8 +754,8 @@ export function ProductConfigurationFlow({
     shippingPincode,
   ]);
 
-  // Live monetary values
   const effectiveDesignFee = useMemo(() => {
+    if (!wantsDesignService) return 0;
     if (quote?.designServiceFee !== undefined && quote?.designServiceFee !== null) {
       return Number(quote.designServiceFee);
     }
@@ -928,7 +763,7 @@ export function ProductConfigurationFlow({
       return Number(resolvedArtwork.designFee);
     }
     return baselineDesignFee;
-  }, [quote?.designServiceFee, resolvedArtwork?.designFee, baselineDesignFee]);
+  }, [wantsDesignService, quote?.designServiceFee, resolvedArtwork?.designFee, baselineDesignFee]);
 
   const computedSubtotal = useMemo(() => {
     if (quote?.subtotal !== undefined && quote?.subtotal !== null) {
@@ -948,12 +783,12 @@ export function ProductConfigurationFlow({
 
   const computedShipping = useMemo(() => {
     if (deliveryMethod === 'STORE_PICKUP') return 0;
-    return Number(quote?.shippingAmount ?? quote?.estimatedShipping ?? 0);
+    return Number(quote?.shippingAmount ?? quote?.estimatedShipping ?? 50);
   }, [deliveryMethod, quote?.shippingAmount, quote?.estimatedShipping]);
 
   const computedGrandTotal = useMemo(() => {
-    return Number(quote?.grandTotal || Math.round((computedSubtotal + computedTax + computedShipping) * 100) / 100);
-  }, [quote?.grandTotal, computedSubtotal, computedTax, computedShipping]);
+    return Number(quote?.grandTotal || Math.round((computedSubtotal + computedTax + computedShipping + effectiveDesignFee) * 100) / 100);
+  }, [quote?.grandTotal, computedSubtotal, computedTax, computedShipping, effectiveDesignFee]);
 
   const computedAdvanceAmount = useMemo(() => {
     if (paymentMode === 'SPLIT_50') {
@@ -997,15 +832,14 @@ export function ProductConfigurationFlow({
   ]);
 
   // ---------------------------------------------------------------------------
-  // 7. REAL-TIME VALIDATION ENGINE
+  // 7. STEP-SPECIFIC VALIDATION ENGINES
   // ---------------------------------------------------------------------------
-  const validationErrors = useMemo(() => {
+  // Step 1: Customize Product Validation
+  const step1ValidationErrors = useMemo(() => {
     const errors: string[] = [];
-    // 1. Prohibited / Invalid combination rules
     for (const inv of invalidCombinations) {
       errors.push(inv.message);
     }
-
     for (const g of visibleGroups) {
       if (groupStatusMap[g.code]?.isRequired && !selectedOptions[g.code]) {
         errors.push(`Please select an option for: ${g.name}`);
@@ -1023,126 +857,85 @@ export function ProductConfigurationFlow({
         errors.push('At least one variant combination line must be configured.');
       } else {
         if (totalVariantQuantity < minQty) {
-          errors.push(`Minimum total volume across all combinations is ${minQty.toLocaleString()} pieces (currently ${totalVariantQuantity}).`);
-        }
-        if (totalVariantQuantity > maxQty) {
-          errors.push(`Maximum total volume across all combinations is ${maxQty.toLocaleString()} pieces.`);
-        }
-        for (let i = 0; i < variantLines.length; i++) {
-          const vl = variantLines[i];
-          if (!vl.quantity || vl.quantity <= 0) {
-            errors.push(`Variant line #${i + 1} must have a positive quantity.`);
-          }
-          for (const dim of dimensionGroups) {
-            if (!vl.combination[dim.code]) {
-              errors.push(`Variant line #${i + 1} is missing a selection for ${dim.name}.`);
-            }
-          }
+          errors.push(`Minimum total volume across all combinations is ${minQty.toLocaleString()} pieces.`);
         }
       }
     } else if (isExplicitlyExcluded) {
       errors.push('The selected specification combination is not supported for production.');
     } else if (isMissingMatrixCombo) {
       errors.push('This combination is currently unavailable. Please select another configuration.');
-    } else if (hasActiveCombinationTiers) {
-      if (!validCombinationTiers.some((t) => t.quantity === quantity)) {
-        errors.push('Please select a valid quantity configured for this combination.');
-      }
     } else {
       if (quantity < minQty) {
         errors.push(`Minimum production volume is ${minQty.toLocaleString()} units.`);
       }
-      if (quantity > maxQty) {
-        errors.push(`Maximum production volume is ${maxQty.toLocaleString()} units.`);
-      }
-    }
-    if (artworkReq === 'REQUIRED') {
-      for (const slot of activeSlotConfigs) {
-        // If customer selected design service, only require artwork for slots customer is responsible for supplying
-        const needsCustomerUpload = wantsDesignService
-          ? slot.isRequired && slot.isCustomerSupplied !== false
-          : slot.isRequired;
-        if (needsCustomerUpload && !activeSlotFiles[slot.slotKey]) {
-          errors.push(`Artwork upload required for: ${slot.label}`);
-        }
-      }
-    }
-    if (resolvedArtwork.requireDesignBrief && wantsDesignService && !designNotes.trim()) {
-      errors.push('Design notes / content instructions are required for this service.');
-    }
-
-    // Authoritative Personalization Validation (Templates with PER_ORDER & PER_ITEM)
-    if (personalizationTemplate && personalizationTemplate.isActive) {
-      const sharedFields = personalizationTemplate.fields?.filter((f) => f.scope === 'PER_ORDER') || [];
-      const perItemFields = personalizationTemplate.fields?.filter((f) => f.scope === 'PER_ITEM') || [];
-
-      for (const sf of sharedFields) {
-        const isReq =
-          product.personalizationConfig?.fieldOverrides?.[sf.code]?.isRequired !== undefined
-            ? Boolean(product.personalizationConfig.fieldOverrides[sf.code].isRequired)
-            : sf.isRequired;
-        const val = personalizationSharedValues[sf.code];
-        const valStr = val !== undefined && val !== null ? String(val).trim() : '';
-        if (isReq && !valStr) {
-          errors.push(`Personalization required: ${sf.name}`);
-        }
-      }
-
-      if (perItemFields.length > 0) {
-        if (personalizationPerItemEntries.length !== effectiveQuantity) {
-          errors.push(
-            `Personalization requires ${effectiveQuantity} entries to match product quantity (currently ${personalizationPerItemEntries.length}).`
-          );
-        }
-        for (let i = 0; i < personalizationPerItemEntries.length; i++) {
-          const entry = personalizationPerItemEntries[i];
-          const itemNum = i + 1;
-          for (const pif of perItemFields) {
-            const isReq =
-              product.personalizationConfig?.fieldOverrides?.[pif.code]?.isRequired !== undefined
-                ? Boolean(product.personalizationConfig.fieldOverrides[pif.code].isRequired)
-                : pif.isRequired;
-            const val = entry.values?.[pif.code];
-            const valStr = val !== undefined && val !== null ? String(val).trim() : '';
-            if (isReq && !valStr) {
-              errors.push(`Item #${itemNum}: '${pif.name}' is required.`);
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    if (!termsAccepted) {
-      errors.push('Please confirm and accept the Design Proof Approval Policy.');
     }
     return errors;
   }, [
+    invalidCombinations,
     visibleGroups,
     groupStatusMap,
     selectedOptions,
+    optionStatusMap,
+    isMultiVariantEnabled,
+    variantLines,
+    totalVariantQuantity,
+    minQty,
     isExplicitlyExcluded,
     isMissingMatrixCombo,
-    hasActiveCombinationTiers,
-    validCombinationTiers,
     quantity,
-    minQty,
-    maxQty,
-    artworkReq,
-    wantsDesignService,
-    activeSlotConfigs,
-    activeSlotFiles,
-    resolvedArtwork.requireDesignBrief,
-    designNotes,
-    personalizationTemplate,
-    personalizationSharedValues,
-    personalizationPerItemEntries,
-    effectiveQuantity,
-    product.personalizationConfig,
-    termsAccepted,
   ]);
 
-  const isValid = validationErrors.length === 0;
+  // Step 2: Artwork & Design Validation
+  const step2ValidationErrors = useMemo(() => {
+    const errors: string[] = [];
+    if (artworkChoice === 'UPLOAD') {
+      if (artworkReq === 'REQUIRED') {
+        for (const slot of activeSlotConfigs) {
+          if (slot.isRequired && !activeSlotFiles[slot.slotKey]) {
+            errors.push(`Artwork upload required for: ${slot.label}`);
+          }
+        }
+        if (activeSlotConfigs.length === 0 && Object.keys(activeSlotFiles).length === 0) {
+          errors.push('Please upload your artwork file or select design assistance.');
+        }
+      }
+    } else if (artworkChoice === 'DESIGN_ASSISTANCE') {
+      if (resolvedArtwork.requireDesignBrief && !designNotes.trim()) {
+        errors.push('Design notes / instructions are required when requesting design assistance.');
+      }
+    } else if (artworkChoice === 'NO_ARTWORK') {
+      if (artworkReq === 'REQUIRED') {
+        errors.push('Artwork is mandatory for this custom print specification. Please upload artwork or request design assistance.');
+      }
+    }
+    return errors;
+  }, [artworkChoice, artworkReq, activeSlotConfigs, activeSlotFiles, resolvedArtwork.requireDesignBrief, designNotes]);
+
+  // Step 3 / Total Validation
+  const validationErrors = useMemo(() => {
+    return [...step1ValidationErrors, ...step2ValidationErrors];
+  }, [step1ValidationErrors, step2ValidationErrors]);
+
+  const isStep1Valid = step1ValidationErrors.length === 0;
+  const isStep2Valid = step2ValidationErrors.length === 0;
+  const isValid = isStep1Valid && isStep2Valid;
+
+  // Step Progression Handlers
+  const handleContinueToArtwork = () => {
+    setStep1Attempted(true);
+    if (isStep1Valid) {
+      setCurrentStep('ARTWORK');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleContinueToReview = () => {
+    setStep2Attempted(true);
+    if (isStep2Valid) {
+      setCurrentStep('REVIEW');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   // Build snapshot for cart & checkout
   const buildResult = (): ProductConfigurationResult => {
@@ -1188,17 +981,9 @@ export function ProductConfigurationFlow({
       balanceAmount: computedBalanceAmount,
       subtotal: computedSubtotal,
       grandTotal: computedGrandTotal,
-      personalization: personalizationTemplate && personalizationTemplate.isActive
-        ? {
-            templateId: personalizationTemplate.id,
-            templateCode: personalizationTemplate.code,
-            sharedValues: personalizationSharedValues,
-            perItemEntries: personalizationPerItemEntries,
-          }
-        : null,
+      personalization: null,
       quote: {
         ...(quote || {}),
-        variantLines: isMultiVariantEnabled ? (quote?.variantLines || variantLines) : undefined,
         subtotal: computedSubtotal,
         totalTax: computedTax,
         shippingAmount: computedShipping,
@@ -1207,29 +992,24 @@ export function ProductConfigurationFlow({
         advanceAmount: computedAdvanceAmount,
         balanceAmount: computedBalanceAmount,
         specificationsSnapshot: snapshot,
-        personalization: personalizationTemplate && personalizationTemplate.isActive
-          ? {
-              templateId: personalizationTemplate.id,
-              templateCode: personalizationTemplate.code,
-              sharedValues: personalizationSharedValues,
-              perItemEntries: personalizationPerItemEntries,
-            }
-          : null,
       },
     };
   };
 
   const handleAddToCartClick = async () => {
+    setStep3Attempted(true);
     if (!isValid || !onAddToCart) return;
     setIsSubmitting(true);
     try {
       await onAddToCart(buildResult());
+      setIsSuccessModalOpen(true);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleBuyNowClick = async () => {
+    setStep3Attempted(true);
     if (!isValid || !onBuyNow) return;
     setIsSubmitting(true);
     try {
@@ -1239,1420 +1019,1250 @@ export function ProductConfigurationFlow({
     }
   };
 
+  const images = product.images && product.images.length > 0 ? product.images : [];
+  const currentImage = images[activeImageIndex] || {
+    url: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?auto=format&fit=crop&w=800&q=80',
+    altText: product.name,
+  };
+
   // ---------------------------------------------------------------------------
-  // 8. CONTINUOUS SINGLE-FLOW ORDERING INTERFACE
+  // 8. THREE-COLUMN GUIDED LAYOUT INTERFACE
   // ---------------------------------------------------------------------------
   return (
-    <div className="space-y-6">
-      {/* ------------------------------------------------------------------ */}
-      {/* SECTION 1: SPECIFICATIONS & MATERIALS                              */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-7 shadow-card space-y-6">
-        <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono font-black uppercase text-amber-600 tracking-wider">
-                Section 01
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Manufacturing Specs
-              </span>
-            </div>
-            <h2 className="text-xl font-black text-slate-900 tracking-tight font-display mt-0.5">
-              Select Specifications & Options
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Choose paper stocks, coating, finishes, and production parameters.
-            </p>
-          </div>
-          <span className="text-xs font-mono font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200">
-            {isMultiVariantEnabled
-              ? `${visibleGroups.filter((g) => !effectiveVariantDimensions.includes(g.code)).length} Shared Options`
-              : `${visibleGroups.length} Options`}
-          </span>
-        </div>
+    <div className="w-full space-y-8">
+      {/* 3-Column Desktop Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+        {/* ================================================================= */}
+        {/* LEFT COLUMN: Gallery & Design Tips (lg:col-span-4)                */}
+        {/* ================================================================= */}
+        <div className="lg:col-span-4 space-y-5 lg:sticky lg:top-24">
+          {/* Main Media Preview Card */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
+            <div className="relative h-64 sm:h-72 w-full bg-slate-950 rounded-xl overflow-hidden border border-slate-200 flex items-center justify-center p-2 group">
+              {isVideoMedia(currentImage.url) ? (
+                <video
+                  src={resolveImageUrl(currentImage.url)}
+                  controls
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  className="max-h-full max-w-full rounded-lg object-contain"
+                />
+              ) : (
+                <img
+                  src={resolveImageUrl(currentImage.url)}
+                  alt={currentImage.altText || product.name}
+                  className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=600&auto=format&fit=crop&q=80';
+                  }}
+                />
+              )}
 
-        <div className="space-y-6">
-          {/* Reactive Rule Notices (Option auto-updates / sanitization) */}
-          {ruleNotice && (
-            <div className="p-3.5 bg-amber-50 border border-amber-200/90 rounded-xl text-xs text-amber-950 flex items-start justify-between gap-3 shadow-2xs">
-              <div className="flex items-start gap-2.5">
-                <RiInformationLine className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold block text-amber-950">Option Selection Updated</span>
-                  <span className="text-[11px] text-amber-900 leading-relaxed">{ruleNotice}</span>
-                </div>
-              </div>
+              {/* Zoom Lightbox Action Icon */}
               <button
                 type="button"
-                onClick={() => setRuleNotice(null)}
-                className="text-amber-700 hover:text-amber-950 p-1 rounded-md transition"
-                title="Dismiss notice"
+                onClick={() => setIsGuidelinesModalOpen(true)}
+                className="absolute bottom-3 right-3 h-8 w-8 bg-white/90 hover:bg-white text-slate-800 rounded-full flex items-center justify-center shadow-md transition-transform active:scale-95 cursor-pointer"
+                title="View full resolution and design tips"
               >
-                <RiCloseLine className="w-4 h-4" />
+                <RiZoomInLine className="h-4 w-4" />
               </button>
-            </div>
-          )}
 
-          {/* Incompatible Combination Warning */}
-          {invalidCombinations.length > 0 && (
-            <div className="p-4 bg-rose-50 border border-rose-200/90 rounded-xl text-xs text-rose-950 space-y-1.5 shadow-2xs">
-              <div className="flex items-center gap-2 font-bold text-rose-950">
-                <RiAlertFill className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>Incompatible Option Combination</span>
-              </div>
-              {invalidCombinations.map((inv, idx) => (
-                <p key={idx} className="text-[11px] text-rose-900 pl-6">
-                  • {inv.message}
-                </p>
-              ))}
-            </div>
-          )}
-
-          {/* Standard Dimensions (if configured) */}
-          {product.defaultSize && (
-            <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-xl flex items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="h-9 w-9 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center flex-shrink-0 font-bold border border-amber-200/60 shadow-2xs">
-                  <RiRulerLine className="h-4 w-4 text-[#E3A008]" />
-                </div>
-                <div>
-                  <span className="text-[10px] font-mono font-bold text-slate-500 uppercase block">
-                    Finished Dimensions
-                  </span>
-                  <span className="font-bold text-slate-900 text-sm">
-                    {product.defaultSize}
-                  </span>
-                </div>
-              </div>
-              <Badge variant="blue">Standard Format</Badge>
-            </div>
-          )}
-
-          {/* Dynamic Option Groups with Conditional Rule Engine */}
-          {visibleGroups
-            .filter((group) => !isMultiVariantEnabled || !effectiveVariantDimensions.includes(group.code))
-            .map((group) => {
-              const status = groupStatusMap[group.code];
-              // Map options according to conditional rules (filter hidden, mark disabled with reason)
-              const processedOptions = (group.options || [])
-                .filter((opt) => {
-                  const optKey = `${group.code}:${opt.value}`;
-                  return optionStatusMap[optKey]?.isVisible !== false;
-                })
-                .map((opt) => {
-                  const optKey = `${group.code}:${opt.value}`;
-                  const optStatus = optionStatusMap[optKey];
-                  return {
-                    ...opt,
-                    isDisabled: optStatus?.isDisabled || false,
-                    disabledReason: optStatus?.disabledReason,
-                  };
-                });
-
-              return (
-                <div key={group.id} className="pb-5 border-b border-slate-100 last:border-0 last:pb-0">
-                  <DynamicFieldRenderer
-                    field={{
-                      ...group,
-                      isRequired: status?.isRequired ?? group.isRequired,
-                      options: processedOptions,
-                    }}
-                    value={selectedOptions[group.code]}
-                    onChange={(val) => handleOptionChange(group.code, val)}
-                    disabled={status?.isDisabled}
-                    disabledReason={status?.disabledReason}
-                  />
-                </div>
-              );
-            })}
-
-          {isMultiVariantEnabled &&
-            visibleGroups.filter((group) => !effectiveVariantDimensions.includes(group.code)).length === 0 && (
-              <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-xl text-xs text-slate-600 flex items-center gap-2.5">
-                <RiInformationLine className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>
-                  Product specifications ({dimensionGroups.map((g) => g.name).join(', ')}) are configured in the variant builder below.
-                </span>
-              </div>
-            )}
-        </div>
-      </div>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* SECTION 2: PRODUCTION RUN VOLUME                                   */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-7 shadow-card space-y-4">
-        <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono font-black uppercase text-amber-600 tracking-wider">
-                Section 02
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                {isMultiVariantEnabled ? 'Variant Matrix' : 'Batch Scale'}
-              </span>
-            </div>
-            <h2 className="text-xl font-black text-slate-900 tracking-tight font-display mt-0.5">
-              {isMultiVariantEnabled ? 'Choose Sizes, Colors & Quantities' : 'Production Run Volume'}
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {isMultiVariantEnabled
-                ? 'Configure mixed size, color, or style combinations with independent quantities in a single order.'
-                : hasActiveCombinationTiers
-                ? 'Select a configured quantity and verified rate for this exact specification.'
-                : 'Select production run size. Higher quantities qualify for tier volume discounts.'}
-            </p>
-          </div>
-          {isMultiVariantEnabled ? (
-            <div className="flex flex-col items-end">
-              <span className="text-xs font-mono font-bold bg-amber-100/90 text-amber-950 border border-amber-300 px-3 py-1 rounded-lg">
-                Total: {totalVariantQuantity} pieces
-              </span>
-              {totalVariantQuantity < minQty && (
-                <span className="text-[10px] font-bold text-rose-600 mt-1">
-                  Min required: {minQty} pcs
+              {isVideoMedia(currentImage.url) && (
+                <span className="absolute top-3 right-3 bg-indigo-900/90 backdrop-blur-xs text-white text-[10px] font-mono font-bold px-2.5 py-1 rounded-md border border-indigo-500/40 shadow-sm flex items-center gap-1.5 pointer-events-none">
+                  <RiMovieLine className="h-3.5 w-3.5 text-[#FFED00]" />
+                  <span>DEMO VIDEO</span>
                 </span>
               )}
             </div>
-          ) : hasActiveCombinationTiers ? (
-            <span className="text-xs text-slate-500 font-mono">
-              <strong className="text-slate-900">{validCombinationTiers.length}</strong> available tier(s)
-            </span>
-          ) : (
-            <span className="text-xs text-slate-500 font-mono">
-              Min: <strong className="text-slate-900">{minQty.toLocaleString()}</strong> pcs
-            </span>
-          )}
-        </div>
 
-        {isMultiVariantEnabled ? (
-          <div className="space-y-4">
-            {/* Desktop Table View */}
-            <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
-                    <th className="py-3 px-3 w-10">#</th>
-                    {dimensionGroups.map((dg) => (
-                      <th key={dg.code} className="py-3 px-3">
-                        {dg.name}
-                      </th>
-                    ))}
-                    <th className="py-3 px-3 w-36 text-center">Quantity</th>
-                    <th className="py-3 px-3 text-right">Unit Rate</th>
-                    <th className="py-3 px-3 text-right">Subtotal</th>
-                    <th className="py-3 px-3 text-center w-12"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {variantLines.map((line, idx) => {
-                    const lineQuote = quote?.variantLines?.[idx];
-                    const unitPrice = lineQuote?.unitPrice ?? (line.quantity > 0 ? (lineQuote?.lineSubtotal ?? 0) / line.quantity : 0);
-                    const subtotal = lineQuote?.lineSubtotal ?? (unitPrice * line.quantity);
+            {/* Thumbnails Row */}
+            {images.length > 1 && (
+              <div className="flex items-center gap-2.5 overflow-x-auto pb-1 no-scrollbar">
+                {images.map((img, idx) => {
+                  const isVid = isVideoMedia(img.url);
+                  return (
+                    <button
+                      key={img.id || idx}
+                      type="button"
+                      onClick={() => setActiveImageIndex(idx)}
+                      className={`relative h-14 w-18 rounded-lg overflow-hidden border-2 flex-shrink-0 transition-all bg-slate-900 cursor-pointer ${
+                        activeImageIndex === idx
+                          ? 'border-[#FFED00] ring-2 ring-[#FFED00] shadow-xs'
+                          : 'border-slate-200 opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      {isVid ? (
+                        <div className="relative h-full w-full bg-slate-950 flex items-center justify-center">
+                          <video src={resolveImageUrl(img.url)} className="h-full w-full object-cover opacity-60 pointer-events-none" />
+                          <RiPlayCircleLine className="h-4 w-4 text-white absolute inset-auto z-10" />
+                        </div>
+                      ) : (
+                        <img src={resolveImageUrl(img.url)} alt={img.altText || ''} className="h-full w-full object-cover" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
-                    return (
-                      <tr key={line.id} className="hover:bg-slate-50/70 transition">
-                        <td className="py-3 px-3 font-mono text-slate-400 font-bold">{idx + 1}</td>
-                        {dimensionGroups.map((dg) => {
-                          const currentVal = line.combination[dg.code] || '';
-                          const activeOptions = dg.options?.filter((o) => o.isActive !== false) || [];
-
-                          return (
-                            <td key={dg.code} className="py-2.5 px-3">
-                              <select
-                                value={currentVal}
-                                onChange={(e) =>
-                                  handleUpdateVariantLineCombination(line.id, dg.code, e.target.value)
-                                }
-                                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-amber-500 cursor-pointer"
-                              >
-                                {activeOptions
-                                  .filter((opt) => optionStatusMap[`${dg.code}:${opt.value}`]?.isVisible !== false)
-                                  .map((opt) => {
-                                    const optDisabled = optionStatusMap[`${dg.code}:${opt.value}`]?.isDisabled;
-                                    return (
-                                      <option key={opt.value} value={opt.value} disabled={optDisabled}>
-                                        {opt.label} {opt.priceModifier ? `(+₹${opt.priceModifier})` : ''} {optDisabled ? ' (Unavailable)' : ''}
-                                      </option>
-                                    );
-                                  })}
-                              </select>
-                            </td>
-                          );
-                        })}
-
-                        {/* Quantity Stepper */}
-                        <td className="py-2.5 px-3 text-center">
-                          <div className="inline-flex items-center border border-slate-300 rounded-lg bg-white overflow-hidden shadow-2xs">
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateVariantLineQuantity(line.id, line.quantity - 1)}
-                              disabled={line.quantity <= 1}
-                              className="px-2.5 py-1 hover:bg-slate-100 text-slate-700 font-bold disabled:opacity-30 disabled:cursor-not-allowed transition"
-                            >
-                              −
-                            </button>
-                            <input
-                              type="number"
-                              min="1"
-                              value={line.quantity}
-                              onChange={(e) =>
-                                handleUpdateVariantLineQuantity(line.id, parseInt(e.target.value) || 1)
-                              }
-                              className="w-14 text-center font-mono font-bold text-xs text-slate-900 border-x border-slate-200 py-1 focus:outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateVariantLineQuantity(line.id, line.quantity + 1)}
-                              className="px-2.5 py-1 hover:bg-slate-100 text-slate-700 font-bold transition"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </td>
-
-                        {/* Unit Price */}
-                        <td className="py-3 px-3 text-right font-mono text-xs text-slate-700 font-medium">
-                          {unitPrice > 0 ? `₹${Number(unitPrice).toFixed(2)}` : '—'}
-                        </td>
-
-                        {/* Subtotal */}
-                        <td className="py-3 px-3 text-right font-mono text-xs font-bold text-slate-900">
-                          {subtotal > 0 ? `₹${Number(subtotal).toFixed(2)}` : '—'}
-                        </td>
-
-                        {/* Action: Delete line */}
-                        <td className="py-3 px-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveVariantLine(line.id)}
-                            disabled={variantLines.length <= 1}
-                            className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-20 disabled:hover:text-slate-400 cursor-pointer disabled:cursor-not-allowed transition"
-                            title="Remove combination line"
-                          >
-                            <RiDeleteBinLine className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          {/* Design Tips Guidance Box (Yellow Palette matching Reference UI) */}
+          <div className="bg-[#FEFCE8] border border-[#FEF08A] rounded-2xl p-5 shadow-xs space-y-3">
+            <div className="flex items-center gap-2.5">
+              <div className="h-7 w-7 rounded-lg bg-[#FFED00] flex items-center justify-center text-slate-950 font-bold border border-[#E3A008]/40 shadow-2xs">
+                <RiLightbulbLine className="h-4 w-4" />
+              </div>
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 font-sans">
+                Design Tips
+              </h4>
             </div>
 
-            {/* Mobile Stacked Card View */}
-            <div className="block md:hidden space-y-3">
-              {variantLines.map((line, idx) => {
-                const lineQuote = quote?.variantLines?.[idx];
-                const unitPrice = lineQuote?.unitPrice ?? (line.quantity > 0 ? (lineQuote?.lineSubtotal ?? 0) / line.quantity : 0);
-                const subtotal = lineQuote?.lineSubtotal ?? (unitPrice * line.quantity);
+            <ul className="space-y-1.5 text-xs text-slate-700 leading-relaxed pl-1">
+              <li className="flex items-start gap-2">
+                <span className="text-amber-500 font-bold">•</span>
+                <span>Use high-resolution files (300 DPI) for optimal sharpness.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-amber-500 font-bold">•</span>
+                <span>Prefer PDF, PNG or JPG format with CMYK color mode.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-amber-500 font-bold">•</span>
+                <span>Keep important text within safe margins (3mm inside trim).</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-amber-500 font-bold">•</span>
+                <span>We'll check your design before printing and share proof.</span>
+              </li>
+            </ul>
 
-                return (
-                  <div
-                    key={line.id}
-                    className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 shadow-2xs"
-                  >
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                      <span className="font-mono text-xs font-bold text-slate-700">
-                        Variant #{idx + 1}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveVariantLine(line.id)}
-                        disabled={variantLines.length <= 1}
-                        className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-20 cursor-pointer transition"
-                        title="Remove combination line"
-                      >
-                        <RiDeleteBinLine className="w-4 h-4" />
-                      </button>
-                    </div>
+            <div className="pt-2 border-t border-amber-200/60">
+              <button
+                type="button"
+                onClick={() => setIsGuidelinesModalOpen(true)}
+                className="text-xs font-bold text-slate-900 hover:text-amber-900 flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <span>View complete design guidelines</span>
+                <RiArrowRightLine className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {dimensionGroups.map((dg) => {
-                        const currentVal = line.combination[dg.code] || '';
-                        const activeOptions = dg.options?.filter((o) => o.isActive !== false) || [];
+        {/* ================================================================= */}
+        {/* CENTER COLUMN: 3-Step Guided Customization (lg:col-span-5)        */}
+        {/* ================================================================= */}
+        <div className="lg:col-span-5 space-y-6">
+          {/* 4 Feature USP Badges */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+            <div className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 shadow-2xs">
+              <span className="text-sm block">📦</span>
+              <span className="text-[11px] font-bold block mt-0.5 text-slate-900">Premium Quality</span>
+              <span className="text-[9px] text-slate-500 block">Print & Paper</span>
+            </div>
+            <div className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 shadow-2xs">
+              <span className="text-sm block">🎨</span>
+              <span className="text-[11px] font-bold block mt-0.5 text-slate-900">Free Design Support</span>
+              <span className="text-[9px] text-slate-500 block">(If Needed)</span>
+            </div>
+            <div className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 shadow-2xs">
+              <span className="text-sm block">🚚</span>
+              <span className="text-[11px] font-bold block mt-0.5 text-slate-900">Fast Turnaround</span>
+              <span className="text-[9px] text-slate-500 block">2–7 Days</span>
+            </div>
+            <div className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 shadow-2xs">
+              <span className="text-sm block">🛡️</span>
+              <span className="text-[11px] font-bold block mt-0.5 text-slate-900">Secure Payment</span>
+              <span className="text-[9px] text-slate-500 block">UPI, Cards, Net Banking</span>
+            </div>
+          </div>
 
-                        return (
-                          <div key={dg.code} className="space-y-1">
-                            <label className="text-[11px] font-bold text-slate-600 uppercase">
-                              {dg.name}
-                            </label>
-                            <select
-                              value={currentVal}
-                              onChange={(e) =>
-                                handleUpdateVariantLineCombination(line.id, dg.code, e.target.value)
-                              }
-                              className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:border-amber-500"
-                            >
-                              {activeOptions
-                                .filter((opt) => optionStatusMap[`${dg.code}:${opt.value}`]?.isVisible !== false)
-                                .map((opt) => {
-                                  const optDisabled = optionStatusMap[`${dg.code}:${opt.value}`]?.isDisabled;
-                                  return (
-                                    <option key={opt.value} value={opt.value} disabled={optDisabled}>
-                                      {opt.label} {opt.priceModifier ? `(+₹${opt.priceModifier})` : ''} {optDisabled ? ' (Unavailable)' : ''}
-                                    </option>
-                                  );
-                                })}
-                            </select>
-                          </div>
-                        );
-                      })}
-                    </div>
+          {/* Connected 3-Step Progress Indicator */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-xs">
+            <div className="flex items-center justify-between relative">
+              {/* Step 1 Item */}
+              <button
+                type="button"
+                onClick={() => setCurrentStep('CUSTOMIZE')}
+                className="flex items-center gap-2.5 text-left group cursor-pointer focus:outline-none"
+              >
+                <div
+                  className={`h-9 w-9 rounded-full flex items-center justify-center font-black text-xs transition-colors shrink-0 ${
+                    currentStep === 'CUSTOMIZE'
+                      ? 'bg-[#FFED00] text-slate-950 ring-4 ring-[#FFED00]/30 shadow-xs'
+                      : isStep1Valid
+                      ? 'bg-emerald-500 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-500 border border-slate-300'
+                  }`}
+                >
+                  {isStep1Valid && currentStep !== 'CUSTOMIZE' ? (
+                    <RiCheckLine className="h-4 w-4 stroke-[3]" />
+                  ) : (
+                    '1'
+                  )}
+                </div>
+                <div className="hidden sm:block">
+                  <span className="text-xs font-bold text-slate-900 block group-hover:text-amber-600 transition-colors">
+                    Customize Product
+                  </span>
+                  <span className="text-[10px] text-slate-400 block">Select your specifications</span>
+                </div>
+              </button>
 
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                      <div className="inline-flex items-center border border-slate-300 rounded-lg bg-white overflow-hidden">
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateVariantLineQuantity(line.id, line.quantity - 1)}
-                          disabled={line.quantity <= 1}
-                          className="px-3 py-1.5 hover:bg-slate-100 text-slate-700 font-bold disabled:opacity-30"
-                        >
-                          −
-                        </button>
-                        <input
-                          type="number"
-                          min="1"
-                          value={line.quantity}
-                          onChange={(e) =>
-                            handleUpdateVariantLineQuantity(line.id, parseInt(e.target.value) || 1)
-                          }
-                          className="w-12 text-center font-mono font-bold text-xs text-slate-900 border-x border-slate-200 py-1.5 focus:outline-none"
+              {/* Connecting Line 1 -> 2 */}
+              <div className="flex-1 mx-3 h-0.5 bg-slate-200 relative">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    currentStep === 'ARTWORK' || currentStep === 'REVIEW'
+                      ? 'bg-[#FFED00] w-full'
+                      : 'w-0'
+                  }`}
+                />
+              </div>
+
+              {/* Step 2 Item */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isStep1Valid) setCurrentStep('ARTWORK');
+                }}
+                disabled={!isStep1Valid}
+                className={`flex items-center gap-2.5 text-left group focus:outline-none ${
+                  isStep1Valid ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                }`}
+              >
+                <div
+                  className={`h-9 w-9 rounded-full flex items-center justify-center font-black text-xs transition-colors shrink-0 ${
+                    currentStep === 'ARTWORK'
+                      ? 'bg-[#FFED00] text-slate-950 ring-4 ring-[#FFED00]/30 shadow-xs'
+                      : isStep2Valid && (currentStep === 'REVIEW' || step2Attempted)
+                      ? 'bg-emerald-500 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-500 border border-slate-300'
+                  }`}
+                >
+                  {isStep2Valid && currentStep === 'REVIEW' ? (
+                    <RiCheckLine className="h-4 w-4 stroke-[3]" />
+                  ) : (
+                    '2'
+                  )}
+                </div>
+                <div className="hidden sm:block">
+                  <span className="text-xs font-bold text-slate-900 block group-hover:text-amber-600 transition-colors">
+                    Artwork & Design
+                  </span>
+                  <span className="text-[10px] text-slate-400 block">Upload or request design</span>
+                </div>
+              </button>
+
+              {/* Connecting Line 2 -> 3 */}
+              <div className="flex-1 mx-3 h-0.5 bg-slate-200 relative">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    currentStep === 'REVIEW' ? 'bg-[#FFED00] w-full' : 'w-0'
+                  }`}
+                />
+              </div>
+
+              {/* Step 3 Item */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isStep1Valid && isStep2Valid) setCurrentStep('REVIEW');
+                }}
+                disabled={!isStep1Valid || !isStep2Valid}
+                className={`flex items-center gap-2.5 text-left group focus:outline-none ${
+                  isStep1Valid && isStep2Valid ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                }`}
+              >
+                <div
+                  className={`h-9 w-9 rounded-full flex items-center justify-center font-black text-xs transition-colors shrink-0 ${
+                    currentStep === 'REVIEW'
+                      ? 'bg-[#FFED00] text-slate-950 ring-4 ring-[#FFED00]/30 shadow-xs'
+                      : 'bg-slate-100 text-slate-500 border border-slate-300'
+                  }`}
+                >
+                  3
+                </div>
+                <div className="hidden sm:block">
+                  <span className="text-xs font-bold text-slate-900 block group-hover:text-amber-600 transition-colors">
+                    Review & Add to Cart
+                  </span>
+                  <span className="text-[10px] text-slate-400 block">Confirm and place order</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* =============================================================== */}
+          {/* STEP 1: CUSTOMIZE PRODUCT PANEL                                 */}
+          {/* =============================================================== */}
+          {currentStep === 'CUSTOMIZE' && (
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-7 shadow-xs space-y-6 animate-fadeIn">
+              {/* Step 1 Header */}
+              <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-[#FFED00] text-slate-950 flex items-center justify-center font-black text-sm">
+                    1
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black text-slate-900 tracking-tight font-display">
+                      Step 1: Customize Product
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Choose your specifications to get the best price.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-mono font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200">
+                  {visibleGroups.length} Options
+                </span>
+              </div>
+
+              {/* Dynamic Option Groups */}
+              <div className="space-y-6">
+                {visibleGroups
+                  .filter((group) => !isMultiVariantEnabled || !effectiveVariantDimensions.includes(group.code))
+                  .map((group) => {
+                    const status = groupStatusMap[group.code];
+                    const processedOptions = (group.options || [])
+                      .filter((opt) => {
+                        const optKey = `${group.code}:${opt.value}`;
+                        return optionStatusMap[optKey]?.isVisible !== false;
+                      })
+                      .map((opt) => {
+                        const optKey = `${group.code}:${opt.value}`;
+                        const optStatus = optionStatusMap[optKey];
+                        return {
+                          ...opt,
+                          isDisabled: optStatus?.isDisabled || false,
+                          disabledReason: optStatus?.disabledReason,
+                        };
+                      });
+
+                    return (
+                      <div key={group.id} className="pb-5 border-b border-slate-100 last:border-0 last:pb-0">
+                        <DynamicFieldRenderer
+                          field={{
+                            ...group,
+                            isRequired: status?.isRequired ?? group.isRequired,
+                            options: processedOptions,
+                          }}
+                          value={selectedOptions[group.code]}
+                          onChange={(val) => handleOptionChange(group.code, val)}
+                          disabled={status?.isDisabled}
+                          disabledReason={status?.disabledReason}
                         />
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateVariantLineQuantity(line.id, line.quantity + 1)}
-                          className="px-3 py-1.5 hover:bg-slate-100 text-slate-700 font-bold"
-                        >
-                          +
-                        </button>
                       </div>
+                    );
+                  })}
+              </div>
 
-                      <div className="text-right">
-                        <div className="text-[11px] font-mono text-slate-500">
-                          {unitPrice > 0 ? `₹${Number(unitPrice).toFixed(2)}/pc` : '—'}
+              {/* Production Run Quantity Tiers */}
+              <div className="pt-4 border-t border-slate-100 space-y-3">
+                <div className="flex items-baseline justify-between">
+                  <div>
+                    <label className="text-xs sm:text-[13px] font-bold text-slate-900 uppercase">
+                      Quantity
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      More quantity, better price per unit.
+                    </p>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-slate-600">
+                    Selected: <strong className="text-slate-950 font-black">{quantity.toLocaleString()} pcs</strong>
+                  </span>
+                </div>
+
+                {hasActiveCombinationTiers ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+                    {validCombinationTiers.map((tier, idx) => {
+                      const isSel = quantity === tier.quantity;
+                      const isMostPopular = idx === 0;
+                      const baseTier = validCombinationTiers[0];
+                      const discountPct =
+                        baseTier && baseTier.unitPrice > 0
+                          ? Math.max(0, Math.round(((baseTier.unitPrice - tier.unitPrice) / baseTier.unitPrice) * 100))
+                          : 0;
+
+                      return (
+                        <button
+                          key={tier.id || tier.quantity}
+                          type="button"
+                          onClick={() => setQuantity(tier.quantity)}
+                          className={`p-3 rounded-xl text-left border transition-all cursor-pointer relative ${
+                            isSel
+                              ? 'border-[#FFED00] bg-[#FFFEF0] ring-2 ring-[#FFED00] shadow-xs'
+                              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 text-slate-900'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono font-black text-sm text-slate-950">
+                              {tier.quantity.toLocaleString()}
+                            </span>
+                            {isSel && (
+                              <div className="h-4 w-4 rounded-md bg-[#FFED00] text-slate-950 flex items-center justify-center font-bold text-[10px]">
+                                <RiCheckLine className="h-3 w-3 stroke-[3]" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-[10px] font-mono text-slate-500 mt-0.5">
+                            ₹{tier.unitPrice.toFixed(2)}/unit
+                          </div>
+                          <div className="text-xs font-bold text-slate-950 mt-1">
+                            {formatCurrency(tier.totalPrice)}
+                          </div>
+                          {isMostPopular ? (
+                            <span className="inline-block mt-1.5 text-[9px] font-bold bg-[#FFED00] text-slate-950 px-1.5 py-0.5 rounded">
+                              Most Popular
+                            </span>
+                          ) : discountPct > 0 ? (
+                            <span className="inline-block mt-1.5 text-[9px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">
+                              Save {discountPct}%
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                    {quickPresets.map((preset, idx) => {
+                      const isSel = quantity === preset;
+                      const unitRate = referenceUnitPrice;
+                      const totalAmt = unitRate * preset;
+                      return (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setQuantity(preset)}
+                          className={`p-3 rounded-xl text-left border transition-all cursor-pointer ${
+                            isSel
+                              ? 'border-[#FFED00] bg-[#FFFEF0] ring-2 ring-[#FFED00] shadow-xs'
+                              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 text-slate-900'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono font-black text-sm text-slate-950">
+                              {preset.toLocaleString()}
+                            </span>
+                            {isSel && (
+                              <div className="h-4 w-4 rounded-md bg-[#FFED00] text-slate-950 flex items-center justify-center font-bold text-[10px]">
+                                <RiCheckLine className="h-3 w-3 stroke-[3]" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-[10px] font-mono text-slate-500 mt-0.5">
+                            ₹{unitRate.toFixed(2)}/unit
+                          </div>
+                          <div className="text-xs font-bold text-slate-950 mt-1">
+                            {formatCurrency(totalAmt)}
+                          </div>
+                          {idx === 0 && (
+                            <span className="inline-block mt-1.5 text-[9px] font-bold bg-[#FFED00] text-slate-950 px-1.5 py-0.5 rounded">
+                              Most Popular
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Validation errors for Step 1 */}
+              {step1Attempted && !isStep1Valid && (
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-1">
+                  <div className="font-bold text-rose-800 flex items-center gap-1.5">
+                    <RiAlertFill className="h-4 w-4 flex-shrink-0" />
+                    <span>Please complete required specifications:</span>
+                  </div>
+                  <ul className="list-disc list-inside text-[11px] text-rose-700 pl-1">
+                    {step1ValidationErrors.map((err, i) => (
+                      <li key={i}>{err}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Step 1 Primary CTA Button */}
+              <div className="pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={handleContinueToArtwork}
+                  className="w-full py-3.5 px-6 rounded-xl bg-[#FFED00] hover:bg-[#F2E100] text-slate-950 font-black text-sm tracking-wide flex items-center justify-center gap-2 border border-[#E3A008]/50 shadow-sm transition-transform active:scale-[0.99] cursor-pointer"
+                >
+                  <span>Continue to Artwork</span>
+                  <RiArrowRightLine className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* =============================================================== */}
+          {/* STEP 2: ARTWORK & DESIGN PANEL                                  */}
+          {/* =============================================================== */}
+          {currentStep === 'ARTWORK' && (
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-7 shadow-xs space-y-6 animate-fadeIn">
+              {/* Step 2 Header */}
+              <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-[#FFED00] text-slate-950 flex items-center justify-center font-black text-sm">
+                    2
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black text-slate-900 tracking-tight font-display">
+                      Step 2: Artwork & Design
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Upload your print-ready files or request our design team to create it for you.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3 Clear Artwork Options: A, B, C */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Option A */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setArtworkChoice('UPLOAD');
+                    setWantsDesignService(false);
+                  }}
+                  className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
+                    artworkChoice === 'UPLOAD'
+                      ? 'border-[#FFED00] bg-[#FFFEF0] ring-2 ring-[#FFED00] shadow-xs'
+                      : 'border-slate-200 bg-white hover:border-slate-300 text-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase text-slate-950 block">
+                      Option A
+                    </span>
+                    {artworkChoice === 'UPLOAD' && (
+                      <div className="h-4 w-4 rounded-md bg-[#FFED00] text-slate-950 flex items-center justify-center font-bold text-[10px]">
+                        <RiCheckLine className="h-3 w-3 stroke-[3]" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="font-bold text-slate-900 text-xs mt-1">Upload My Artwork</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">I have print-ready design files</div>
+                </button>
+
+                {/* Option B */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setArtworkChoice('DESIGN_ASSISTANCE');
+                    setWantsDesignService(true);
+                  }}
+                  className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
+                    artworkChoice === 'DESIGN_ASSISTANCE'
+                      ? 'border-[#FFED00] bg-[#FFFEF0] ring-2 ring-[#FFED00] shadow-xs'
+                      : 'border-slate-200 bg-white hover:border-slate-300 text-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase text-slate-950 block">
+                      Option B
+                    </span>
+                    {artworkChoice === 'DESIGN_ASSISTANCE' && (
+                      <div className="h-4 w-4 rounded-md bg-[#FFED00] text-slate-950 flex items-center justify-center font-bold text-[10px]">
+                        <RiCheckLine className="h-3 w-3 stroke-[3]" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="font-bold text-slate-900 text-xs mt-1">Design Assistance</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">+₹{baselineDesignFee} professional prepress</div>
+                </button>
+
+                {/* Option C */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setArtworkChoice('NO_ARTWORK');
+                    setWantsDesignService(false);
+                  }}
+                  className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
+                    artworkChoice === 'NO_ARTWORK'
+                      ? 'border-[#FFED00] bg-[#FFFEF0] ring-2 ring-[#FFED00] shadow-xs'
+                      : 'border-slate-200 bg-white hover:border-slate-300 text-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase text-slate-950 block">
+                      Option C
+                    </span>
+                    {artworkChoice === 'NO_ARTWORK' && (
+                      <div className="h-4 w-4 rounded-md bg-[#FFED00] text-slate-950 flex items-center justify-center font-bold text-[10px]">
+                        <RiCheckLine className="h-3 w-3 stroke-[3]" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="font-bold text-slate-900 text-xs mt-1">Send Artwork Later</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">Supply via email / WhatsApp</div>
+                </button>
+              </div>
+
+              {/* Option A Sub-panel: Multi-Slot File Dropzone */}
+              {artworkChoice === 'UPLOAD' && (
+                <div className="space-y-4 pt-2">
+                  <div className="flex items-center justify-between text-xs text-slate-500">
+                    <span>
+                      Supported: <strong className="text-slate-900 font-bold">{allowedFormats.join(', ')}</strong> • Max {maxFileSizeMb}MB • Min {minMegapixels} MP
+                    </span>
+                    <span className="font-mono text-slate-600">
+                      {Object.keys(activeSlotFiles).length} of {activeSlotConfigs.length || 1} file(s) attached
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {(activeSlotConfigs.length > 0 ? activeSlotConfigs : [{ slotKey: 'default_artwork', label: 'Primary Artwork', isRequired: true }]).map((slot) => {
+                      const uploaded = slotFiles[slot.slotKey];
+                      const isUploading = Boolean(uploadingSlots[slot.slotKey]);
+                      const errorMsg = slotErrors[slot.slotKey];
+
+                      return (
+                        <div key={slot.slotKey} className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                              <RiCameraLine className="h-4 w-4 text-amber-600" />
+                              <span>{slot.label}</span>
+                              {slot.isRequired && <span className="text-rose-500 font-black">*</span>}
+                            </span>
+                            {uploaded && (
+                              <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded flex items-center gap-1">
+                                <RiCheckLine className="h-3 w-3 stroke-[3]" /> Uploaded
+                              </span>
+                            )}
+                          </div>
+
+                          {uploaded ? (
+                            <div className="p-3 bg-white border border-emerald-200 rounded-lg flex items-center justify-between">
+                              <div className="min-w-0 pr-2">
+                                <div className="text-xs font-bold text-slate-900 truncate">
+                                  {uploaded.originalFileName}
+                                </div>
+                                <div className="text-[10px] font-mono text-slate-500">
+                                  {(uploaded.fileSize / (1024 * 1024)).toFixed(2)} MB • {uploaded.actualMegapixels ? `${uploaded.actualMegapixels} MP` : 'Print Ready'}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleFileRemove(slot.slotKey)}
+                                className="p-1.5 text-rose-500 hover:text-rose-700 rounded-md hover:bg-rose-50 cursor-pointer"
+                                title="Remove file"
+                              >
+                                <RiDeleteBinLine className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <label
+                              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const f = e.dataTransfer.files?.[0];
+                                if (f) handleFileUpload(slot.slotKey, f);
+                              }}
+                              className="border-2 border-dashed border-slate-300 hover:border-amber-400 bg-white hover:bg-amber-50/20 p-5 rounded-xl text-center block cursor-pointer transition-colors"
+                            >
+                              <input
+                                type="file"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) handleFileUpload(slot.slotKey, f);
+                                  e.target.value = '';
+                                }}
+                              />
+                              {isUploading ? (
+                                <div className="text-xs font-bold text-amber-700 animate-pulse flex items-center justify-center gap-1.5">
+                                  <RiLoader4Line className="h-4 w-4 animate-spin" />
+                                  <span>Uploading & verifying resolution...</span>
+                                </div>
+                              ) : (
+                                <div className="space-y-1">
+                                  <RiUploadCloud2Line className="h-6 w-6 text-slate-400 mx-auto" />
+                                  <div className="text-xs font-bold text-slate-800">
+                                    Click or drag {slot.label} file
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 font-mono">
+                                    PDF, AI, PSD, PNG or high-res JPG
+                                  </div>
+                                </div>
+                              )}
+                            </label>
+                          )}
+
+                          {errorMsg && (
+                            <p className="text-[11px] text-rose-600 font-medium">
+                              {errorMsg}
+                            </p>
+                          )}
                         </div>
-                        <div className="text-xs font-mono font-bold text-slate-900">
-                          {subtotal > 0 ? `₹${Number(subtotal).toFixed(2)}` : '—'}
-                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Option B Sub-panel: Design Assistance Request */}
+              {artworkChoice === 'DESIGN_ASSISTANCE' && (
+                <div className="p-4 bg-[#FEFCE8] border border-[#FEF08A] rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <RiPaletteLine className="h-5 w-5 text-amber-800" />
+                      <div>
+                        <span className="text-xs font-black uppercase text-slate-900 block">
+                          Print Bazzar Design Studio (+₹{baselineDesignFee})
+                        </span>
+                        <span className="text-[11px] text-slate-600">
+                          Our graphic artists will compose and format your layout with 2 free revisions.
+                        </span>
                       </div>
                     </div>
                   </div>
-                );
-              })}
+
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-xs font-bold text-slate-900 block">
+                      Design Brief & Instructions <span className="text-rose-500">*</span>
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={designNotes}
+                      onChange={(e) => setDesignNotes(e.target.value)}
+                      placeholder="Enter company name, tagline, contact details, preferred colors, fonts, or branding guidelines..."
+                      className="w-full p-3 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-950 focus:ring-1 focus:ring-slate-950"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Option C Sub-panel: Supply Later notice */}
+              {artworkChoice === 'NO_ARTWORK' && (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs text-slate-700">
+                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <RiInformationLine className="h-4 w-4 text-amber-600" />
+                    <span>Artwork Status: Pending Customer Supply</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-slate-600">
+                    You can place your order now and submit your artwork later referencing your Master Order ID via our upload portal, email, or WhatsApp.
+                  </p>
+                </div>
+              )}
+
+              {/* Validation errors for Step 2 */}
+              {step2Attempted && !isStep2Valid && (
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-1">
+                  <div className="font-bold text-rose-800 flex items-center gap-1.5">
+                    <RiAlertFill className="h-4 w-4 flex-shrink-0" />
+                    <span>Please resolve artwork requirement:</span>
+                  </div>
+                  <ul className="list-disc list-inside text-[11px] text-rose-700 pl-1">
+                    {step2ValidationErrors.map((err, i) => (
+                      <li key={i}>{err}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Action Buttons for Step 2 */}
+              <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep('CUSTOMIZE')}
+                  className="py-3 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <RiArrowLeftLine className="h-4 w-4" />
+                  <span>Back to Customize</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleContinueToReview}
+                  className="py-3 px-4 rounded-xl bg-[#FFED00] hover:bg-[#F2E100] text-slate-950 font-black text-xs tracking-wide flex items-center justify-center gap-1.5 border border-[#E3A008]/50 shadow-sm transition cursor-pointer"
+                >
+                  <span>Continue to Review</span>
+                  <RiArrowRightLine className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* =============================================================== */}
+          {/* STEP 3: REVIEW & ADD TO CART PANEL                              */}
+          {/* =============================================================== */}
+          {currentStep === 'REVIEW' && (
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-7 shadow-xs space-y-6 animate-fadeIn">
+              {/* Step 3 Header */}
+              <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-[#FFED00] text-slate-950 flex items-center justify-center font-black text-sm">
+                    3
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black text-slate-900 tracking-tight font-display">
+                      Step 3: Review & Add to Cart
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Verify your configuration and artwork before adding to cart.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Product Specifications Summary with Edit Links */}
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/90 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase text-slate-900">
+                    Configured Specifications
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep('CUSTOMIZE')}
+                    className="text-xs font-bold text-amber-700 hover:text-amber-900 flex items-center gap-1 cursor-pointer"
+                  >
+                    <RiEdit2Line className="h-3.5 w-3.5" />
+                    <span>Edit</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                    <span className="text-[10px] text-slate-400 font-bold block uppercase">Quantity</span>
+                    <span className="font-bold text-slate-900 font-mono">{quantity.toLocaleString()} pcs</span>
+                  </div>
+                  {visibleGroups.map((g) => {
+                    const val = selectedOptions[g.code];
+                    const opt = g.options?.find((o) => String(o.value) === String(val));
+                    return (
+                      <div key={g.id} className="bg-white p-2.5 rounded-lg border border-slate-200">
+                        <span className="text-[10px] text-slate-400 font-bold block uppercase truncate">{g.name}</span>
+                        <span className="font-bold text-slate-900 truncate block">{opt ? opt.label : String(val || '—')}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Artwork Summary with Edit Link */}
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/90 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase text-slate-900">
+                    Artwork & Prepress
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep('ARTWORK')}
+                    className="text-xs font-bold text-amber-700 hover:text-amber-900 flex items-center gap-1 cursor-pointer"
+                  >
+                    <RiEdit2Line className="h-3.5 w-3.5" />
+                    <span>Edit</span>
+                  </button>
+                </div>
+
+                <div className="bg-white p-3 rounded-lg border border-slate-200 text-xs">
+                  {artworkChoice === 'UPLOAD' && Object.keys(activeSlotFiles).length > 0 ? (
+                    <div className="space-y-1.5">
+                      {Object.entries(activeSlotFiles).map(([slotKey, file]) => (
+                        <div key={slotKey} className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                            <RiCheckLine className="h-3.5 w-3.5 text-emerald-600 stroke-[3]" />
+                            <span>{file.originalFileName}</span>
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-500">
+                            {(file.fileSize / (1024 * 1024)).toFixed(1)} MB
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : artworkChoice === 'DESIGN_ASSISTANCE' ? (
+                    <div className="space-y-1">
+                      <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <RiPaletteLine className="h-4 w-4 text-amber-600" />
+                        <span>Professional Design Assistance (+₹{baselineDesignFee})</span>
+                      </span>
+                      {designNotes && (
+                        <p className="text-[11px] text-slate-600 italic mt-1 line-clamp-2">
+                          "{designNotes}"
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-slate-600 font-medium">
+                      Artwork Pending (Will supply file after order placement)
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Logistics & Delivery Selection */}
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/90 space-y-3">
+                <span className="text-xs font-black uppercase text-slate-900 block">
+                  Delivery & Turnaround
+                </span>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryMethod('COURIER')}
+                    className={`p-2.5 rounded-lg border text-left cursor-pointer transition ${
+                      deliveryMethod === 'COURIER'
+                        ? 'border-slate-900 bg-white font-bold ring-1 ring-slate-900'
+                        : 'border-slate-200 bg-white text-slate-600'
+                    }`}
+                  >
+                    <span>Doorstep Courier</span>
+                    <span className="block text-[10px] font-mono text-slate-400">₹{computedShipping}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryMethod('STORE_PICKUP')}
+                    className={`p-2.5 rounded-lg border text-left cursor-pointer transition ${
+                      deliveryMethod === 'STORE_PICKUP'
+                        ? 'border-slate-900 bg-white font-bold ring-1 ring-slate-900'
+                        : 'border-slate-200 bg-white text-slate-600'
+                    }`}
+                  >
+                    <span>Store Pickup</span>
+                    <span className="block text-[10px] font-mono text-emerald-600 font-bold">FREE</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Buttons for Step 3 */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep('ARTWORK')}
+                  className="py-3.5 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <RiArrowLeftLine className="h-4 w-4" />
+                  <span>Back to Artwork</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={!isValid || isSubmitting}
+                  onClick={handleAddToCartClick}
+                  className="py-3.5 px-6 rounded-xl bg-[#FFED00] hover:bg-[#F2E100] text-slate-950 font-black text-xs tracking-wide flex items-center justify-center gap-2 border border-[#E3A008]/50 shadow-sm transition-transform active:scale-[0.99] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <RiShoppingCart2Line className="h-4 w-4" />
+                  <span>{isSubmitting ? 'Adding to Cart...' : 'Add to Cart'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ================================================================= */}
+        {/* RIGHT COLUMN: Persistent Order Summary (lg:col-span-3)           */}
+        {/* ================================================================= */}
+        <div className="lg:col-span-3 space-y-4 lg:sticky lg:top-24">
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-5">
+            <h3 className="text-sm font-black text-slate-950 uppercase tracking-tight font-sans">
+              Your Order Summary
+            </h3>
+
+            {/* Product Snapshot */}
+            <div className="flex items-start gap-3 pb-4 border-b border-slate-100">
+              <div className="h-16 w-16 rounded-xl bg-slate-950 flex-shrink-0 overflow-hidden border border-slate-200 flex items-center justify-center p-1">
+                <img
+                  src={resolveImageUrl(currentImage.url)}
+                  alt={product.name}
+                  className="max-h-full max-w-full object-contain"
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="text-xs font-bold text-slate-900 truncate">{product.name}</h4>
+                <div className="text-[10px] text-slate-500 font-mono mt-0.5 line-clamp-2">
+                  {quantity.toLocaleString()} pcs • {visibleGroups.map((g) => {
+                    const opt = g.options?.find((o) => String(o.value) === String(selectedOptions[g.code]));
+                    return opt?.label || selectedOptions[g.code];
+                  }).filter(Boolean).slice(0, 3).join(' • ')}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep('CUSTOMIZE')}
+                  className="text-[11px] font-bold text-amber-700 hover:text-amber-900 mt-1 block cursor-pointer"
+                >
+                  Edit Selections
+                </button>
+              </div>
             </div>
 
-            {/* Action Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-              <button
-                type="button"
-                onClick={handleAddVariantLine}
-                className="inline-flex items-center gap-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-slate-950 font-bold text-xs px-4 py-2.5 rounded-lg border border-[#E3A008]/50 shadow-xs transition active:scale-95 cursor-pointer self-start"
-              >
-                <RiAddLine className="w-4 h-4" />
-                <span>Add Another Variant</span>
-              </button>
-
-              <div className="flex items-center gap-3 text-xs font-mono">
-                <span className="text-slate-600">
-                  Total Order Quantity: <strong className="text-slate-900 text-sm font-bold">{totalVariantQuantity} pieces</strong>
-                </span>
-                {totalVariantQuantity < minQty && (
-                  <span className="text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded font-bold">
-                    Min required: {minQty} pcs
-                  </span>
+            {/* Selected Options List */}
+            <div className="space-y-2 pb-4 border-b border-slate-100">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-900 uppercase text-[11px]">Selected Options</span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep('CUSTOMIZE')}
+                  className="text-[11px] font-bold text-amber-700 hover:underline cursor-pointer"
+                >
+                  Edit
+                </button>
+              </div>
+              <div className="space-y-1.5 text-xs text-slate-600">
+                {visibleGroups.map((g) => {
+                  const val = selectedOptions[g.code];
+                  const opt = g.options?.find((o) => String(o.value) === String(val));
+                  return (
+                    <div key={g.id} className="flex justify-between items-baseline text-[11px]">
+                      <span className="text-slate-500 truncate pr-2">{g.name}</span>
+                      <span className="font-bold text-slate-900 text-right truncate">
+                        {opt ? opt.label : String(val || '—')}
+                      </span>
+                    </div>
+                  );
+                })}
+                <div className="flex justify-between items-baseline text-[11px]">
+                  <span className="text-slate-500">Quantity</span>
+                  <span className="font-mono font-bold text-slate-900">{quantity.toLocaleString()}</span>
+                </div>
+                {wantsDesignService && (
+                  <div className="flex justify-between items-baseline text-[11px]">
+                    <span className="text-slate-500">Design Service</span>
+                    <span className="font-bold text-amber-800">Assistance Requested</span>
+                  </div>
                 )}
               </div>
             </div>
-          </div>
-        ) : isExplicitlyExcluded ? (
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-3">
-            <RiAlertFill className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-bold">Incompatible Option Combination</p>
-              <p className="text-amber-800 text-[11px] mt-0.5">
-                {matchingCombinationTiers.find((t) => t.isExcluded)?.exclusionReason ||
-                  'This specific combination of options is not supported for manufacturing.'}
-              </p>
-            </div>
-          </div>
-        ) : isMissingMatrixCombo ? (
-          <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 flex items-start gap-3">
-            <RiAlertFill className="h-5 w-5 text-rose-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-bold">This combination is currently unavailable.</p>
-              <p className="text-rose-800 text-[11px] mt-0.5">
-                This combination is currently unavailable. Please select another configuration.
-              </p>
-            </div>
-          </div>
-        ) : hasActiveCombinationTiers ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between text-xs text-slate-600 font-medium">
-              <span>Select from configured quantities for this combination:</span>
-              <span className="text-[11px] font-mono text-slate-400">Total Price (excl. tax)</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {validCombinationTiers.map((tier) => {
-                const isSel = quantity === tier.quantity;
-                return (
-                  <button
-                    key={tier.id || tier.quantity}
-                    type="button"
-                    onClick={() => setQuantity(tier.quantity)}
-                    className={`p-3.5 rounded-xl text-left border transition-all cursor-pointer relative ${
-                      isSel
-                        ? 'border-slate-950 bg-slate-950 text-white shadow-md'
-                        : 'border-slate-200 bg-white hover:border-slate-400 hover:bg-slate-50 text-slate-900'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className={`font-mono font-black text-lg ${isSel ? 'text-white' : 'text-slate-900'}`}>
-                        {tier.quantity.toLocaleString()}
-                      </span>
-                      <span className={`text-[10px] font-mono font-bold uppercase ${isSel ? 'text-slate-400' : 'text-slate-400'}`}>
-                        Pcs
-                      </span>
-                    </div>
-                    <div className={`mt-1 text-sm font-bold ${isSel ? 'text-amber-400' : 'text-slate-900'}`}>
-                      {formatCurrency(tier.totalPrice)}
-                    </div>
-                    <div className={`text-[11px] font-mono ${isSel ? 'text-slate-300' : 'text-slate-500'}`}>
-                      ₹{tier.unitPrice.toFixed(2)}/pc
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          /* Non-combination fallback: Stepper & quick presets */
-          <>
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-900">Custom Run Volume</span>
-                  <span className="bg-amber-100 text-amber-900 text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-amber-200">
-                    Step: +{qtyStep.toLocaleString()}
+
+            {/* Live Authoritative Price Breakdown */}
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between text-slate-600">
+                <span>Subtotal</span>
+                <span className="font-mono font-bold text-slate-900">{formatCurrency(computedSubtotal)}</span>
+              </div>
+              {effectiveDesignFee > 0 && (
+                <div className="flex justify-between text-slate-600">
+                  <span>Design Service</span>
+                  <span className="font-mono font-bold text-slate-900">+{formatCurrency(effectiveDesignFee)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-slate-600">
+                <span>GST (18%)</span>
+                <span className="font-mono font-bold text-slate-900">+{formatCurrency(computedTax)}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Shipping</span>
+                <span className="font-mono font-bold text-slate-900">
+                  {computedShipping === 0 ? <span className="text-emerald-700">FREE</span> : `+${formatCurrency(computedShipping)}`}
+                </span>
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex justify-between items-baseline">
+                <div>
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-900 block">
+                    Total
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    Inclusive of all taxes
                   </span>
                 </div>
-                <span className="text-[11px] text-slate-500">
-                  Select quantity in exact increments of {qtyStep.toLocaleString()} units
+                <span className="text-2xl font-black text-slate-950 font-display">
+                  {formatCurrency(computedGrandTotal)}
                 </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => Math.max(minQty, q - qtyStep))}
-                  disabled={quantity <= minQty}
-                  className="h-10 w-10 rounded-xl bg-white border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all cursor-pointer text-lg"
-                >
-                  -
-                </button>
-                <input
-                  type="number"
-                  min={minQty}
-                  max={maxQty}
-                  step={qtyStep}
-                  value={quantity}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val)) setQuantity(val);
-                  }}
-                  className="w-28 h-10 bg-white border border-slate-300 rounded-xl text-center font-mono font-bold text-sm text-slate-900 focus:outline-none focus:border-slate-900"
-                />
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => Math.min(maxQty, q + qtyStep))}
-                  disabled={quantity >= maxQty}
-                  className="h-10 w-10 rounded-xl bg-white border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all cursor-pointer text-lg"
-                >
-                  +
-                </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
-              {quickPresets.map((preset) => {
-                const isSel = quantity === preset;
-                return (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setQuantity(preset)}
-                    className={`py-3 px-2 rounded-xl text-center border transition-all cursor-pointer ${
-                      isSel
-                        ? 'border-slate-950 bg-slate-950 text-white shadow-md'
-                        : 'border-slate-200 bg-white hover:border-slate-400 hover:bg-slate-50 text-slate-800'
-                    }`}
-                  >
-                    <div className="font-mono font-black text-base">
-                      {preset.toLocaleString()}
-                    </div>
-                    <div className="text-[10px] uppercase font-mono text-slate-400">
-                      Units
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* SECTION 2b: PERSONALIZATION & INSCRIPTIONS (Keepsakes / Frames)    */}
-      {/* ------------------------------------------------------------------ */}
-      {personalizationTemplate && personalizationTemplate.isActive && (
-        <div className="bg-gradient-to-br from-purple-50/40 via-white to-indigo-50/30 border border-purple-200/90 rounded-2xl p-6 sm:p-7 shadow-card space-y-6">
-          <div className="border-b border-purple-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono font-black uppercase text-purple-600 tracking-wider">
-                  Section 02b
-                </span>
-                <span className="text-slate-300">•</span>
-                <span className="text-xs font-bold text-purple-600 uppercase tracking-wider">
-                  Custom Personalization
-                </span>
+            {/* Dispatch SLA Badge */}
+            <div className="p-3 bg-emerald-50/70 border border-emerald-200/70 rounded-xl text-xs text-emerald-900 flex items-center gap-2.5">
+              <RiTruckLine className="h-4 w-4 text-emerald-700 shrink-0" />
+              <div>
+                <span className="font-bold block">Dispatch in 3–5 business days</span>
+                <span className="text-[10px] text-emerald-700 block">After design approval</span>
               </div>
-              <h2 className="text-xl font-black text-slate-900 tracking-tight font-display mt-0.5 flex items-center gap-2">
-                <RiFileList3Line className="text-purple-600" />
-                {personalizationTemplate.name}
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {personalizationTemplate.description ||
-                  'Enter shared occasion details and personalized recipient names for your order.'}
+            </div>
+
+            {/* Design Support Callout */}
+            <div className="p-3 bg-[#FEFCE8] border border-[#FEF08A] rounded-xl text-xs text-amber-950 space-y-1">
+              <div className="flex items-center gap-1.5 font-bold">
+                <RiCustomerService2Line className="h-4 w-4 text-amber-800 shrink-0" />
+                <span>Need help with design?</span>
+              </div>
+              <p className="text-[11px] text-amber-900 leading-snug">
+                Our team can design it for you.
               </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setArtworkChoice('DESIGN_ASSISTANCE');
+                  setWantsDesignService(true);
+                  setCurrentStep('ARTWORK');
+                }}
+                className="text-[11px] font-bold text-amber-800 hover:underline flex items-center gap-1 pt-0.5 cursor-pointer"
+              >
+                <span>Request Design Support</span>
+                <RiArrowRightLine className="h-3 w-3" />
+              </button>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs bg-purple-100 text-purple-900 border border-purple-200 px-3 py-1 rounded-full font-semibold flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse" />
-                {personalizationTemplate.fields.filter((f) => f.scope === 'PER_ITEM').length > 0
-                  ? `${effectiveQuantity} Personalized Items`
-                  : 'Shared Order Details'}
-              </span>
+            {/* Synchronized Right-Column CTA Button */}
+            <div className="pt-1">
+              {currentStep === 'CUSTOMIZE' ? (
+                <button
+                  type="button"
+                  onClick={handleContinueToArtwork}
+                  className="w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+                >
+                  <span>Continue to Artwork</span>
+                  <RiArrowRightLine className="h-3.5 w-3.5 text-[#FFED00]" />
+                </button>
+              ) : currentStep === 'ARTWORK' ? (
+                <button
+                  type="button"
+                  onClick={handleContinueToReview}
+                  className="w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+                >
+                  <span>Continue to Review</span>
+                  <RiArrowRightLine className="h-3.5 w-3.5 text-[#FFED00]" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!isValid || isSubmitting}
+                  onClick={handleAddToCartClick}
+                  className="w-full py-3 px-4 rounded-xl bg-[#FFED00] hover:bg-[#F2E100] text-slate-950 font-black text-xs flex items-center justify-center gap-2 border border-[#E3A008]/50 transition cursor-pointer shadow-xs disabled:opacity-50"
+                >
+                  <RiShoppingCart2Line className="h-4 w-4" />
+                  <span>{isSubmitting ? 'Adding to Cart...' : 'Add to Cart'}</span>
+                </button>
+              )}
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Shared Fields (PER_ORDER) */}
-          {personalizationTemplate.fields.filter((f) => f.scope === 'PER_ORDER').length > 0 && (
-            <div className="space-y-4 p-5 bg-white rounded-xl border border-purple-100 shadow-2xs">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2">
-                <span className="w-2 h-2 rounded-full bg-sky-500" />
-                Shared Event & Commemoration Details (Entered Once)
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {personalizationTemplate.fields
-                  .filter((f) => f.scope === 'PER_ORDER')
-                  .map((field) => {
-                    const isReq =
-                      product.personalizationConfig?.fieldOverrides?.[field.code]?.isRequired !== undefined
-                        ? Boolean(product.personalizationConfig.fieldOverrides[field.code].isRequired)
-                        : field.isRequired;
-
-                    return (
-                      <div key={field.code} className="space-y-1">
-                        <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                          <span>{field.name}</span>
-                          {isReq && <span className="text-rose-500 font-black">*</span>}
-                        </label>
-
-                        {field.inputType === 'TEXTAREA' ? (
-                          <textarea
-                            rows={2}
-                            placeholder={field.placeholder || ''}
-                            value={personalizationSharedValues[field.code] || ''}
-                            onChange={(e) =>
-                              setPersonalizationSharedValues({
-                                ...personalizationSharedValues,
-                                [field.code]: e.target.value,
-                              })
-                            }
-                            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:border-purple-500 focus:outline-none"
-                          />
-                        ) : field.inputType === 'SELECT' && field.options && field.options.length > 0 ? (
-                          <select
-                            value={personalizationSharedValues[field.code] || ''}
-                            onChange={(e) =>
-                              setPersonalizationSharedValues({
-                                ...personalizationSharedValues,
-                                [field.code]: e.target.value,
-                              })
-                            }
-                            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:border-purple-500 focus:outline-none"
-                          >
-                            <option value="">Select an option...</option>
-                            {field.options.map((opt, oIdx) => (
-                              <option key={oIdx} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            type={
-                              field.inputType === 'NUMBER'
-                                ? 'number'
-                                : field.inputType === 'DATE'
-                                ? 'date'
-                                : 'text'
-                            }
-                            placeholder={field.placeholder || ''}
-                            value={personalizationSharedValues[field.code] || ''}
-                            onChange={(e) =>
-                              setPersonalizationSharedValues({
-                                ...personalizationSharedValues,
-                                [field.code]: e.target.value,
-                              })
-                            }
-                            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:border-purple-500 focus:outline-none"
-                          />
-                        )}
-
-                        {field.helperText && (
-                          <p className="text-[11px] text-slate-400 mt-0.5">{field.helperText}</p>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
+      {/* =================================================================== */}
+      {/* SUCCESS MODAL: Item Added to Cart                                    */}
+      {/* =================================================================== */}
+      {isSuccessModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 sm:p-7 w-full max-w-md shadow-2xl border border-slate-200 text-center space-y-4">
+            <div className="h-14 w-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-sm">
+              <RiCheckLine className="h-8 w-8 stroke-[3]" />
             </div>
-          )}
-
-          {/* Per-Item Fields (PER_ITEM) */}
-          {personalizationTemplate.fields.filter((f) => f.scope === 'PER_ITEM').length > 0 && (
-            <div className="space-y-4 p-5 bg-white rounded-xl border border-purple-100 shadow-2xs">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    <span className="w-2 h-2 rounded-full bg-purple-500" />
-                    Individual Item Personalization Roster ({effectiveQuantity} pieces)
-                  </div>
-                  <p className="text-xs text-slate-500">
-                    Provide the unique name or inscription for each ordered item
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBulkPasteErrors([]);
-                      setIsBulkPasteModalOpen(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs transition cursor-pointer"
-                  >
-                    <RiUpload2Line className="w-4 h-4" />
-                    <span>Bulk Paste / CSV Import</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Roster Table */}
-              <div className="overflow-x-auto max-h-[420px] overflow-y-auto border border-slate-200 rounded-xl">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
-                    <tr>
-                      <th className="py-2.5 px-3 w-16 text-slate-500 font-bold uppercase tracking-wider">
-                        Item #
-                      </th>
-                      {personalizationTemplate.fields
-                        .filter((f) => f.scope === 'PER_ITEM')
-                        .map((field) => {
-                          const isReq =
-                            product.personalizationConfig?.fieldOverrides?.[field.code]?.isRequired !== undefined
-                              ? Boolean(product.personalizationConfig.fieldOverrides[field.code].isRequired)
-                              : field.isRequired;
-
-                          return (
-                            <th key={field.code} className="py-2.5 px-3 font-bold text-slate-700">
-                              <span>{field.name}</span>
-                              {isReq && <span className="text-rose-500 ml-0.5">*</span>}
-                            </th>
-                          );
-                        })}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {personalizationPerItemEntries.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-purple-50/20">
-                        <td className="py-2.5 px-3 font-mono font-bold text-slate-400">
-                          #{idx + 1}
-                        </td>
-                        {personalizationTemplate.fields
-                          .filter((f) => f.scope === 'PER_ITEM')
-                          .map((field) => (
-                            <td key={field.code} className="py-2 px-3">
-                              <input
-                                type={field.inputType === 'NUMBER' ? 'number' : 'text'}
-                                placeholder={field.placeholder || `Enter ${field.name}`}
-                                value={row.values?.[field.code] || ''}
-                                onChange={(e) => {
-                                  const next = [...personalizationPerItemEntries];
-                                  next[idx] = {
-                                    ...next[idx],
-                                    values: {
-                                      ...(next[idx]?.values || {}),
-                                      [field.code]: e.target.value,
-                                    },
-                                  };
-                                  setPersonalizationPerItemEntries(next);
-                                }}
-                                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:bg-white focus:border-purple-500 focus:outline-none"
-                              />
-                            </td>
-                          ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            <div>
+              <h3 className="text-lg font-black text-slate-900">Item Added to Cart!</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                {quantity.toLocaleString()} pcs of {product.name} have been configured and added.
+              </p>
             </div>
-          )}
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsSuccessModalOpen(false)}
+                className="py-2.5 px-4 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs cursor-pointer"
+              >
+                Continue Shopping
+              </button>
+              <a
+                href="/cart"
+                className="py-2.5 px-4 rounded-xl bg-[#FFED00] hover:bg-[#F2E100] text-slate-950 font-black text-xs border border-[#E3A008]/40 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <RiShoppingCart2Line className="h-4 w-4" />
+                <span>View Cart</span>
+              </a>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* BULK PASTE MODAL */}
-      {isBulkPasteModalOpen && personalizationTemplate && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl flex flex-col gap-4 border border-slate-200">
+      {/* =================================================================== */}
+      {/* DESIGN GUIDELINES MODAL                                             */}
+      {/* =================================================================== */}
+      {isGuidelinesModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 sm:p-7 w-full max-w-lg shadow-2xl border border-slate-200 space-y-4 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <RiUpload2Line className="text-purple-600" />
-                Bulk Paste Roster ({effectiveQuantity} pieces)
+                <RiLightbulbLine className="text-amber-500 h-5 w-5" />
+                <span>Prepress & Artwork Specifications</span>
               </h3>
               <button
                 type="button"
-                onClick={() => setIsBulkPasteModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700"
+                onClick={() => setIsGuidelinesModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 p-1"
               >
                 <RiCloseLine size={20} />
               </button>
             </div>
 
-            <p className="text-xs text-slate-600">
-              Paste rows copied directly from Excel, Google Sheets, or CSV. Each line will populate one ordered piece.
-              Expected columns:{' '}
-              <strong className="text-purple-700">
-                {personalizationTemplate.fields
-                  .filter((f) => f.scope === 'PER_ITEM')
-                  .map((f) => f.name)
-                  .join(' , ')}
-              </strong>
-            </p>
-
-            {bulkPasteErrors.length > 0 && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex flex-col gap-1">
-                {bulkPasteErrors.map((err, i) => (
-                  <div key={i} className="flex items-center gap-1.5 font-medium">
-                    <RiAlertFill className="text-rose-600 shrink-0" />
-                    <span>{err}</span>
-                  </div>
-                ))}
+            <div className="space-y-3 text-xs text-slate-700 leading-relaxed">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="font-bold text-slate-900 block mb-1">Standard Cut & Bleed</span>
+                <p>Allow 3.0mm bleed on all sides. Keep all text, logos, and critical design elements at least 3.0mm inside the trim line.</p>
               </div>
-            )}
-
-            <textarea
-              rows={8}
-              placeholder={`Uncle David & Family\nAunt Sarah\nGrandpa Arthur`}
-              value={bulkPasteText}
-              onChange={(e) => setBulkPasteText(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs text-slate-900 placeholder-slate-400 focus:border-purple-600 focus:outline-none"
-            />
-
-            <div className="flex items-center justify-between pt-2">
-              <span className="text-xs font-mono font-medium text-slate-500">
-                {bulkPasteText.split('\n').filter((l) => l.trim()).length} of {effectiveQuantity} lines entered
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsBulkPasteModalOpen(false)}
-                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleApplyBulkPaste}
-                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md shadow-purple-600/30"
-                >
-                  Apply to {effectiveQuantity} Items
-                </button>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="font-bold text-slate-900 block mb-1">Color Palette & Profiles</span>
+                <p>Files must be prepared in CMYK color space. RGB or Pantone colors will be converted with standard ISO 12647-2 profiles.</p>
               </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="font-bold text-slate-900 block mb-1">Resolution & Outlines</span>
+                <p>Raster images should be 300 DPI or higher at 100% print scale. Convert all fonts to curves/outlines before saving as PDF.</p>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsGuidelinesModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-950 text-white font-bold text-xs"
+              >
+                Understood
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ------------------------------------------------------------------ */}
-      {/* SECTION 3: ARTWORK & PREPRESS SETUP                                */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-7 shadow-card space-y-5">
-        <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono font-black uppercase text-amber-600 tracking-wider">
-                Section 03
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Prepress & Design
-              </span>
-            </div>
-            <h2 className="text-xl font-black text-slate-900 tracking-tight font-display mt-0.5">
-              Artwork Files & Prepress
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Upload print-ready files or request our professional design studio service.
-            </p>
-          </div>
-          {artworkReq === 'DISABLED' ? (
-            <Badge variant="zinc">No Artwork Required</Badge>
-          ) : artworkReq === 'REQUIRED' ? (
-            <Badge variant="yellow">Mandatory for Print</Badge>
-          ) : (
-            <Badge variant="zinc">Optional Upload</Badge>
-          )}
-        </div>
-
-        {/* Artwork Disabled Notice */}
-        {artworkReq === 'DISABLED' && (
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-3 text-xs text-slate-600">
-            <RiInformationLine className="h-5 w-5 text-slate-400 flex-shrink-0" />
-            <span>
-              Artwork file upload is not required for this product configuration. Production will proceed using standard automated typesetting.
-            </span>
-          </div>
-        )}
-
-        {/* Artwork File Upload Slots */}
-        {artworkReq !== 'DISABLED' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between text-xs text-slate-500">
-              <span>
-                Formats: <strong className="text-slate-800">{allowedFormats.join(', ')}</strong> • Max {maxFileSizeMb}MB • Min {minMegapixels} MP
-              </span>
-              <span className="font-mono font-bold text-slate-700">
-                {activeSlotConfigs.length} {activeSlotConfigs.length === 1 ? 'Slot' : 'Slots'} Configured
-              </span>
-            </div>
-
-            {/* Upload Slots Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {activeSlotConfigs.map((slot) => {
-                const uploaded = slotFiles[slot.slotKey];
-                const isUploading = Boolean(uploadingSlots[slot.slotKey]);
-                const errorMsg = slotErrors[slot.slotKey];
-
-                return (
-                  <div
-                    key={slot.slotKey}
-                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                        <RiCameraLine className="h-4 w-4 text-purple-600" />
-                        <span>{slot.label}</span>
-                        {slot.isRequired && (!wantsDesignService || slot.isCustomerSupplied !== false) && (
-                          <span className="text-rose-500 font-black">*</span>
-                        )}
-                      </span>
-                      {uploaded ? (
-                        <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded flex items-center gap-1">
-                          <RiCheckLine className="h-3 w-3 stroke-[3]" /> Uploaded
-                        </span>
-                      ) : wantsDesignService && slot.isCustomerSupplied === false ? (
-                        <span className="text-[10px] font-mono font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
-                          Design Team Scope
-                        </span>
-                      ) : null}
-                    </div>
-
-                    {uploaded ? (
-                      <div className="p-3 bg-white border border-purple-200 rounded-lg flex items-center justify-between">
-                        <div className="min-w-0 pr-2">
-                          <div className="text-xs font-bold text-slate-900 truncate">
-                            {uploaded.originalFileName}
-                          </div>
-                          <div className="text-[10px] font-mono text-slate-500">
-                            {(uploaded.fileSize / (1024 * 1024)).toFixed(2)} MB • {uploaded.actualMegapixels ? `${uploaded.actualMegapixels} MP` : 'Print Ready'}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleFileRemove(slot.slotKey)}
-                          className="p-1.5 text-rose-500 hover:text-rose-700 rounded-md hover:bg-rose-50 cursor-pointer"
-                          title="Remove file"
-                        >
-                          <RiDeleteBinLine className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ) : wantsDesignService && slot.isCustomerSupplied === false ? (
-                      <div className="p-4 bg-purple-50/60 border border-purple-200/80 rounded-xl text-center space-y-1">
-                        <RiPaletteLine className="h-6 w-6 text-purple-600 mx-auto" />
-                        <div className="text-xs font-bold text-purple-900">
-                          Artwork Created by PB Design Studio
-                        </div>
-                        <div className="text-[11px] text-purple-700">
-                          Our prepress designers will compose the {slot.label} file according to your design brief and instructions.
-                        </div>
-                      </div>
-                    ) : (
-                      <label
-                        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const f = e.dataTransfer.files?.[0];
-                          if (f) handleFileUpload(slot.slotKey, f);
-                        }}
-                        className="border-2 border-dashed border-slate-300 hover:border-purple-500 bg-white hover:bg-purple-50/20 p-5 rounded-xl text-center block cursor-pointer transition-colors"
-                      >
-                        <input
-                          type="file"
-                          className="hidden"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) handleFileUpload(slot.slotKey, f);
-                            e.target.value = '';
-                          }}
-                        />
-                        {isUploading ? (
-                          <div className="text-xs font-bold text-purple-700 animate-pulse">
-                            Uploading & verifying resolution...
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            <RiUploadCloud2Line className="h-6 w-6 text-slate-400 mx-auto" />
-                            <div className="text-xs font-bold text-slate-800">
-                              Click or drag {slot.label} file
-                            </div>
-                            <div className="text-[10px] text-slate-400 font-mono">
-                              PDF, AI, PSD, CDR, TIFF or High-Res Image
-                            </div>
-                          </div>
-                        )}
-                      </label>
-                    )}
-
-                    {errorMsg && (
-                      <p className="text-[11px] text-rose-600 font-medium">
-                        {errorMsg}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Design Studio Service Add-on */}
-        {designReq !== 'DISABLED' && (
-          <div className="pt-4 border-t border-slate-100 space-y-3">
-            <div className="p-4 bg-amber-50/60 border border-amber-200/80 rounded-xl space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <RiPaletteLine className="h-5 w-5 text-amber-700" />
-                  <div>
-                    <span className="text-xs font-black uppercase text-amber-950 block">
-                      Professional Design Studio Assistance
-                    </span>
-                    <span className="text-[11px] text-amber-800">
-                      Our prepress artists vectorize, layout, and prepare your print proof
-                    </span>
-                  </div>
-                </div>
-                {effectiveDesignFee > 0 && (
-                  <span className="text-xs font-mono font-bold text-amber-950 bg-amber-200/80 px-2 py-0.5 rounded">
-                    +{formatCurrency(effectiveDesignFee)}
-                  </span>
-                )}
-              </div>
-
-              {designReq === 'OPTIONAL' && (
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={wantsDesignService}
-                    onChange={(e) => setWantsDesignService(e.target.checked)}
-                    className="h-4 w-4 rounded border-amber-300 text-slate-900 focus:ring-0 cursor-pointer"
-                  />
-                  <span className="text-xs font-bold text-slate-900">
-                    Yes, I want professional design assistance for this order
-                  </span>
-                </label>
-              )}
-
-              {wantsDesignService && (
-                <div className="pt-2">
-                  <label className="text-[11px] font-bold text-slate-800 block mb-1">
-                    Design Notes & Content Instructions {resolvedArtwork.requireDesignBrief ? '(Required)' : '(Optional)'}
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={designNotes}
-                    onChange={(e) => setDesignNotes(e.target.value)}
-                    placeholder="Enter brand guidelines, text content, color codes, or instructions for our design team..."
-                    className="w-full p-2.5 bg-white border border-amber-300/80 rounded-lg text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-900 shadow-2xs"
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* SECTION 4: DELIVERY & FULFILLMENT                                  */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-7 shadow-card space-y-4">
-        <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono font-black uppercase text-amber-600 tracking-wider">
-                Section 04
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Logistics & SLA
-              </span>
-            </div>
-            <h2 className="text-xl font-black text-slate-900 tracking-tight font-display mt-0.5">
-              Delivery & Turnaround
-            </h2>
-          </div>
-
-          {(() => {
-            const delivery = getEstimatedDeliveryText(product.productionDays || 2);
-            return (
-              <span className="text-xs font-mono font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 flex items-center gap-1.5">
-                <RiTruckLine className="h-4 w-4 text-emerald-700" />
-                <span>Est. Delivery: {delivery.deliveryRange}</span>
-              </span>
-            );
-          })()}
-        </div>
-
-        <div className="grid grid-cols-2 gap-2.5">
-          <button
-            type="button"
-            onClick={() => setDeliveryMethod('COURIER')}
-            className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-              deliveryMethod === 'COURIER'
-                ? 'border-slate-950 bg-slate-950 text-white shadow-xs'
-                : 'border-slate-200 bg-white hover:border-slate-400 text-slate-800'
-            }`}
-          >
-            <div className="font-bold text-xs">Doorstep Courier</div>
-            <div className="text-[10px] opacity-75">Express dispatch direct to address</div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setDeliveryMethod('STORE_PICKUP')}
-            className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-              deliveryMethod === 'STORE_PICKUP'
-                ? 'border-slate-950 bg-slate-950 text-white shadow-xs'
-                : 'border-slate-200 bg-white hover:border-slate-400 text-slate-800'
-            }`}
-          >
-            <div className="font-bold text-xs">Store Pickup</div>
-            <div className="text-[10px] opacity-75">Collect from central print hub (Free)</div>
-          </button>
-        </div>
-
-        {deliveryMethod === 'COURIER' && (
-          <div className="pt-2">
-            <input
-              type="text"
-              maxLength={6}
-              value={shippingPincode}
-              onChange={(e) => {
-                const v = e.target.value.replace(/\D/g, '');
-                setShippingPincode(v);
-                if (typeof window !== 'undefined') localStorage.setItem('pb2_user_pincode', v);
-              }}
-              placeholder="Enter 6-digit delivery pincode (e.g. 560001)..."
-              className="w-full h-10 px-3 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-slate-950"
-            />
-          </div>
-        )}
-      </div>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* SECTION 5: ORDER SUMMARY & AUTHORITATIVE PRICE BREAKDOWN           */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-7 shadow-elevated space-y-5">
-        <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono font-black uppercase text-amber-600 tracking-wider">
-                Section 05
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Order Review
-              </span>
-            </div>
-            <h2 className="text-xl font-black text-slate-900 tracking-tight font-display mt-0.5">
-              Live Price & Confirmation
-            </h2>
-          </div>
-          {isCalculatingQuote && (
-            <span className="text-[11px] font-mono text-amber-700 animate-pulse font-bold">
-              Updating server quote...
-            </span>
-          )}
-        </div>
-
-        {/* Selected Specifications Chips */}
-        <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2">
-          <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
-            Selected Configuration
-          </span>
-          <div className="flex flex-wrap gap-2 text-xs">
-            <span className="px-2.5 py-1 bg-white border border-slate-200 rounded-md font-bold text-slate-900">
-              Quantity: {quantity.toLocaleString()} pcs
-            </span>
-            {visibleGroups.map((g) => {
-              const val = selectedOptions[g.code];
-              const opt = g.options?.find((o) => String(o.value) === String(val));
-              return (
-                <span
-                  key={g.id}
-                  className="px-2.5 py-1 bg-white border border-slate-200 rounded-md font-bold text-slate-800"
-                >
-                  <span className="text-slate-400 font-normal">{g.name}:</span> {opt ? opt.label : String(val || 'None')}
-                </span>
-              );
-            })}
-            {Object.keys(activeSlotFiles).length > 0 && (
-              <span className="px-2.5 py-1 bg-purple-50 border border-purple-200 rounded-md font-bold text-purple-900 flex items-center gap-1">
-                <RiCheckLine className="h-3 w-3 stroke-[3]" /> {Object.keys(activeSlotFiles).length} Files Attached
-              </span>
-            )}
-            {wantsDesignService && (
-              <span className="px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-md font-bold text-amber-900">
-                Design Service
-              </span>
-            )}
-            {Array.isArray(quote?.appliedCharges) && quote.appliedCharges.length > 0 && (
-              <span className="px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-md font-bold text-emerald-900 flex items-center gap-1">
-                🏷️ {quote.appliedCharges.length} Configured Fee(s)
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Price Breakdown */}
-        <div className="space-y-2.5 text-xs">
-          <div className="flex justify-between text-slate-600">
-            <span>Base Production ({quantity.toLocaleString()} pcs)</span>
-            <span className="font-mono font-bold text-slate-900">
-              {formatCurrency(Number(quote?.baseSubtotal ?? (referenceUnitPrice * quantity)))}
-            </span>
-          </div>
-
-          {Number(quote?.dynamicModifiersTotal || quote?.optionsCost || 0) > 0 && (
-            <div className="flex justify-between text-slate-600">
-              <span>Material & Finish Upgrades</span>
-              <span className="font-mono font-bold text-slate-900">
-                +{formatCurrency(Number(quote?.dynamicModifiersTotal || quote?.optionsCost || 0))}
-              </span>
-            </div>
-          )}
-
-          {/* Generic Conditional Additional Charges */}
-          {Array.isArray(quote?.appliedCharges) && quote.appliedCharges.length > 0 && (
-            <div className="space-y-1.5 pt-1">
-              {quote.appliedCharges.map((ch: any, idx: number) => (
-                <div
-                  key={ch.chargeId || idx}
-                  className="flex justify-between items-center text-emerald-950 font-bold bg-emerald-50/80 p-2.5 rounded-lg border border-emerald-200"
-                >
-                  <div>
-                    <span className="text-xs flex items-center gap-1.5">
-                      <span>🏷️</span>
-                      <span>{ch.name || ch.chargeId}</span>
-                      {ch.calculationType && ch.calculationType !== 'FIXED' && (
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-200/60 text-emerald-900">
-                          {ch.calculationType}
-                        </span>
-                      )}
-                    </span>
-                    {ch.description && (
-                      <span className="text-[10px] text-emerald-800 font-medium block pl-5">
-                        {ch.description}
-                      </span>
-                    )}
-                  </div>
-                  <span className="font-mono text-xs font-bold text-emerald-900">
-                    +{formatCurrency(Number(ch.amount || 0))}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {wantsDesignService && effectiveDesignFee > 0 && (
-            <div className="flex justify-between text-amber-950 font-bold bg-amber-50/60 p-2 rounded-lg border border-amber-200">
-              <span>Professional Design Studio Fee</span>
-              <span className="font-mono">+{formatCurrency(effectiveDesignFee)}</span>
-            </div>
-          )}
-
-          {Number(quote?.appliedOffer?.savingsAmount || quote?.discountAmount || 0) > 0 && (
-            <div className="flex justify-between items-center text-emerald-900 font-bold bg-emerald-50 p-2 rounded-lg border border-emerald-300">
-              <span>🎉 Volume Offer Savings ({quote?.appliedOffer?.discountPercent || quote?.discountPercent}% OFF)</span>
-              <span className="font-mono text-emerald-700">
-                -{formatCurrency(Number(quote?.appliedOffer?.savingsAmount || quote?.discountAmount))}
-              </span>
-            </div>
-          )}
-
-          <div className="pt-2 border-t border-slate-100 flex justify-between text-slate-600">
-            <span>Pre-tax Subtotal</span>
-            <span className="font-mono font-bold text-slate-900">{formatCurrency(computedSubtotal)}</span>
-          </div>
-
-          <div className="flex justify-between text-slate-600">
-            <span>Estimated GST (18%)</span>
-            <span className="font-mono font-bold text-slate-900">+{formatCurrency(computedTax)}</span>
-          </div>
-
-          <div className="flex justify-between items-center text-slate-600">
-            <span>Fulfillment ({deliveryMethod === 'STORE_PICKUP' ? 'Self Pickup' : 'Courier'})</span>
-            <span className="font-mono font-bold text-slate-900">
-              {deliveryMethod === 'STORE_PICKUP' ? (
-                <span className="text-emerald-700">FREE</span>
-              ) : computedShipping === 0 ? (
-                <span className="text-emerald-700">FREE</span>
-              ) : (
-                `+${formatCurrency(computedShipping)}`
-              )}
-            </span>
-          </div>
-
-          <div className="pt-3 border-t border-slate-200 flex justify-between items-baseline">
+      {/* =================================================================== */}
+      {/* BOTTOM BRAND FOOTER BANNER                                          */}
+      {/* =================================================================== */}
+      <div className="bg-[#0F172A] text-white rounded-2xl p-5 sm:p-6 border border-slate-800 shadow-md flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-6 text-xs text-slate-300">
+          <div className="flex items-center gap-2">
+            <RiShieldCheckLine className="h-5 w-5 text-[#FFED00]" />
             <div>
-              <span className="text-xs font-black uppercase tracking-wider text-slate-900 block">
-                Total Order Value
-              </span>
-              <span className="text-[10px] text-slate-400 font-mono">
-                ₹{(computedGrandTotal / Math.max(1, quantity)).toFixed(2)} / unit all-inclusive
-              </span>
+              <span className="font-bold text-white block">Secure Payment</span>
+              <span className="text-[10px] text-slate-400">UPI, Cards, Net Banking</span>
             </div>
-            <span className="text-2xl sm:text-3xl font-black text-slate-950 font-display">
-              {formatCurrency(computedGrandTotal)}
-            </span>
           </div>
-        </div>
 
-        {/* Payment Terms Selector: Full vs 50% Split */}
-        <div className="pt-4 border-t border-slate-100 space-y-2.5">
-          <label className="text-xs font-black uppercase tracking-wider text-slate-900 block">
-            Payment Terms
-          </label>
-          <div className="grid grid-cols-2 gap-2.5">
-            <button
-              type="button"
-              onClick={() => setPaymentMode('FULL')}
-              className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                paymentMode === 'FULL'
-                  ? 'border-slate-950 bg-slate-950 text-white shadow-xs'
-                  : 'border-slate-200 bg-white hover:border-slate-400 text-slate-800'
-              }`}
-            >
-              <div className="text-xs font-bold">100% Full Settlement</div>
-              <div className="text-base font-mono font-black mt-0.5">{formatCurrency(computedGrandTotal)}</div>
-              <div className="text-[10px] opacity-75">Production queue priority</div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setPaymentMode('SPLIT_50')}
-              className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                paymentMode === 'SPLIT_50'
-                  ? 'border-slate-950 bg-slate-950 text-white shadow-xs'
-                  : 'border-slate-200 bg-white hover:border-slate-400 text-slate-800'
-              }`}
-            >
-              <div className="text-xs font-bold">50% Advance Milestone</div>
-              <div className="text-base font-mono font-black mt-0.5">{formatCurrency(computedAdvanceAmount)}</div>
-              <div className="text-[10px] opacity-75">Balance before dispatch</div>
-            </button>
-          </div>
-        </div>
-
-        {/* Proof Approval Terms Checkbox */}
-        <div className="pt-3 border-t border-slate-100">
-          <label className="flex items-start gap-2.5 cursor-pointer text-xs text-slate-700 select-none">
-            <input
-              type="checkbox"
-              checked={termsAccepted}
-              onChange={(e) => setTermsAccepted(e.target.checked)}
-              className="h-4 w-4 mt-0.5 rounded border-slate-300 text-slate-950 focus:ring-0 cursor-pointer"
-            />
-            <span>
-              I have reviewed all specifications and agree to the{' '}
-              <strong className="text-slate-900 underline">Design Proof Approval Policy</strong>.
-              I understand that once sent to press, specifications cannot be modified.
-            </span>
-          </label>
-        </div>
-
-        {/* Real-time Validation Notices */}
-        {!isValid && (
-          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-1">
-            <div className="font-bold text-rose-800 flex items-center gap-1.5">
-              <RiAlertFill className="h-4 w-4 flex-shrink-0" />
-              <span>Please complete required items before ordering:</span>
+          <div className="flex items-center gap-2">
+            <RiFlashlightLine className="h-5 w-5 text-[#FFED00]" />
+            <div>
+              <span className="font-bold text-white block">Fast Dispatch</span>
+              <span className="text-[10px] text-slate-400">2–7 days turnaround</span>
             </div>
-            <ul className="list-disc list-inside text-[11px] text-rose-700 pl-1">
-              {validationErrors.map((err, i) => (
-                <li key={i}>{err}</li>
-              ))}
-            </ul>
           </div>
-        )}
 
-        {/* Action Buttons */}
-        {!isPreviewMode && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              disabled={!isValid || isSubmitting}
-              onClick={handleAddToCartClick}
-              className="w-full"
-            >
-              <RiShoppingCart2Line className="h-4 w-4 mr-2" />
-              <span>Add to Cart</span>
-            </Button>
-
-            <Button
-              type="button"
-              variant="primary"
-              size="lg"
-              disabled={!isValid || isSubmitting}
-              onClick={handleBuyNowClick}
-              className="w-full"
-            >
-              <span>Proceed to Checkout</span>
-              <RiArrowRightLine className="h-4 w-4 ml-2" />
-            </Button>
+          <div className="flex items-center gap-2">
+            <RiSparklingFill className="h-5 w-5 text-[#FFED00]" />
+            <div>
+              <span className="font-bold text-white block">Quality Prints</span>
+              <span className="text-[10px] text-slate-400">Checked before dispatch</span>
+            </div>
           </div>
-        )}
+
+          <div className="flex items-center gap-2">
+            <RiCustomerService2Line className="h-5 w-5 text-[#FFED00]" />
+            <div>
+              <span className="font-bold text-white block">Dedicated Support</span>
+              <span className="text-[10px] text-slate-400">For all your printing needs</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="italic font-display text-xl sm:text-2xl text-[#FFED00] tracking-wide shrink-0">
+          Print it. Love it.
+        </div>
       </div>
     </div>
   );

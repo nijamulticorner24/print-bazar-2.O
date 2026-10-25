@@ -60,10 +60,23 @@ export class ProductsService {
   }
 
   async getProductBySlug(slugOrId: string) {
+    const normalized = (slugOrId || '').toLowerCase().trim();
+    const aliasMap: Record<string, string> = {
+      'business-cards': 'seed-premium-business-cards',
+      'premium-visiting-cards': 'seed-premium-business-cards',
+      'visiting-cards': 'seed-premium-business-cards',
+      'roll-up-luxury-standee': 'luxury-rollup-standee',
+      'luxury-standee': 'luxury-rollup-standee',
+      'rigid-box': 'custom-rigid-box',
+      'rigid-boxes': 'custom-rigid-box',
+    };
+    const targetSlug = aliasMap[normalized] || normalized;
+
     const product = await this.prisma.product.findFirst({
       where: {
         OR: [
-          { slug: slugOrId, status: 'PUBLISHED', isActive: true },
+          { slug: targetSlug, status: 'PUBLISHED', isActive: true },
+          { slug: normalized, status: 'PUBLISHED', isActive: true },
           { id: slugOrId, isActive: true },
         ],
       },

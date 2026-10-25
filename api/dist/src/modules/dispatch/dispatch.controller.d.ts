@@ -5,10 +5,12 @@ export declare class DispatchController {
     constructor(dispatchService: DispatchService);
     confirmCourierHandover(body: CourierHandoverDto, user: JwtPayload): Promise<{
         id: string;
-        orderNumber: string;
+        createdAt: Date;
+        updatedAt: Date;
         customerId: string;
-        sourceChannel: import(".prisma/client").$Enums.OrderChannel;
         status: import(".prisma/client").$Enums.OrderStatus;
+        orderNumber: string;
+        sourceChannel: import(".prisma/client").$Enums.OrderChannel;
         customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
         deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
         subtotal: import("@prisma/client/runtime/library").Decimal;
@@ -26,15 +28,15 @@ export declare class DispatchController {
         internalNotes: string | null;
         shippingAddressId: string | null;
         billingAddressId: string | null;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
     confirmStorePickup(body: StorePickupHandoverDto, user: JwtPayload): Promise<{
         id: string;
-        orderNumber: string;
+        createdAt: Date;
+        updatedAt: Date;
         customerId: string;
-        sourceChannel: import(".prisma/client").$Enums.OrderChannel;
         status: import(".prisma/client").$Enums.OrderStatus;
+        orderNumber: string;
+        sourceChannel: import(".prisma/client").$Enums.OrderChannel;
         customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
         deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
         subtotal: import("@prisma/client/runtime/library").Decimal;
@@ -52,15 +54,15 @@ export declare class DispatchController {
         internalNotes: string | null;
         shippingAddressId: string | null;
         billingAddressId: string | null;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
     confirmDelivery(orderId: string, receiverName?: string): Promise<{
         id: string;
-        orderNumber: string;
+        createdAt: Date;
+        updatedAt: Date;
         customerId: string;
-        sourceChannel: import(".prisma/client").$Enums.OrderChannel;
         status: import(".prisma/client").$Enums.OrderStatus;
+        orderNumber: string;
+        sourceChannel: import(".prisma/client").$Enums.OrderChannel;
         customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
         deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
         subtotal: import("@prisma/client/runtime/library").Decimal;
@@ -78,7 +80,5 @@ export declare class DispatchController {
         internalNotes: string | null;
         shippingAddressId: string | null;
         billingAddressId: string | null;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
 }

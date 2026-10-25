@@ -16,6 +16,7 @@ export interface CreateOrderItemDto {
     totalPrice?: number;
     options?: OptionSelectionDto[];
     fieldValues?: Record<string, any>;
+    selectedOptions?: Record<string, any>;
     personalization?: PersonalizationPayload;
     variantLines?: Array<{
         id?: string;
@@ -73,6 +74,13 @@ export interface CreateOrderItemDto {
 }
 export interface CreateOrderDto {
     customerId?: string;
+    customer?: {
+        fullName?: string;
+        email?: string;
+        phone?: string;
+        companyName?: string;
+        gstin?: string;
+    };
     customerDetails?: {
         fullName: string;
         email: string;
@@ -83,12 +91,24 @@ export interface CreateOrderDto {
     sourceChannel?: OrderChannel;
     deliveryMethod?: DeliveryMethod;
     paymentMode?: 'FULL' | 'SPLIT_50';
+    paymentSplitType?: 'FULL_PREPAID' | 'SPLIT_50' | 'FULL' | string;
     paymentMethod?: string;
     paidAmount?: number;
     advanceAmount?: number;
     balanceAmount?: number;
     shippingAddress?: {
-        contactName: string;
+        contactName?: string;
+        fullName?: string;
+        phone: string;
+        street: string;
+        city: string;
+        state: string;
+        postalCode: string;
+        country?: string;
+    };
+    billingAddress?: {
+        contactName?: string;
+        fullName?: string;
         phone: string;
         street: string;
         city: string;

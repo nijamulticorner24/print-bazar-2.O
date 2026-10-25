@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { api, ReusableOptionGroup } from '@/lib/api';
 import {
-  RiListSettingsLine,
+  RiApps2Line,
   RiAddLine,
   RiSearch2Line,
-  RiDeleteBinLine,
+  RiDeleteBin7Line,
   RiArrowUpLine,
   RiArrowDownLine,
   RiCheckLine,
@@ -15,33 +15,73 @@ import {
   RiEditLine,
   RiFileCopyLine,
   RiInformationLine,
-  RiMagicLine,
   RiCheckboxCircleLine,
   RiErrorWarningLine,
-  RiArrowRightLine,
   RiFileTextLine,
   RiRefreshLine,
   RiInputMethodLine,
   RiEyeLine,
+  RiSettings4Line,
+  RiListCheck2,
+  RiPriceTag3Line,
+  RiEqualizerLine,
+  RiArrowLeftSLine,
+  RiArrowRightSLine,
+  RiScissorsCutLine,
+  RiCalendarEventLine,
+  RiPaletteLine,
+  RiStackLine,
+  RiBox3Line,
+  RiExpandDiagonalLine,
+  RiDropLine,
+  RiStarLine,
+  RiContrastDropLine,
+  RiCompass3Line,
+  RiBookOpenLine,
+  RiHashtag,
+  RiListSettingsLine,
 } from 'react-icons/ri';
+import { formatCurrency } from '@/lib/utils';
 
 const isTextInputType = (type?: string) =>
   ['TEXT', 'TEXTAREA', 'NUMBER', 'DATE', 'EMAIL', 'PHONE'].includes((type || '').toUpperCase());
+
+// Icon resolver for horizontal selector cards and editor header
+const getGroupIcon = (name: string, code: string, inputType?: string) => {
+  const n = (name + ' ' + code).toLowerCase();
+  if (n.includes('cut') || n.includes('trim') || n.includes('die') || n.includes('edge')) return RiScissorsCutLine;
+  if (n.includes('date') || n.includes('time') || inputType === 'DATE') return RiCalendarEventLine;
+  if (n.includes('design') || n.includes('artwork') || n.includes('proof')) return RiPaletteLine;
+  if (n.includes('laminat') || n.includes('coat') || n.includes('layer')) return RiStackLine;
+  if (n.includes('material') || n.includes('paper') || n.includes('stock') || n.includes('substrate')) return RiBox3Line;
+  if (n.includes('size') || n.includes('dimension') || n.includes('width') || n.includes('height')) return RiExpandDiagonalLine;
+  if (n.includes('print') || n.includes('location') || n.includes('side') || n.includes('ink')) return RiDropLine;
+  if (n.includes('finish') || n.includes('foil') || n.includes('uv') || n.includes('spot')) return RiStarLine;
+  if (n.includes('color') || n.includes('colour')) return RiContrastDropLine;
+  if (n.includes('orient') || n.includes('direction')) return RiCompass3Line;
+  if (n.includes('bind') || n.includes('book') || n.includes('fold')) return RiBookOpenLine;
+  if (n.includes('text') || inputType === 'TEXT' || inputType === 'TEXTAREA') return RiInputMethodLine;
+  if (n.includes('number') || n.includes('qty') || inputType === 'NUMBER') return RiHashtag;
+  return RiListSettingsLine;
+};
 
 interface OptionValueItem {
   id?: string;
   label: string;
   value: string;
+  priceModifier?: number;
   isDefault?: boolean;
 }
+
+type EditorTab = 'settings' | 'values' | 'pricing' | 'advanced';
 
 export default function OptionGroupsLibraryPage() {
   const [groups, setGroups] = useState<ReusableOptionGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<EditorTab>('settings');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -63,8 +103,12 @@ export default function OptionGroupsLibraryPage() {
   const [editingValueIdx, setEditingValueIdx] = useState<number | null>(null);
   const [valFormLabel, setValFormLabel] = useState('');
   const [valFormValue, setValFormValue] = useState('');
+  const [valFormPriceModifier, setValFormPriceModifier] = useState<number>(0);
   const [valFormIsDefault, setValFormIsDefault] = useState(false);
   const [deleteConfirmGroup, setDeleteConfirmGroup] = useState<ReusableOptionGroup | null>(null);
+
+  // Horizontal Scroll Ref
+  const selectorRef = useRef<HTMLDivElement>(null);
 
   // Fetch groups on mount
   useEffect(() => {
@@ -107,6 +151,7 @@ export default function OptionGroupsLibraryPage() {
           id: o.id || `opt-${idx}`,
           label: o.label || '',
           value: o.value || '',
+          priceModifier: typeof o.priceModifier === 'number' ? o.priceModifier : 0,
           isDefault: Boolean(o.isDefault),
         }))
       : [];
@@ -132,30 +177,36 @@ export default function OptionGroupsLibraryPage() {
     resetForm();
     setErrorMsg(null);
     setSuccessMsg(null);
+    setActiveTab('settings');
   };
 
-  // Filtered groups
+  // Filtered groups by search query
   const filteredGroups = useMemo(() => {
-    return groups.filter((g) => {
-      const matchesSearch =
-        !searchQuery.trim() ||
-        g.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        g.code.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus =
-        statusFilter === 'ALL' ||
-        (statusFilter === 'ACTIVE' && g.isActive) ||
-        (statusFilter === 'INACTIVE' && !g.isActive);
-      return matchesSearch && matchesStatus;
-    });
-  }, [groups, searchQuery, statusFilter]);
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return groups;
+    return groups.filter(
+      (g) => g.name.toLowerCase().includes(q) || g.code.toLowerCase().includes(q)
+    );
+  }, [groups, searchQuery]);
 
-  // Total values count across all groups
-  const totalLibraryValues = useMemo(() => {
-    return groups.reduce((acc, g) => {
-      const count = Array.isArray(g.defaultOptions) ? g.defaultOptions.length : 0;
-      return acc + count;
-    }, 0);
-  }, [groups]);
+  // Currently selected group object
+  const currentGroup = useMemo(() => {
+    if (isCreatingNew) return null;
+    return groups.find((g) => g.id === selectedGroupId) || null;
+  }, [groups, selectedGroupId, isCreatingNew]);
+
+  // Horizontal scroll helpers
+  const handleScrollLeft = () => {
+    if (selectorRef.current) {
+      selectorRef.current.scrollBy({ left: -240, behavior: 'smooth' });
+    }
+  };
+
+  const handleScrollRight = () => {
+    if (selectorRef.current) {
+      selectorRef.current.scrollBy({ left: 240, behavior: 'smooth' });
+    }
+  };
 
   // Auto-slugify code when creating new
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -204,6 +255,7 @@ export default function OptionGroupsLibraryPage() {
       defaultOptions: formOptions.map((opt, idx) => ({
         label: opt.label.trim(),
         value: opt.value.trim(),
+        priceModifier: typeof opt.priceModifier === 'number' ? opt.priceModifier : 0,
         isDefault: Boolean(opt.isDefault),
         sortOrder: idx,
       })),
@@ -217,7 +269,7 @@ export default function OptionGroupsLibraryPage() {
       } else if (selectedGroupId) {
         const updated = await api.adminUpdateReusableGroup(selectedGroupId, payload);
         const countText = (updated as any).affectedProductsCount ? ` (${(updated as any).affectedProductsCount} products updated)` : '';
-        setSuccessMsg(`Option group '${updated.name}' updated and synchronized across all products${countText}.`);
+        setSuccessMsg(`Option group '${updated.name}' updated and synchronized${countText}.`);
         await loadGroups(updated.id);
       }
     } catch (err: any) {
@@ -251,11 +303,13 @@ export default function OptionGroupsLibraryPage() {
       const opt = formOptions[editIdx];
       setValFormLabel(opt.label);
       setValFormValue(opt.value);
+      setValFormPriceModifier(opt.priceModifier ?? 0);
       setValFormIsDefault(Boolean(opt.isDefault));
     } else {
       setEditingValueIdx(null);
       setValFormLabel('');
       setValFormValue('');
+      setValFormPriceModifier(0);
       setValFormIsDefault(formOptions.length === 0);
     }
     setIsAddValueModalOpen(true);
@@ -270,6 +324,7 @@ export default function OptionGroupsLibraryPage() {
     const newOpt: OptionValueItem = {
       label: valFormLabel.trim(),
       value: finalVal,
+      priceModifier: Number(valFormPriceModifier) || 0,
       isDefault: valFormIsDefault,
     };
 
@@ -342,10 +397,12 @@ export default function OptionGroupsLibraryPage() {
       const val = parts[1]
         ? parts[1].toLowerCase().replace(/[^a-z0-9_]+/g, '_')
         : label.toLowerCase().replace(/[^a-z0-9_]+/g, '_');
+      const price = parts[2] ? parseFloat(parts[2]) || 0 : 0;
 
       return {
         label,
         value: val,
+        priceModifier: price,
         isDefault: formOptions.length === 0 && idx === 0,
       };
     });
@@ -355,910 +412,872 @@ export default function OptionGroupsLibraryPage() {
     setIsBulkModalOpen(false);
   };
 
+  // Active representative icon for the editor
+  const RepresentativeIcon = getGroupIcon(formName, formCode, formInputType);
+
   return (
-    <div className="min-h-screen bg-[#F8F8F8] text-black">
-      {/* Top Header & Breadcrumbs */}
-      <div className="bg-white border-b border-slate-200 sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div className="space-y-6">
+      {/* ======================================================== */}
+      {/* 1. COMPACT PAGE HEADER                                   */}
+      {/* ======================================================== */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-transparent pt-1">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-300/80 flex items-center justify-center text-amber-600 shadow-2xs flex-shrink-0">
+            <RiApps2Line className="w-6 h-6 text-amber-500" />
+          </div>
           <div>
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-              <Link href="/admin/products" className="hover:text-black transition-colors">
-                Catalogue
-              </Link>
-              <span>/</span>
-              <span className="text-black">Option Groups Library</span>
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2.5">
-              <RiListSettingsLine className="w-7 h-7 text-[#D4AF37]" />
-              Reusable Option Groups Library
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 leading-tight">
+              Option Groups Library
             </h1>
-            <p className="text-xs text-slate-600 mt-1">
-              Define standard option groups (Material, Size, Printing Location, Finish) and configure their default values. Changes made here provide starter templates without breaking individual product configurations.
+            <p className="text-xs text-slate-500 mt-0.5">
+              Manage reusable option groups for product configuration.
             </p>
           </div>
+        </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => loadGroups(selectedGroupId || undefined)}
-              disabled={isLoading}
-              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors border border-slate-300"
-              title="Refresh groups"
-            >
-              <RiRefreshLine className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
-
-            <button
-              onClick={handleStartCreateNew}
-              className="px-4 py-2 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg flex items-center gap-2 shadow-xs transition-colors border border-neutral-300"
-            >
-              <RiAddLine className="w-4 h-4" />
-              Create Option Group
-            </button>
+        <div className="flex items-center gap-3">
+          {/* Search Input */}
+          <div className="relative w-64">
+            <RiSearch2Line className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search option groups..."
+              className="w-full h-9 pl-9 pr-3 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs transition-all"
+            />
           </div>
+
+          {/* Create Option Group Button */}
+          <button
+            type="button"
+            onClick={handleStartCreateNew}
+            className="h-9 px-4 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-2xs border border-[#E3A008]/40 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+          >
+            <RiAddLine className="w-4 h-4 stroke-[1.5]" />
+            <span>Create Option Group</span>
+          </button>
         </div>
       </div>
 
-      {/* Main Container */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {/* Banner Quick Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-              Total Library Groups
-            </span>
-            <div className="text-2xl font-black text-slate-900 mt-1">{groups.length}</div>
-            <span className="text-[11px] text-slate-600">Central templates available</span>
+      {/* Global Alert Messages */}
+      {errorMsg && (
+        <div className="p-3 bg-rose-50 border border-rose-300 text-rose-800 rounded-xl text-xs flex items-center justify-between gap-2 shadow-2xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <RiErrorWarningLine className="w-4 h-4 flex-shrink-0 text-rose-600" />
+            <span>{errorMsg}</span>
           </div>
+          <button onClick={() => setErrorMsg(null)} className="text-rose-500 hover:text-rose-800 cursor-pointer">
+            <RiCloseLine className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-              Active Groups
-            </span>
-            <div className="text-2xl font-black text-emerald-600 mt-1">
-              {groups.filter((g) => g.isActive).length}
+      {successMsg && (
+        <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl text-xs flex items-center justify-between gap-2 shadow-2xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <RiCheckboxCircleLine className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+            <span>{successMsg}</span>
+          </div>
+          <button onClick={() => setSuccessMsg(null)} className="text-emerald-500 hover:text-emerald-800 cursor-pointer">
+            <RiCloseLine className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 2. HORIZONTAL OPTION-GROUP SELECTOR                     */}
+      {/* ======================================================== */}
+      <div className="relative flex items-center gap-2">
+        {/* Left Scroll Navigation Arrow */}
+        <button
+          type="button"
+          onClick={handleScrollLeft}
+          className="w-8 h-8 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center shadow-2xs transition-colors cursor-pointer flex-shrink-0"
+          title="Scroll left"
+        >
+          <RiArrowLeftSLine className="w-4 h-4" />
+        </button>
+
+        {/* Scrollable Container */}
+        <div
+          ref={selectorRef}
+          className="flex-1 flex items-center gap-3 overflow-x-auto no-scrollbar scroll-smooth py-1 px-0.5"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {isLoading ? (
+            <div className="py-6 px-4 text-xs text-slate-400 flex items-center gap-2">
+              <RiRefreshLine className="w-4 h-4 animate-spin text-amber-500" />
+              <span>Loading option groups...</span>
             </div>
-            <span className="text-[11px] text-slate-600">Ready to attach to products</span>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-              Additional Pricing
-            </span>
-            <div className="text-2xl font-black text-amber-600 mt-1">
-              {groups.filter((g) => g.enableAdditionalPricing).length}
+          ) : filteredGroups.length === 0 ? (
+            <div className="py-6 px-4 text-xs text-slate-400">
+              No option groups found matching &ldquo;{searchQuery}&rdquo;.
             </div>
-            <span className="text-[11px] text-slate-600">Step 4 eligible templates</span>
-          </div>
+          ) : (
+            filteredGroups.map((group) => {
+              const isSelected = selectedGroupId === group.id && !isCreatingNew;
+              const GroupCardIcon = getGroupIcon(group.name, group.code, group.inputType);
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-              Total Configured Values
-            </span>
-            <div className="text-2xl font-black text-slate-900 mt-1">{totalLibraryValues}</div>
-            <span className="text-[11px] text-slate-600">Option choices across groups</span>
-          </div>
+              return (
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() => selectGroup(group)}
+                  className={`flex-shrink-0 w-[128px] h-[106px] p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
+                    isSelected
+                      ? 'bg-[#FFFDE6] border-2 border-[#FFED00] shadow-xs ring-1 ring-amber-300/40'
+                      : 'bg-white border border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/60 shadow-2xs'
+                  }`}
+                >
+                  {/* Top: Representative Icon */}
+                  <div className="text-slate-800">
+                    <GroupCardIcon className="w-5 h-5 text-slate-800" />
+                  </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between">
-            <div>
-              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                Product Studio Sync
-              </span>
-              <div className="text-sm font-bold text-slate-900 mt-1 flex items-center gap-1.5">
-                <RiCheckboxCircleLine className="w-4 h-4 text-emerald-500" />
-                Decoupled Clones
+                  {/* Middle: Group Name */}
+                  <div className="font-bold text-slate-900 text-xs leading-snug line-clamp-2 pr-1">
+                    {group.name}
+                  </div>
+
+                  {/* Bottom: Small Status Indicator Dot */}
+                  <div className="flex items-center">
+                    <span
+                      className={`w-2 h-2 rounded-full inline-block ${
+                        group.isActive ? 'bg-emerald-500' : 'bg-slate-300'
+                      }`}
+                      title={group.isActive ? 'Active' : 'Inactive'}
+                    />
+                  </div>
+                </button>
+              );
+            })
+          )}
+
+          {/* Special "New Group" card if currently creating */}
+          {isCreatingNew && (
+            <div className="flex-shrink-0 w-[128px] h-[106px] p-3.5 rounded-2xl bg-[#FFFDE6] border-2 border-[#FFED00] shadow-xs flex flex-col justify-between">
+              <div className="text-amber-600">
+                <RiAddLine className="w-5 h-5" />
               </div>
-              <span className="text-[11px] text-slate-600">Never modifies library on save</span>
+              <div className="font-bold text-slate-900 text-xs leading-snug">
+                {formName || 'New Group'}
+              </div>
+              <div className="flex items-center">
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+              </div>
             </div>
-            <Link
-              href="/admin/products/new"
-              className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 transition-colors"
-              title="Open Product Setup Studio"
+          )}
+        </div>
+
+        {/* Right Scroll Navigation Arrow */}
+        <button
+          type="button"
+          onClick={handleScrollRight}
+          className="w-8 h-8 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center shadow-2xs transition-colors cursor-pointer flex-shrink-0"
+          title="Scroll right"
+        >
+          <RiArrowRightSLine className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* ======================================================== */}
+      {/* 3. SELECTED GROUP EDITOR                                */}
+      {/* ======================================================== */}
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-7 shadow-xs space-y-6">
+        {/* Editor Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+          <div className="flex items-center gap-3.5">
+            {/* Group Icon in Yellow Box */}
+            <div className="w-12 h-12 bg-[#FFED00] text-black rounded-xl flex items-center justify-center border border-amber-300/80 shadow-2xs flex-shrink-0">
+              <RepresentativeIcon className="w-6 h-6 text-black" />
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                  {isCreatingNew ? (formName || 'New Option Group') : (formName || 'Option Group')}
+                </h2>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${
+                    formIsActive
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'bg-slate-100 text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  {formIsActive && <RiCheckLine className="w-3.5 h-3.5 stroke-[2]" />}
+                  {formIsActive ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 font-mono mt-0.5">
+                Code: {formCode || '—'}
+              </p>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2.5 self-end sm:self-auto">
+            {!isCreatingNew && currentGroup && (
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmGroup(currentGroup)}
+                className="h-9 px-3.5 bg-rose-50/80 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg flex items-center gap-1.5 border border-rose-200 transition-colors cursor-pointer"
+                title="Delete this option group"
+              >
+                <RiDeleteBin7Line className="w-4 h-4" />
+                <span>Delete Group</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleSaveGroup}
+              disabled={isSaving}
+              className="h-9 px-4 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg flex items-center gap-1.5 border border-[#E3A008]/40 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
             >
-              <RiArrowRightLine className="w-5 h-5" />
-            </Link>
+              <RiCheckLine className="w-4 h-4 stroke-[2]" />
+              <span>{isSaving ? 'Saving...' : 'Save Changes'}</span>
+            </button>
           </div>
         </div>
 
-        {/* Global Alert Messages */}
-        {errorMsg && (
-          <div className="p-3.5 bg-rose-50 border border-rose-300 text-rose-800 rounded-xl text-xs flex items-center justify-between gap-2 shadow-2xs">
-            <div className="flex items-center gap-2">
-              <RiErrorWarningLine className="w-4 h-4 flex-shrink-0 text-rose-600" />
-              <span>{errorMsg}</span>
-            </div>
-            <button
-              onClick={() => setErrorMsg(null)}
-              className="text-rose-500 hover:text-rose-800"
-            >
-              <RiCloseLine className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+        {/* ======================================================== */}
+        {/* 4. EDITOR TABS                                           */}
+        {/* ======================================================== */}
+        <div className="flex items-center gap-1 border-b border-slate-200">
+          <button
+            type="button"
+            onClick={() => setActiveTab('settings')}
+            className={`pb-3 px-3 sm:px-4 text-xs flex items-center gap-2 cursor-pointer transition-colors relative ${
+              activeTab === 'settings'
+                ? 'font-bold text-slate-900 border-b-2 border-[#FFED00]'
+                : 'font-medium text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <RiSettings4Line className={`w-4 h-4 ${activeTab === 'settings' ? 'text-slate-900' : 'text-slate-400'}`} />
+            <span>Settings</span>
+          </button>
 
-        {successMsg && (
-          <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl text-xs flex items-center justify-between gap-2 shadow-2xs">
-            <div className="flex items-center gap-2">
-              <RiCheckboxCircleLine className="w-4 h-4 flex-shrink-0 text-emerald-600" />
-              <span>{successMsg}</span>
-            </div>
-            <button
-              onClick={() => setSuccessMsg(null)}
-              className="text-emerald-500 hover:text-emerald-800"
-            >
-              <RiCloseLine className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+          <button
+            type="button"
+            onClick={() => setActiveTab('values')}
+            className={`pb-3 px-3 sm:px-4 text-xs flex items-center gap-2 cursor-pointer transition-colors relative ${
+              activeTab === 'values'
+                ? 'font-bold text-slate-900 border-b-2 border-[#FFED00]'
+                : 'font-medium text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <RiListCheck2 className={`w-4 h-4 ${activeTab === 'values' ? 'text-slate-900' : 'text-slate-400'}`} />
+            <span>Option Values</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600 font-mono">
+              {formOptions.length}
+            </span>
+          </button>
 
-        {/* Studio Workspace Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Panel: Group List & Search (4 Cols) */}
-          <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden flex flex-col">
-            <div className="p-4 border-b border-slate-200 bg-slate-50/70 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                  Option Groups ({filteredGroups.length})
-                </span>
-                <span className="text-[11px] font-semibold text-slate-500">
-                  {groups.filter((g) => g.isActive).length} Active
-                </span>
-              </div>
-
-              {/* Search Box */}
-              <div className="relative">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search group name or code..."
-                  className="w-full h-8 pl-8 pr-3 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg placeholder:text-slate-600 focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all"
-                />
-                <RiSearch2Line className="w-3.5 h-3.5 text-slate-600 absolute left-2.5 top-1/2 -translate-y-1/2" />
-              </div>
-
-              {/* Status Filter Pills */}
-              <div className="flex items-center gap-1.5 pt-0.5">
-                {(['ALL', 'ACTIVE', 'INACTIVE'] as const).map((filter) => (
-                  <button
-                    key={filter}
-                    onClick={() => setStatusFilter(filter)}
-                    className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-all ${
-                      statusFilter === filter
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
-                    }`}
-                  >
-                    {filter}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* List Items */}
-            <div className="divide-y divide-slate-100 max-h-[620px] overflow-y-auto">
-              {isLoading ? (
-                <div className="p-8 text-center text-xs text-slate-600 space-y-2">
-                  <RiRefreshLine className="w-5 h-5 mx-auto animate-spin text-[#D4AF37]" />
-                  <p>Loading library groups...</p>
-                </div>
-              ) : filteredGroups.length === 0 ? (
-                <div className="p-8 text-center text-xs text-slate-600 space-y-3">
-                  <RiInformationLine className="w-6 h-6 mx-auto text-slate-600" />
-                  <p>No option groups match your search.</p>
-                  <button
-                    onClick={handleStartCreateNew}
-                    className="px-3 py-1.5 bg-[#FFED00] text-black text-xs font-bold rounded-lg border border-neutral-300 inline-block"
-                  >
-                    + Add New Group
-                  </button>
-                </div>
-              ) : (
-                filteredGroups.map((group) => {
-                  const isSelected = selectedGroupId === group.id && !isCreatingNew;
-                  const optsCount = Array.isArray(group.defaultOptions) ? group.defaultOptions.length : 0;
-
-                  return (
-                    <div
-                      key={group.id}
-                      onClick={() => selectGroup(group)}
-                      className={`p-3.5 cursor-pointer transition-all flex items-center justify-between border-l-4 ${
-                        isSelected
-                          ? 'bg-[#FFFDE6] border-[#FFED00]'
-                          : 'hover:bg-slate-50 border-transparent'
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1 pr-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-slate-900 truncate">
-                            {group.name}
-                          </span>
-                          <span
-                            className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                              group.isActive ? 'bg-emerald-500' : 'bg-slate-300'
-                            }`}
-                            title={group.isActive ? 'Active' : 'Inactive'}
-                          />
-                        </div>
-
-                        <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono mt-0.5">
-                          <span>{group.code}</span>
-                          <span>•</span>
-                          <span className={`px-1.5 py-0.2 text-[10px] font-bold rounded font-sans ${
-                            isTextInputType(group.inputType)
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}>
-                            {group.inputType}
-                          </span>
-                          <span>•</span>
-                          <span className={`px-1.5 py-0.2 text-[10px] font-bold rounded font-sans ${
-                            group.selectionBehavior === 'VARIANT_WISE'
-                              ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                              : group.selectionBehavior === 'MULTIPLE'
-                              ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                              : 'bg-slate-100 text-slate-600'
-                          }`}>
-                            {group.selectionBehavior === 'VARIANT_WISE'
-                              ? 'Variant-Wise'
-                              : group.selectionBehavior === 'MULTIPLE'
-                              ? 'Multi-Select'
-                              : 'Single'}
-                          </span>
-                          {group.enableAdditionalPricing && (
-                            <>
-                              <span>•</span>
-                              <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-sans">
-                                +Pricing
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className={`px-2 py-0.5 text-[11px] font-bold rounded-md border ${
-                          isTextInputType(group.inputType) && optsCount === 0
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-slate-100 text-slate-700 border-slate-200'
-                        }`}>
-                          {isTextInputType(group.inputType) && optsCount === 0
-                            ? 'Freeform'
-                            : `${optsCount} ${isTextInputType(group.inputType) ? (optsCount === 1 ? 'preset' : 'presets') : (optsCount === 1 ? 'val' : 'vals')}`}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Bottom Footer Add Action */}
-            <div className="p-3 border-t border-slate-200 bg-slate-50">
+          {!isCreatingNew && (
+            <>
               <button
-                onClick={handleStartCreateNew}
-                className={`w-full py-2 text-xs font-bold rounded-lg border transition-all flex items-center justify-center gap-1.5 ${
-                  isCreatingNew
-                    ? 'bg-slate-900 text-white border-black'
-                    : 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300'
+                type="button"
+                onClick={() => setActiveTab('pricing')}
+                className={`pb-3 px-3 sm:px-4 text-xs flex items-center gap-2 cursor-pointer transition-colors relative ${
+                  activeTab === 'pricing'
+                    ? 'font-bold text-slate-900 border-b-2 border-[#FFED00]'
+                    : 'font-medium text-slate-500 hover:text-slate-800'
                 }`}
               >
-                <RiAddLine className="w-4 h-4" />
-                {isCreatingNew ? 'Currently Creating New Group' : 'Create New Reusable Group'}
+                <RiPriceTag3Line className={`w-4 h-4 ${activeTab === 'pricing' ? 'text-slate-900' : 'text-slate-400'}`} />
+                <span>Pricing</span>
+                {formEnableAdditionalPricing && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                )}
               </button>
-            </div>
-          </div>
 
-          {/* Right Panel: Selected Group Editor & Inside Values (8 Cols) */}
-          <div className="lg:col-span-8 space-y-6">
-            <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-              {/* Header Bar */}
-              <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-[#FFED00] text-black flex items-center justify-center font-bold text-sm border border-neutral-300 flex-shrink-0">
-                    <RiListSettingsLine className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-bold text-slate-900">
-                      {isCreatingNew
-                        ? 'Create New Reusable Option Group'
-                        : `Edit Group: ${formName || 'Untitled Group'}`}
-                    </h2>
-                    <p className="text-xs text-slate-600">
-                      {isCreatingNew
-                        ? 'Define group identity and add its default option values below.'
-                        : `Unique code: '${formCode || '—'}'. Used as template when attaching to products.`}
-                    </p>
-                  </div>
-                </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('advanced')}
+                className={`pb-3 px-3 sm:px-4 text-xs flex items-center gap-2 cursor-pointer transition-colors relative ${
+                  activeTab === 'advanced'
+                    ? 'font-bold text-slate-900 border-b-2 border-[#FFED00]'
+                    : 'font-medium text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <RiEqualizerLine className={`w-4 h-4 ${activeTab === 'advanced' ? 'text-slate-900' : 'text-slate-400'}`} />
+                <span>Advanced</span>
+              </button>
+            </>
+          )}
+        </div>
 
-                <div className="flex items-center gap-2">
-                  {!isCreatingNew && selectedGroupId && (
-                    <button
-                      onClick={() => {
-                        const target = groups.find((g) => g.id === selectedGroupId);
-                        if (target) setDeleteConfirmGroup(target);
-                      }}
-                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold rounded-lg flex items-center gap-1 border border-rose-200 transition-colors"
-                      title="Delete this group from library"
-                    >
-                      <RiDeleteBinLine className="w-3.5 h-3.5" />
-                      Delete Group
-                    </button>
-                  )}
+        {/* ======================================================== */}
+        {/* TAB 1: SETTINGS (Two-Column Layout)                     */}
+        {/* ======================================================== */}
+        {activeTab === 'settings' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pt-2">
+            {/* Left Column: Basic Information (8 Cols) */}
+            <div className="lg:col-span-8 space-y-5">
+              <h3 className="text-sm font-bold text-slate-900">Basic Information</h3>
 
-                  <button
-                    onClick={handleSaveGroup}
-                    disabled={isSaving}
-                    className="px-4 py-2 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg flex items-center gap-1.5 border border-neutral-300 shadow-xs transition-colors"
-                  >
-                    <RiCheckLine className="w-4 h-4" />
-                    {isSaving ? 'Saving...' : isCreatingNew ? 'Create Group' : 'Save Changes'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Group Core Metadata Form */}
-              <div className="p-4 sm:p-6 space-y-4 border-b border-slate-200">
-                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <RiEditLine className="w-3.5 h-3.5 text-slate-500" />
-                  Group Details & Identity
-                </h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Group Name */}
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-700">
-                      Group Name <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formName}
-                      onChange={handleNameChange}
-                      placeholder="e.g. Paper Stock, Finish, Size"
-                      className="w-full h-9 px-3 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg placeholder:text-slate-600 focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
-                    />
-                    <p className="text-[11px] text-slate-600">Display label shown to customers and operators</p>
-                  </div>
-
-                  {/* Unique Code */}
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-700">
-                      Unique Code Identifier <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formCode}
-                      onChange={(e) => setFormCode(e.target.value.toLowerCase().replace(/[^a-z0-9_]+/g, '_'))}
-                      placeholder="e.g. paper_stock, finish, size"
-                      className="w-full h-9 px-3 text-xs font-mono bg-slate-50 text-slate-900 border border-slate-300 rounded-lg placeholder:text-slate-600 focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
-                    />
-                    <p className="text-[11px] text-slate-600">Stable alphanumeric snake_case identifier</p>
-                  </div>
-
-                  {/* Input Type (Presentation) */}
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-700">Input Type (Presentation)</label>
-                    <select
-                      value={formInputType}
-                      onChange={(e) => setFormInputType(e.target.value)}
-                      className="w-full h-9 px-3 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black cursor-pointer"
-                    >
-                      <optgroup label="Choice & Selection Controls">
-                        <option value="SELECT">Dropdown Select (SELECT)</option>
-                        <option value="RADIO">Radio Buttons (RADIO)</option>
-                        <option value="CHECKBOX">Checkboxes (CHECKBOX)</option>
-                        <option value="TOGGLE">Toggle Switch (TOGGLE)</option>
-                      </optgroup>
-                      <optgroup label="Text & Freeform Inputs">
-                        <option value="TEXT">Single-Line Text Input (TEXT)</option>
-                        <option value="TEXTAREA">Multi-Line Text Area (TEXTAREA)</option>
-                        <option value="NUMBER">Numeric Input (NUMBER)</option>
-                        <option value="DATE">Date Picker (DATE)</option>
-                        <option value="EMAIL">Email Address (EMAIL)</option>
-                        <option value="PHONE">Phone Number (PHONE)</option>
-                      </optgroup>
-                    </select>
-                    <p className="text-[11px] text-slate-600">Visual display widget for customer selection / input</p>
-                  </div>
-
-                  {/* Selection Behavior (Semantics) */}
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                      <span>Selection Behavior (Semantics)</span>
-                    </label>
-                    <select
-                      value={formSelectionBehavior}
-                      onChange={(e) => setFormSelectionBehavior(e.target.value)}
-                      className="w-full h-9 px-3 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black cursor-pointer"
-                    >
-                      <option value="SINGLE">Single Selection (SINGLE)</option>
-                      <option value="MULTIPLE">Multiple Selection (MULTIPLE)</option>
-                      <option value="VARIANT_WISE">Variant Dimension (VARIANT_WISE)</option>
-                    </select>
-                    <p className="text-[11px] text-slate-600">
-                      {formSelectionBehavior === 'VARIANT_WISE'
-                        ? 'Eligible as a dimension in multi-variant product ordering (e.g., Size, Color)'
-                        : formSelectionBehavior === 'MULTIPLE'
-                        ? 'Allows selecting multiple values from the same group'
-                        : 'Select exactly one value or enter freeform text for configuration'}
-                    </p>
-                  </div>
-
-                  {/* Live Interactive Storefront Widget Preview */}
-                  <div className="md:col-span-2 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
-                        <RiEyeLine className="w-3.5 h-3.5 text-amber-500" />
-                        Live Storefront Widget Preview
-                      </span>
-                      <span className="text-slate-500 font-mono text-[10px]">
-                        Widget: <strong className="text-slate-800">{formInputType}</strong>
-                      </span>
-                    </div>
-
-                    <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold text-slate-900 uppercase tracking-tight">
-                          {formName || 'Group Label Preview'}
-                        </label>
-                        <span className="text-[10px] text-slate-400 font-mono">(Storefront Customer View)</span>
-                      </div>
-
-                      {formInputType === 'TEXT' && (
-                        <div className="space-y-1.5">
-                          <input
-                            type="text"
-                            disabled
-                            placeholder={`Enter ${formName || 'custom text'}...`}
-                            className="w-full h-9 px-3 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg"
-                          />
-                          {formOptions.length > 0 && (
-                            <div className="flex flex-wrap gap-1 items-center pt-0.5">
-                              <span className="text-[10px] uppercase font-bold text-slate-400">Presets:</span>
-                              {formOptions.map((o, idx) => (
-                                <span key={idx} className="px-2 py-0.5 text-[10px] bg-slate-100 text-slate-700 rounded-md border border-slate-200 font-medium">
-                                  {o.label}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {formInputType === 'TEXTAREA' && (
-                        <div className="space-y-1.5">
-                          <textarea
-                            rows={2}
-                            disabled
-                            placeholder={`Enter ${formName || 'instructions or custom text'}...`}
-                            className="w-full p-2.5 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg resize-none"
-                          />
-                          {formOptions.length > 0 && (
-                            <div className="flex flex-wrap gap-1 items-center pt-0.5">
-                              <span className="text-[10px] uppercase font-bold text-slate-400">Suggestions:</span>
-                              {formOptions.map((o, idx) => (
-                                <span key={idx} className="px-2 py-0.5 text-[10px] bg-slate-100 text-slate-700 rounded-md border border-slate-200 font-medium">
-                                  {o.label}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {formInputType === 'NUMBER' && (
-                        <div className="space-y-1.5">
-                          <input
-                            type="number"
-                            disabled
-                            placeholder="e.g. 100"
-                            className="w-full h-9 px-3 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg"
-                          />
-                          {formOptions.length > 0 && (
-                            <div className="flex flex-wrap gap-1 items-center pt-0.5">
-                              <span className="text-[10px] uppercase font-bold text-slate-400">Presets:</span>
-                              {formOptions.map((o, idx) => (
-                                <span key={idx} className="px-2 py-0.5 text-[10px] bg-slate-100 text-slate-700 rounded-md border border-slate-200 font-medium">
-                                  {o.label}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {formInputType === 'DATE' && (
-                        <input
-                          type="date"
-                          disabled
-                          className="w-full h-9 px-3 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg"
-                        />
-                      )}
-
-                      {(formInputType === 'EMAIL' || formInputType === 'PHONE') && (
-                        <input
-                          type={formInputType === 'EMAIL' ? 'email' : 'tel'}
-                          disabled
-                          placeholder={formInputType === 'EMAIL' ? 'customer@example.com' : '+91 98765 43210'}
-                          className="w-full h-9 px-3 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg"
-                        />
-                      )}
-
-                      {formInputType === 'SELECT' && (
-                        <select disabled className="w-full h-9 px-3 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg">
-                          {formOptions.length > 0 ? (
-                            formOptions.map((o, idx) => (
-                              <option key={idx}>{o.label}</option>
-                            ))
-                          ) : (
-                            <option>Choose {formName || 'Option'}...</option>
-                          )}
-                        </select>
-                      )}
-
-                      {formInputType === 'RADIO' && (
-                        <div className="grid grid-cols-2 gap-2">
-                          {(formOptions.length > 0 ? formOptions.slice(0, 4) : [{ label: 'Choice Alpha' }, { label: 'Choice Beta' }]).map((o, idx) => (
-                            <div key={idx} className={`p-2 rounded-lg border text-xs flex items-center gap-2 ${idx === 0 ? 'bg-black text-white border-black font-semibold' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
-                              <div className={`w-3 h-3 rounded-full border ${idx === 0 ? 'border-[#FFED00] bg-[#FFED00]' : 'border-slate-300'}`} />
-                              <span className="truncate">{o.label}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {formInputType === 'CHECKBOX' && (
-                        <div className="space-y-1.5">
-                          {(formOptions.length > 0 ? formOptions.slice(0, 3) : [{ label: 'Option A' }, { label: 'Option B' }]).map((o, idx) => (
-                            <div key={idx} className={`p-2 rounded-lg border text-xs flex items-center justify-between ${idx === 0 ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
-                              <span className="truncate font-medium">{o.label}</span>
-                              <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${idx === 0 ? 'bg-[#FFED00] border-[#FFED00] text-black' : 'border-slate-300 bg-white'}`}>
-                                {idx === 0 && <RiCheckLine className="w-3 h-3 stroke-[2]" />}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {formInputType === 'TOGGLE' && (
-                        <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-                          <span className="text-xs font-semibold text-slate-800">
-                            {formOptions[0]?.label || 'Enable setting'}
-                          </span>
-                          <div className="w-10 h-5 bg-slate-900 rounded-full relative p-0.5">
-                            <div className="w-4 h-4 bg-white rounded-full ml-auto shadow-xs" />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Informational Guidance Banner */}
-                  <div className="md:col-span-2 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-[11px] flex items-center gap-2">
-                    <RiInformationLine className="w-4 h-4 text-slate-500 shrink-0" />
-                    <span>
-                      {isTextInputType(formInputType) ? (
-                        <>
-                          <strong className="text-emerald-800">
-                            {formInputType === 'TEXTAREA'
-                              ? 'Multi-line Text Area:'
-                              : formInputType === 'NUMBER'
-                              ? 'Numeric Input:'
-                              : formInputType === 'DATE'
-                              ? 'Date Picker:'
-                              : 'Freeform Text Input:'}
-                          </strong>{' '}
-                          Customers type freeform input directly in the product order configurator. Predefined values inside this group are <em>optional</em> and serve as clickable quick-fill suggestion chips.
-                        </>
-                      ) : formSelectionBehavior === 'VARIANT_WISE' ? (
-                        <>
-                          <strong className="text-purple-700">Variant Dimension:</strong> When attached to a product with <em>Multiple Variants per Order</em> enabled, this group forms a variant dimension (e.g. Size or Color) for independent quantity breakdown.
-                        </>
-                      ) : formSelectionBehavior === 'MULTIPLE' ? (
-                        <>
-                          <strong className="text-blue-700">Multiple Selection:</strong> Customers can pick several values from this group simultaneously. Recommended with Checkboxes (CHECKBOX).
-                        </>
-                      ) : (
-                        <>
-                          <strong className="text-slate-800">Single Selection:</strong> Standard configuration mode. Customers pick one value per product order.
-                        </>
-                      )}
-                    </span>
-                  </div>
-
-                  {/* Active Status */}
-                  <div className="space-y-1 flex flex-col justify-end">
-                    <label className="text-xs font-semibold text-slate-700">Status</label>
-                    <div className="h-9 flex items-center gap-3">
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formIsActive}
-                          onChange={(e) => setFormIsActive(e.target.checked)}
-                          className="sr-only peer"
-                        />
-                        <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-slate-900"></div>
-                        <span className="ml-2.5 text-xs font-semibold text-slate-800">
-                          {formIsActive ? 'Active in Library' : 'Inactive / Draft'}
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Enable Additional Pricing (Eligibility Setting) */}
-                  <div className="md:col-span-2 p-3.5 bg-amber-50/80 border border-amber-200/90 rounded-xl">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs font-bold text-amber-950">
-                            Enable Additional Pricing (Step 4 Pricing Eligibility)
-                          </label>
-                          <span
-                            className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider ${
-                              formEnableAdditionalPricing
-                                ? 'bg-amber-600 text-white'
-                                : 'bg-slate-200 text-slate-600'
-                            }`}
-                          >
-                            {formEnableAdditionalPricing ? 'ELIGIBLE' : 'DISABLED'}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-amber-900/80 leading-relaxed">
-                          When enabled, this option group becomes eligible to have dynamic additional quantity-tier pricing (e.g. 100, 200, 300 pieces) configured in <strong>Step 4 Pricing</strong> when attached to any product. Controls eligibility only; exact rates are configured per product.
-                        </p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-0.5">
-                        <input
-                          type="checkbox"
-                          checked={formEnableAdditionalPricing}
-                          onChange={(e) => setFormEnableAdditionalPricing(e.target.checked)}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Description */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700">
-                    Description / Operator Guidance
+              {/* Group Name & Unique Code Identifier */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-800">
+                    Group Name <span className="text-rose-500">*</span>
                   </label>
-                  <textarea
-                    rows={2}
-                    value={formDescription}
-                    onChange={(e) => setFormDescription(e.target.value)}
-                    placeholder="Describe what this option group controls (e.g. Substrate grammage and coating options)..."
-                    className="w-full p-2.5 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg placeholder:text-slate-600 focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
+                  <input
+                    type="text"
+                    value={formName}
+                    onChange={handleNameChange}
+                    placeholder="e.g. Cutting Edge, Material, Size"
+                    className="w-full h-10 px-3.5 text-xs bg-white text-slate-900 border border-slate-300 rounded-xl placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-800">
+                    Unique Code Identifier <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formCode}
+                    onChange={(e) => setFormCode(e.target.value.toLowerCase().replace(/[^a-z0-9_]+/g, '_'))}
+                    placeholder="e.g. cutting_edge, material, size"
+                    className="w-full h-10 px-3.5 text-xs font-mono bg-slate-50/70 text-slate-900 border border-slate-300 rounded-xl placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
                   />
                 </div>
               </div>
 
-              {/* Inside Group: Option Values Manager */}
-              <div className="p-4 sm:p-6 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                      <RiFileTextLine className="w-4 h-4 text-[#D4AF37]" />
-                      {isTextInputType(formInputType)
-                        ? `Preset Suggestions / Chips (${formOptions.length})`
-                        : `Values Inside This Group (${formOptions.length})`}
-                    </h3>
-                    <p className="text-xs text-slate-600">
-                      {isTextInputType(formInputType)
-                        ? 'Optional quick-fill preset chips for customer convenience (e.g. "Standard Size", "Rush Delivery", "N/A"). Customers can click them to auto-fill the field, or leave empty for freeform typing.'
-                        : 'Configure the specific choices available for this group (e.g. 130 GSM, 170 GSM, 250 GSM, 300 GSM).'}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsBulkModalOpen(true)}
-                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg flex items-center gap-1.5 border border-slate-300 transition-colors cursor-pointer"
-                    >
-                      <RiFileCopyLine className="w-3.5 h-3.5" />
-                      {isTextInputType(formInputType) ? 'Bulk Add Presets' : 'Bulk Add Values'}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleOpenAddValueModal()}
-                      className="px-3.5 py-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg flex items-center gap-1.5 border border-neutral-300 shadow-xs transition-colors cursor-pointer"
-                    >
-                      <RiAddLine className="w-4 h-4" />
-                      {isTextInputType(formInputType) ? 'Add Preset' : 'Add Value'}
-                    </button>
-                  </div>
+              {/* Input Type & Selection Behavior */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-800">Input Type</label>
+                  <select
+                    value={formInputType}
+                    onChange={(e) => setFormInputType(e.target.value)}
+                    className="w-full h-10 px-3.5 text-xs bg-white text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs cursor-pointer"
+                  >
+                    <optgroup label="Choice & Selection Controls">
+                      <option value="SELECT">Dropdown Select (SELECT)</option>
+                      <option value="RADIO">Radio Buttons (RADIO)</option>
+                      <option value="CHECKBOX">Checkboxes (CHECKBOX)</option>
+                      <option value="TOGGLE">Toggle Switch (TOGGLE)</option>
+                    </optgroup>
+                    <optgroup label="Text & Freeform Inputs">
+                      <option value="TEXT">Single-Line Text Input (TEXT)</option>
+                      <option value="TEXTAREA">Multi-Line Text Area (TEXTAREA)</option>
+                      <option value="NUMBER">Numeric Input (NUMBER)</option>
+                      <option value="DATE">Date Picker (DATE)</option>
+                      <option value="EMAIL">Email Address (EMAIL)</option>
+                      <option value="PHONE">Phone Number (PHONE)</option>
+                    </optgroup>
+                  </select>
                 </div>
 
-                {/* Values Table / List */}
-                {formOptions.length === 0 ? (
-                  <div className="p-8 border-2 border-dashed border-slate-300 rounded-xl text-center space-y-3 bg-slate-50/50">
-                    <RiMagicLine className="w-8 h-8 mx-auto text-slate-600" />
-                    <div>
-                      <p className="text-xs font-bold text-slate-800">
-                        {isTextInputType(formInputType)
-                          ? 'Freeform Input Mode (No presets added yet)'
-                          : 'No option values added yet'}
-                      </p>
-                      <p className="text-xs text-slate-600 mt-0.5 max-w-md mx-auto">
-                        {isTextInputType(formInputType)
-                          ? 'This text field is ready to use! Customers can type freeform input on the storefront. You can optionally add quick-fill suggestion chips below for customer convenience.'
-                          : 'Add values individually or paste multiple lines in bulk to quickly populate this group.'}
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-center gap-2 pt-1">
-                      <button
-                        onClick={() => handleOpenAddValueModal()}
-                        className="px-3 py-1.5 bg-[#FFED00] text-black text-xs font-bold rounded-lg border border-neutral-300 shadow-xs cursor-pointer"
-                      >
-                        {isTextInputType(formInputType) ? '+ Add Suggestion Preset' : '+ Add First Value'}
-                      </button>
-                      <button
-                        onClick={() => setIsBulkModalOpen(true)}
-                        className="px-3 py-1.5 bg-white text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 cursor-pointer"
-                      >
-                        Paste Bulk Lines
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-100/80 text-slate-600 font-bold uppercase text-[11px] tracking-wider border-b border-slate-200">
-                        <tr>
-                          <th className="py-2.5 px-3 w-12 text-center">Order</th>
-                          <th className="py-2.5 px-3">{isTextInputType(formInputType) ? 'Preset Label / Suggestion' : 'Option Label'}</th>
-                          <th className="py-2.5 px-3">Value Code</th>
-                          <th className="py-2.5 px-3 text-center w-20">Default</th>
-                          <th className="py-2.5 px-3 text-right w-24">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {formOptions.map((opt, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                            {/* Order Buttons */}
-                            <td className="py-2.5 px-3 text-center">
-                              <div className="flex items-center justify-center gap-0.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleMoveValue(idx, 'UP')}
-                                  disabled={idx === 0}
-                                  className="p-1 hover:bg-slate-200 rounded text-slate-500 disabled:opacity-20"
-                                  title="Move Up"
-                                >
-                                  <RiArrowUpLine className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleMoveValue(idx, 'DOWN')}
-                                  disabled={idx === formOptions.length - 1}
-                                  className="p-1 hover:bg-slate-200 rounded text-slate-500 disabled:opacity-20"
-                                  title="Move Down"
-                                >
-                                  <RiArrowDownLine className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </td>
-
-                            {/* Label */}
-                            <td className="py-2.5 px-3 font-semibold text-slate-900">
-                              {opt.label}
-                            </td>
-
-                            {/* Value */}
-                            <td className="py-2.5 px-3 font-mono text-[11px] text-slate-600">
-                              {opt.value}
-                            </td>
-
-                            {/* Default Toggle */}
-                            <td className="py-2.5 px-3 text-center">
-                              <input
-                                type="radio"
-                                name="group_default_option"
-                                checked={Boolean(opt.isDefault)}
-                                onChange={() => handleSetDefaultValue(idx)}
-                                className="w-4 h-4 text-black focus:ring-black cursor-pointer accent-[#D4AF37]"
-                                title="Set as default selection"
-                              />
-                            </td>
-
-                            {/* Actions */}
-                            <td className="py-2.5 px-3 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenAddValueModal(idx)}
-                                  className="p-1.5 hover:bg-slate-200 text-slate-600 rounded transition-colors"
-                                  title="Edit Value"
-                                >
-                                  <RiEditLine className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteValue(idx)}
-                                  className="p-1.5 hover:bg-rose-100 text-rose-600 rounded transition-colors"
-                                  title="Delete Value"
-                                >
-                                  <RiDeleteBinLine className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-800">Selection Behavior</label>
+                  <select
+                    value={formSelectionBehavior}
+                    onChange={(e) => setFormSelectionBehavior(e.target.value)}
+                    className="w-full h-10 px-3.5 text-xs bg-white text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs cursor-pointer"
+                  >
+                    <option value="SINGLE">Single Selection (SINGLE)</option>
+                    <option value="MULTIPLE">Multiple Selection (MULTIPLE)</option>
+                    <option value="VARIANT_WISE">Variant Dimension (VARIANT_WISE)</option>
+                  </select>
+                </div>
               </div>
 
-              {/* Bottom Sticky Action Footer */}
-              <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-                <span className="text-xs text-slate-500">
-                  {formOptions.length} values configured for this reusable group
-                </span>
+              {/* Description */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-800">Description</label>
+                <textarea
+                  rows={3}
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  placeholder="Standard cutting options for print products."
+                  className="w-full p-3 text-xs bg-white text-slate-900 border border-slate-300 rounded-xl placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs resize-none"
+                />
+              </div>
+            </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (selectedGroupId) {
-                        const target = groups.find((g) => g.id === selectedGroupId);
-                        if (target) selectGroup(target);
-                      } else {
-                        handleStartCreateNew();
-                      }
-                    }}
-                    className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300"
-                  >
-                    Reset Form
-                  </button>
+            {/* Right Column: Status & Visibility (4 Cols) */}
+            <div className="lg:col-span-4 space-y-6 pt-1 lg:pl-4 lg:border-l lg:border-slate-100">
+              {/* Status Section */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-slate-900">Status & Visibility</h3>
 
-                  <button
-                    type="button"
-                    onClick={handleSaveGroup}
-                    disabled={isSaving}
-                    className="px-5 py-2 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg border border-neutral-300 shadow-xs transition-colors"
-                  >
-                    {isSaving ? 'Saving...' : isCreatingNew ? 'Create Group' : 'Save Changes'}
-                  </button>
+                <div className="flex items-center gap-3">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formIsActive}
+                      onChange={(e) => setFormIsActive(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                  <div>
+                    <div className="text-xs font-bold text-slate-900">Active</div>
+                    <div className="text-[11px] text-slate-500">Group can be used in products</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Additional Pricing Section */}
+              <div className="space-y-3 pt-2">
+                <h3 className="text-sm font-bold text-slate-900">Additional Pricing</h3>
+
+                <div className="flex items-center gap-3">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formEnableAdditionalPricing}
+                      onChange={(e) => setFormEnableAdditionalPricing(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FFED00]"></div>
+                  </label>
+                  <div>
+                    <div className="text-xs font-bold text-slate-900">Enable Pricing</div>
+                    <div className="text-[11px] text-slate-500">Values in this group can have price adjustments</div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* TAB 2: OPTION VALUES                                     */}
+        {/* ======================================================== */}
+        {activeTab === 'values' && (
+          <div className="space-y-5 pt-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  {isTextInputType(formInputType)
+                    ? `Preset Suggestion Chips (${formOptions.length})`
+                    : `Option Values (${formOptions.length})`}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {isTextInputType(formInputType)
+                    ? 'Optional quick-fill suggestion chips for customers when typing custom input.'
+                    : 'Configure the preset choices available for customer selection.'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBulkModalOpen(true)}
+                  className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg flex items-center gap-1.5 border border-slate-300 transition-colors cursor-pointer"
+                >
+                  <RiFileCopyLine className="w-3.5 h-3.5" />
+                  <span>Bulk Add Values</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenAddValueModal()}
+                  className="h-8 px-3.5 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg flex items-center gap-1.5 border border-[#E3A008]/40 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <RiAddLine className="w-4 h-4 stroke-[2]" />
+                  <span>Add Value</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Values Table */}
+            {formOptions.length === 0 ? (
+              <div className="p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center space-y-3 bg-slate-50/50">
+                <RiListSettingsLine className="w-8 h-8 mx-auto text-slate-400" />
+                <div>
+                  <p className="text-xs font-bold text-slate-800">
+                    {isTextInputType(formInputType)
+                      ? 'Freeform Input Mode (No suggestions added)'
+                      : 'No option values added yet'}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5 max-w-md mx-auto">
+                    {isTextInputType(formInputType)
+                      ? 'Customers can type custom text directly in the storefront order form. You can optionally add quick-fill suggestion chips.'
+                      : 'Click Add Value or Bulk Add to configure the choices for this group.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenAddValueModal()}
+                  className="h-8 px-3.5 bg-[#FFED00] text-black text-xs font-bold rounded-lg border border-amber-300 shadow-2xs inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <RiAddLine className="w-3.5 h-3.5 stroke-[2]" /> Add First Value
+                </button>
+              </div>
+            ) : (
+              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[11px] tracking-wider border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3 w-12 text-center">Order</th>
+                      <th className="py-2.5 px-3">Option Label</th>
+                      <th className="py-2.5 px-3">Value Code</th>
+                      {formEnableAdditionalPricing && (
+                        <th className="py-2.5 px-3 w-28">Price Add-on</th>
+                      )}
+                      <th className="py-2.5 px-3 text-center w-20">Default</th>
+                      <th className="py-2.5 px-3 text-right w-24">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {formOptions.map((opt, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                        {/* Order Buttons */}
+                        <td className="py-2.5 px-3 text-center">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() => handleMoveValue(idx, 'UP')}
+                              disabled={idx === 0}
+                              className="p-1 hover:bg-slate-200 rounded text-slate-500 disabled:opacity-20 cursor-pointer"
+                              title="Move Up"
+                            >
+                              <RiArrowUpLine className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveValue(idx, 'DOWN')}
+                              disabled={idx === formOptions.length - 1}
+                              className="p-1 hover:bg-slate-200 rounded text-slate-500 disabled:opacity-20 cursor-pointer"
+                              title="Move Down"
+                            >
+                              <RiArrowDownLine className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+
+                        {/* Label */}
+                        <td className="py-2.5 px-3 font-semibold text-slate-900">
+                          {opt.label}
+                        </td>
+
+                        {/* Value Code */}
+                        <td className="py-2.5 px-3 font-mono text-[11px] text-slate-600">
+                          {opt.value}
+                        </td>
+
+                        {/* Price Modifier */}
+                        {formEnableAdditionalPricing && (
+                          <td className="py-2.5 px-3 font-mono font-semibold text-slate-800">
+                            {Number(opt.priceModifier || 0) > 0 ? (
+                              <span className="text-emerald-700 font-bold">
+                                +{formatCurrency(Number(opt.priceModifier))}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">₹0.00</span>
+                            )}
+                          </td>
+                        )}
+
+                        {/* Default Radio */}
+                        <td className="py-2.5 px-3 text-center">
+                          <input
+                            type="radio"
+                            name="group_default_option"
+                            checked={Boolean(opt.isDefault)}
+                            onChange={() => handleSetDefaultValue(idx)}
+                            className="w-4 h-4 text-black focus:ring-black cursor-pointer accent-amber-500"
+                            title="Set as default selection"
+                          />
+                        </td>
+
+                        {/* Actions */}
+                        <td className="py-2.5 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAddValueModal(idx)}
+                              className="p-1.5 hover:bg-slate-200 text-slate-600 rounded transition-colors cursor-pointer"
+                              title="Edit Value"
+                            >
+                              <RiEditLine className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteValue(idx)}
+                              className="p-1.5 hover:bg-rose-100 text-rose-600 rounded transition-colors cursor-pointer"
+                              title="Delete Value"
+                            >
+                              <RiDeleteBin7Line className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* TAB 3: PRICING CONFIGURATION                             */}
+        {/* ======================================================== */}
+        {activeTab === 'pricing' && !isCreatingNew && (
+          <div className="space-y-5 pt-2">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Pricing Configuration</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Configure additional pricing adjustments and eligibility for Step 4 Pricing matrix.
+              </p>
+            </div>
+
+            {!formEnableAdditionalPricing ? (
+              <div className="p-6 border border-amber-200 bg-amber-50/50 rounded-2xl space-y-3">
+                <div className="flex items-center gap-2.5 text-amber-900 font-bold text-xs">
+                  <RiInformationLine className="w-4 h-4 text-amber-600" />
+                  <span>Additional pricing is currently disabled for this group</span>
+                </div>
+                <p className="text-xs text-amber-800 leading-relaxed max-w-2xl">
+                  When additional pricing is disabled, selections in this group do not contribute to quantity-tier price add-ons. To enable per-value adjustments, switch on <strong>Enable Pricing</strong> in Settings or click the button below.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setFormEnableAdditionalPricing(true)}
+                  className="h-8 px-3.5 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg border border-amber-300 shadow-2xs transition-colors cursor-pointer"
+                >
+                  Enable Additional Pricing for &ldquo;{formName || 'Group'}&rdquo;
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <RiCheckboxCircleLine className="w-4 h-4 text-emerald-600" />
+                    <span>
+                      <strong>Pricing is enabled:</strong> Values configured here will contribute base add-on rates in product calculation.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormEnableAdditionalPricing(false)}
+                    className="text-xs font-semibold text-emerald-800 hover:underline cursor-pointer"
+                  >
+                    Disable Pricing
+                  </button>
+                </div>
+
+                <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[11px] tracking-wider border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-3">Option Label</th>
+                        <th className="py-2.5 px-3">Value Code</th>
+                        <th className="py-2.5 px-3 w-40">Price Adjustment (₹)</th>
+                        <th className="py-2.5 px-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-mono">
+                      {formOptions.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="p-6 text-center text-slate-400 font-sans">
+                            No option values configured. Switch to the Option Values tab to add values.
+                          </td>
+                        </tr>
+                      ) : (
+                        formOptions.map((opt, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="py-2.5 px-3 font-sans font-semibold text-slate-900">
+                              {opt.label}
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              {opt.value}
+                            </td>
+                            <td className="py-2.5 px-3 font-sans">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-slate-500 font-mono text-xs">+₹</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={opt.priceModifier || ''}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setFormOptions((prev) => {
+                                      const copy = [...prev];
+                                      copy[idx] = { ...copy[idx], priceModifier: val };
+                                      return copy;
+                                    });
+                                  }}
+                                  placeholder="0.00"
+                                  className="w-24 h-7 px-2 text-xs font-mono bg-white border border-slate-300 rounded focus:outline-none focus:border-amber-500"
+                                />
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-sans">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenAddValueModal(idx)}
+                                className="text-xs text-amber-700 hover:underline font-semibold cursor-pointer"
+                              >
+                                Edit Details
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* TAB 4: ADVANCED SETTINGS & WIDGET PREVIEW                */}
+        {/* ======================================================== */}
+        {activeTab === 'advanced' && !isCreatingNew && (
+          <div className="space-y-6 pt-2">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Advanced Configuration & Preview</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Inspect live storefront presentation and library clone synchronization mechanics.
+              </p>
+            </div>
+
+            {/* Live Storefront Widget Preview */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
+                  <RiEyeLine className="w-4 h-4 text-amber-500" />
+                  Live Storefront Widget Preview
+                </span>
+                <span className="text-slate-500 font-mono text-[10px]">
+                  Widget: <strong className="text-slate-800">{formInputType}</strong>
+                </span>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3 max-w-lg">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-900 uppercase tracking-tight">
+                    {formName || 'Group Label Preview'}
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-mono">(Storefront View)</span>
+                </div>
+
+                {formInputType === 'SELECT' && (
+                  <select disabled className="w-full h-9 px-3 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg">
+                    {formOptions.length > 0 ? (
+                      formOptions.map((o, idx) => (
+                        <option key={idx}>{o.label}</option>
+                      ))
+                    ) : (
+                      <option>Choose {formName || 'Option'}...</option>
+                    )}
+                  </select>
+                )}
+
+                {formInputType === 'RADIO' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {(formOptions.length > 0 ? formOptions.slice(0, 4) : [{ label: 'Option A' }, { label: 'Option B' }]).map((o, idx) => (
+                      <div key={idx} className={`p-2 rounded-lg border text-xs flex items-center gap-2 ${idx === 0 ? 'bg-black text-white border-black font-semibold' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
+                        <div className={`w-3 h-3 rounded-full border ${idx === 0 ? 'border-[#FFED00] bg-[#FFED00]' : 'border-slate-300'}`} />
+                        <span className="truncate">{o.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {formInputType === 'CHECKBOX' && (
+                  <div className="space-y-1.5">
+                    {(formOptions.length > 0 ? formOptions.slice(0, 3) : [{ label: 'Option A' }, { label: 'Option B' }]).map((o, idx) => (
+                      <div key={idx} className={`p-2 rounded-lg border text-xs flex items-center justify-between ${idx === 0 ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
+                        <span className="truncate font-medium">{o.label}</span>
+                        <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${idx === 0 ? 'bg-[#FFED00] border-[#FFED00] text-black' : 'border-slate-300 bg-white'}`}>
+                          {idx === 0 && <RiCheckLine className="w-3 h-3 stroke-[2]" />}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {formInputType === 'TOGGLE' && (
+                  <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                    <span className="text-xs font-semibold text-slate-800">
+                      {formOptions[0]?.label || 'Enable setting'}
+                    </span>
+                    <div className="w-10 h-5 bg-slate-900 rounded-full relative p-0.5">
+                      <div className="w-4 h-4 bg-white rounded-full ml-auto shadow-xs" />
+                    </div>
+                  </div>
+                )}
+
+                {isTextInputType(formInputType) && (
+                  <div className="space-y-1.5">
+                    <input
+                      type={formInputType === 'NUMBER' ? 'number' : formInputType === 'DATE' ? 'date' : 'text'}
+                      disabled
+                      placeholder={`Enter ${formName || 'custom text'}...`}
+                      className="w-full h-9 px-3 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg"
+                    />
+                    {formOptions.length > 0 && (
+                      <div className="flex flex-wrap gap-1 items-center pt-0.5">
+                        <span className="text-[10px] uppercase font-bold text-slate-400">Presets:</span>
+                        {formOptions.map((o, idx) => (
+                          <span key={idx} className="px-2 py-0.5 text-[10px] bg-slate-100 text-slate-700 rounded-md border border-slate-200 font-medium">
+                            {o.label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Product Studio Sync Information */}
+            <div className="p-4 bg-white border border-slate-200 rounded-2xl space-y-2 shadow-2xs">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
+                <RiCheckboxCircleLine className="w-4 h-4 text-emerald-500" />
+                <span>Product Studio Sync: Decoupled Clones Architecture</span>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Changes saved to library option groups serve as central templates for product configuration. When attached to individual products in the <strong>Product Setup Studio</strong>, independent cloned copies are created so that existing job cards and historical orders are never corrupted by upstream library edits.
+              </p>
+              <div className="pt-1">
+                <Link
+                  href="/admin/products"
+                  className="text-xs font-semibold text-amber-700 hover:text-amber-800 hover:underline inline-flex items-center gap-1"
+                >
+                  View Product Setup Studio &rarr;
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* MODAL 1: Add / Edit Single Option Value */}
+      {/* ======================================================== */}
+      {/* MODAL 1: ADD / EDIT SINGLE OPTION VALUE                  */}
+      {/* ======================================================== */}
       {isAddValueModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl border border-slate-200 max-w-md w-full p-5 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-6 space-y-4 shadow-xl animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-sm font-bold text-slate-900">
-                {editingValueIdx !== null
-                  ? isTextInputType(formInputType)
-                    ? 'Edit Suggestion Preset'
-                    : 'Edit Option Value'
-                  : isTextInputType(formInputType)
-                  ? 'Add New Suggestion Preset'
-                  : 'Add New Option Value'}
+                {editingValueIdx !== null ? 'Edit Option Value' : 'Add New Option Value'}
               </h3>
               <button
+                type="button"
                 onClick={() => setIsAddValueModalOpen(false)}
-                className="text-slate-600 hover:text-black cursor-pointer"
+                className="text-slate-400 hover:text-slate-800 cursor-pointer"
               >
                 <RiCloseLine className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-3.5">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700">
-                  {isTextInputType(formInputType) ? 'Preset Label / Text' : 'Option Label'}{' '}
-                  <span className="text-rose-500">*</span>
+                <label className="text-xs font-bold text-slate-800">
+                  Option Label <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -1270,35 +1289,45 @@ export default function OptionGroupsLibraryPage() {
                       setValFormValue(l.toLowerCase().replace(/[^a-z0-9_]+/g, '_'));
                     }
                   }}
-                  placeholder={
-                    isTextInputType(formInputType)
-                      ? 'e.g. Standard, Custom Name, N/A'
-                      : 'e.g. 300 GSM Velvet Card, Gloss UV'
-                  }
-                  className="w-full h-9 px-3 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
+                  placeholder="e.g. 300 GSM Velvet Card, Gloss UV"
+                  className="w-full h-9 px-3 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700">Value Code</label>
+                <label className="text-xs font-bold text-slate-800">Value Code Identifier</label>
                 <input
                   type="text"
                   value={valFormValue}
                   onChange={(e) => setValFormValue(e.target.value.toLowerCase().replace(/[^a-z0-9_]+/g, '_'))}
-                  placeholder={
-                    isTextInputType(formInputType) ? 'e.g. standard, custom_name' : 'e.g. 300_gsm_velvet_card'
-                  }
-                  className="w-full h-9 px-3 text-xs font-mono bg-slate-50 text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
+                  placeholder="e.g. 300_gsm_velvet_card"
+                  className="w-full h-9 px-3 text-xs font-mono bg-slate-50 text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                 />
               </div>
 
-              <div className="pt-2">
+              {formEnableAdditionalPricing && (
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-800">Price Adjustment (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={valFormPriceModifier || ''}
+                    onChange={(e) => setValFormPriceModifier(parseFloat(e.target.value) || 0)}
+                    placeholder="0.00"
+                    className="w-full h-9 px-3 text-xs font-mono bg-white text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                  />
+                  <p className="text-[11px] text-slate-500">Base surcharge added when customer selects this value.</p>
+                </div>
+              )}
+
+              <div className="pt-1">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={valFormIsDefault}
                     onChange={(e) => setValFormIsDefault(e.target.checked)}
-                    className="w-4 h-4 text-black rounded focus:ring-black accent-[#D4AF37]"
+                    className="w-4 h-4 text-black rounded focus:ring-black accent-amber-500"
                   />
                   <span className="text-xs font-semibold text-slate-800">
                     Set as default selected value
@@ -1307,7 +1336,7 @@ export default function OptionGroupsLibraryPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setIsAddValueModalOpen(false)}
@@ -1318,82 +1347,62 @@ export default function OptionGroupsLibraryPage() {
               <button
                 type="button"
                 onClick={handleSaveSingleValue}
-                className="px-4 py-2 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg border border-neutral-300 cursor-pointer"
+                className="px-4 py-2 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg border border-amber-300 cursor-pointer shadow-2xs"
               >
-                {editingValueIdx !== null
-                  ? isTextInputType(formInputType)
-                    ? 'Update Preset'
-                    : 'Update Value'
-                  : isTextInputType(formInputType)
-                  ? 'Add Preset'
-                  : 'Add Value'}
+                {editingValueIdx !== null ? 'Update Value' : 'Add Value'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL 2: Bulk Values Multiline Paste */}
+      {/* ======================================================== */}
+      {/* MODAL 2: BULK VALUES PASTE                               */}
+      {/* ======================================================== */}
       {isBulkModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl border border-slate-200 max-w-lg w-full p-5 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full p-6 space-y-4 shadow-xl animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">
-                  {isTextInputType(formInputType) ? 'Bulk Add Preset Suggestions' : 'Bulk Add Option Values'}
-                </h3>
-                <p className="text-xs text-slate-600 mt-0.5">
-                  Paste multiple options or presets at once (one per line).
+                <h3 className="text-sm font-bold text-slate-900">Bulk Add Option Values</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Paste multiple options at once (one per line).
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setIsBulkModalOpen(false)}
-                className="text-slate-600 hover:text-black cursor-pointer"
+                className="text-slate-400 hover:text-slate-800 cursor-pointer"
               >
                 <RiCloseLine className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-2">
-              <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg text-xs space-y-1">
-                <span className="font-bold">Format:</span>
+              <div className="p-3 bg-amber-50/80 border border-amber-200 text-amber-900 rounded-xl text-xs space-y-1">
+                <span className="font-bold">Supported Line Formats:</span>
                 <code className="block bg-amber-100/70 p-1 rounded font-mono text-[11px]">
-                  {isTextInputType(formInputType) ? 'Preset Label, value_code (or simply Preset Label)' : 'Option Label, value_code (or simply Option Label)'}
+                  Option Label, value_code, price_addon
                 </code>
-                <span className="text-[11px] text-amber-800">
-                  Example:
-                  <br />
-                  {isTextInputType(formInputType) ? (
-                    <>
-                      Standard Print, standard<br />
-                      Rush 24h Delivery, rush_24h<br />
-                      Custom Inscription, custom_note
-                    </>
-                  ) : (
-                    <>
-                      130 GSM Gloss Art, 130_gsm<br />
-                      170 GSM Matte Art, 170_gsm<br />
-                      250 GSM Premium Card, 250_gsm
-                    </>
-                  )}
+                <span className="text-[11px] text-amber-800 block">
+                  Example:<br />
+                  130 GSM Gloss Art, 130_gsm, 0<br />
+                  170 GSM Matte Art, 170_gsm, 25<br />
+                  250 GSM Premium Card, 250_gsm, 50
                 </span>
               </div>
 
               <textarea
-                rows={7}
+                rows={6}
                 value={bulkInputText}
                 onChange={(e) => setBulkInputText(e.target.value)}
-                placeholder={
-                  isTextInputType(formInputType)
-                    ? 'Standard Delivery&#10;Rush Delivery&#10;Express 24h'
-                    : '130 GSM Gloss Art&#10;170 GSM Matte Art&#10;250 GSM Premium Card'
-                }
-                className="w-full p-3 text-xs font-mono bg-slate-50 text-slate-900 border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
+                placeholder="130 GSM Gloss Art&#10;170 GSM Matte Art&#10;250 GSM Premium Card"
+                className="w-full p-3 text-xs font-mono bg-slate-50 text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 resize-none"
               />
             </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-              <span className="text-xs text-slate-600">
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <span className="text-xs text-slate-500 font-mono">
                 {bulkInputText.trim()
                   ? `${bulkInputText.trim().split('\n').filter((l) => l.trim()).length} lines detected`
                   : '0 lines'}
@@ -1403,7 +1412,7 @@ export default function OptionGroupsLibraryPage() {
                 <button
                   type="button"
                   onClick={() => setIsBulkModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1411,7 +1420,7 @@ export default function OptionGroupsLibraryPage() {
                   type="button"
                   onClick={handleBulkAddValues}
                   disabled={!bulkInputText.trim()}
-                  className="px-4 py-2 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg border border-neutral-300 disabled:opacity-50"
+                  className="px-4 py-2 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg border border-amber-300 disabled:opacity-50 cursor-pointer shadow-2xs"
                 >
                   Import All Values
                 </button>
@@ -1421,32 +1430,34 @@ export default function OptionGroupsLibraryPage() {
         </div>
       )}
 
-      {/* MODAL 3: Delete Confirmation */}
+      {/* ======================================================== */}
+      {/* MODAL 3: DELETE CONFIRMATION                             */}
+      {/* ======================================================== */}
       {deleteConfirmGroup && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl border border-slate-200 max-w-sm w-full p-5 space-y-4 shadow-xl">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-sm w-full p-6 space-y-4 shadow-xl animate-in zoom-in-95 duration-150">
             <div className="flex items-center gap-3 text-rose-600">
               <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center flex-shrink-0">
-                <RiDeleteBinLine className="w-5 h-5" />
+                <RiDeleteBin7Line className="w-5 h-5 text-rose-600" />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Delete Option Group</h3>
-                <p className="text-xs text-slate-600">This action cannot be undone.</p>
+                <p className="text-xs text-slate-500">This action cannot be undone.</p>
               </div>
             </div>
 
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-900 space-y-1">
-              <span className="font-bold block">⚠️ Cascade Deletion Notice:</span>
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 space-y-1">
+              <span className="font-bold block">Notice:</span>
               <span>
-                Deleting <strong className="font-bold">{deleteConfirmGroup.name}</strong> will remove it from the reusable library AND completely delete this option group across all products that use it.
+                Deleting <strong className="font-bold">{deleteConfirmGroup.name}</strong> will remove it from the reusable library. Products with cloned copies will keep their current configuration.
               </span>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setDeleteConfirmGroup(null)}
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg"
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer"
               >
                 Cancel
               </button>
@@ -1454,7 +1465,7 @@ export default function OptionGroupsLibraryPage() {
                 type="button"
                 onClick={handleDeleteGroup}
                 disabled={isSaving}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition-colors"
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer shadow-2xs"
               >
                 {isSaving ? 'Deleting...' : 'Confirm Delete'}
               </button>

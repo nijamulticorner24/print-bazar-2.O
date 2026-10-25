@@ -37,6 +37,7 @@ export interface CreateOrderItemDto {
   totalPrice?: number;
   options?: OptionSelectionDto[];
   fieldValues?: Record<string, any>;
+  selectedOptions?: Record<string, any>;
   personalization?: PersonalizationPayload;
   variantLines?: Array<{
     id?: string;
@@ -95,6 +96,13 @@ export interface CreateOrderItemDto {
 
 export interface CreateOrderDto {
   customerId?: string;
+  customer?: {
+    fullName?: string;
+    email?: string;
+    phone?: string;
+    companyName?: string;
+    gstin?: string;
+  };
   customerDetails?: {
     fullName: string;
     email: string;
@@ -105,12 +113,24 @@ export interface CreateOrderDto {
   sourceChannel?: OrderChannel;
   deliveryMethod?: DeliveryMethod;
   paymentMode?: 'FULL' | 'SPLIT_50';
+  paymentSplitType?: 'FULL_PREPAID' | 'SPLIT_50' | 'FULL' | string;
   paymentMethod?: string;
   paidAmount?: number;
   advanceAmount?: number;
   balanceAmount?: number;
   shippingAddress?: {
-    contactName: string;
+    contactName?: string;
+    fullName?: string;
+    phone: string;
+    street: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    country?: string;
+  };
+  billingAddress?: {
+    contactName?: string;
+    fullName?: string;
     phone: string;
     street: string;
     city: string;
@@ -179,34 +199,35 @@ export class OrdersService {
 
     // 1. Resolve or Create Authoritative Customer
     let customerId = dto.customerId;
+    const customerInfo = dto.customerDetails || dto.customer;
 
-    if (dto.customerDetails && (dto.customerDetails.email || dto.customerDetails.phone)) {
+    if (customerInfo && (customerInfo.email || customerInfo.phone)) {
       let existing = await this.prisma.customer.findFirst({
         where: {
           OR: [
-            ...(dto.customerDetails.email ? [{ email: dto.customerDetails.email }] : []),
-            ...(dto.customerDetails.phone ? [{ phone: dto.customerDetails.phone }] : []),
+            ...(customerInfo.email ? [{ email: customerInfo.email }] : []),
+            ...(customerInfo.phone ? [{ phone: customerInfo.phone }] : []),
           ],
         },
       });
       if (!existing) {
         existing = await this.prisma.customer.create({
           data: {
-            fullName: dto.customerDetails.fullName || 'Walk-in Customer',
-            email: dto.customerDetails.email || `walkin-${Date.now()}@printbazzar.local`,
-            phone: dto.customerDetails.phone || 'N/A',
-            companyName: dto.customerDetails.companyName,
-            gstin: dto.customerDetails.gstin,
+            fullName: customerInfo.fullName || 'Walk-in Customer',
+            email: customerInfo.email || `walkin-${Date.now()}@printbazzar.local`,
+            phone: customerInfo.phone || 'N/A',
+            companyName: customerInfo.companyName,
+            gstin: customerInfo.gstin,
           },
         });
       } else {
         existing = await this.prisma.customer.update({
           where: { id: existing.id },
           data: {
-            fullName: dto.customerDetails.fullName || existing.fullName,
-            companyName: dto.customerDetails.companyName || existing.companyName,
-            gstin: dto.customerDetails.gstin || existing.gstin,
-            phone: dto.customerDetails.phone || existing.phone,
+            fullName: customerInfo.fullName || existing.fullName,
+            companyName: customerInfo.companyName || existing.companyName,
+            gstin: customerInfo.gstin || existing.gstin,
+            phone: customerInfo.phone || existing.phone,
           },
         });
       }
@@ -368,7 +389,7 @@ export class OrdersService {
       const configRules: any[] = (product as any).configurationRules || [];
       const optionGroups: any[] = (product as any).optionGroups || [];
       if (configRules.length > 0 && optionGroups.length > 0) {
-        const rawChoices = itemDto.options || itemDto.fieldValues || {};
+        const rawChoices = itemDto.options || itemDto.fieldValues || itemDto.selectedOptions || {};
         const ruleEval = evaluateProductConfiguration(
           optionGroups.map((g: any) => ({
             id: g.id,
@@ -417,7 +438,7 @@ export class OrdersService {
         productId: product.id,
         quantity: itemQty,
         options: itemDto.options,
-        fieldValues: itemDto.fieldValues,
+        fieldValues: itemDto.fieldValues || itemDto.selectedOptions,
         variantLines: itemDto.variantLines,
         hasArtwork,
         hasDesignService: wantsDesign,
@@ -560,8 +581,12 @@ export class OrdersService {
           data: {
             customerId,
             type: 'SHIPPING',
-            contactName: dto.shippingAddress.contactName || dto.customerDetails?.fullName || 'Customer',
-            phone: dto.shippingAddress.phone || dto.customerDetails?.phone || '',
+            contactName:
+              dto.shippingAddress.contactName ||
+              dto.shippingAddress.fullName ||
+              customerInfo?.fullName ||
+              'Customer',
+            phone: dto.shippingAddress.phone || customerInfo?.phone || '',
             street: dto.shippingAddress.street,
             city: dto.shippingAddress.city,
             state: dto.shippingAddress.state,
@@ -573,7 +598,8 @@ export class OrdersService {
       }
 
       // Calculate authoritative payment breakdown based on settlement mode
-      const isSplit = dto.paymentMode === 'SPLIT_50';
+      const isSplit = dto.paymentMode === 'SPLIT_50' || dto.paymentSplitType === 'SPLIT_50';
+      const isFullPrepaid = dto.paymentMode === 'FULL' || dto.paymentSplitType === 'FULL_PREPAID';
       const expectedAdvance = isSplit ? Math.round(totalAmount * 0.5 * 100) / 100 : totalAmount;
       const expectedBalance = isSplit ? Math.round((totalAmount - expectedAdvance) * 100) / 100 : 0.0;
 
@@ -582,7 +608,7 @@ export class OrdersService {
       if (dto.paidAmount !== undefined && Number(dto.paidAmount) > 0) {
         // Reconcile client payment attempt with authoritative server-calculated order total
         initialPaid = isSplit ? expectedAdvance : totalAmount;
-      } else if (dto.paymentMethod === 'ONLINE_PREPAID') {
+      } else if (dto.paymentMethod === 'ONLINE_PREPAID' || isFullPrepaid) {
         initialPaid = isSplit ? expectedAdvance : totalAmount;
       }
       const initialBalance = Math.max(0, Math.round((totalAmount - initialPaid) * 100) / 100);
@@ -805,7 +831,7 @@ export class OrdersService {
         data: {
           orderId: createdOrder.id,
           invoiceNumber: `INV-${orderNumber}`,
-          customerGstin: dto.customerDetails?.gstin || null,
+          customerGstin: customerInfo?.gstin || null,
           subtotal,
           shippingAmount: Number(shippingAmount || 0),
           cgst: Math.round((totalTax / 2) * 100) / 100,

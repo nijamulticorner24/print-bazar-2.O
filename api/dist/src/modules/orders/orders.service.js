@@ -58,23 +58,24 @@ let OrdersService = OrdersService_1 = class OrdersService {
             }
         }
         let customerId = dto.customerId;
-        if (dto.customerDetails && (dto.customerDetails.email || dto.customerDetails.phone)) {
+        const customerInfo = dto.customerDetails || dto.customer;
+        if (customerInfo && (customerInfo.email || customerInfo.phone)) {
             let existing = await this.prisma.customer.findFirst({
                 where: {
                     OR: [
-                        ...(dto.customerDetails.email ? [{ email: dto.customerDetails.email }] : []),
-                        ...(dto.customerDetails.phone ? [{ phone: dto.customerDetails.phone }] : []),
+                        ...(customerInfo.email ? [{ email: customerInfo.email }] : []),
+                        ...(customerInfo.phone ? [{ phone: customerInfo.phone }] : []),
                     ],
                 },
             });
             if (!existing) {
                 existing = await this.prisma.customer.create({
                     data: {
-                        fullName: dto.customerDetails.fullName || 'Walk-in Customer',
-                        email: dto.customerDetails.email || `walkin-${Date.now()}@printbazzar.local`,
-                        phone: dto.customerDetails.phone || 'N/A',
-                        companyName: dto.customerDetails.companyName,
-                        gstin: dto.customerDetails.gstin,
+                        fullName: customerInfo.fullName || 'Walk-in Customer',
+                        email: customerInfo.email || `walkin-${Date.now()}@printbazzar.local`,
+                        phone: customerInfo.phone || 'N/A',
+                        companyName: customerInfo.companyName,
+                        gstin: customerInfo.gstin,
                     },
                 });
             }
@@ -82,10 +83,10 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 existing = await this.prisma.customer.update({
                     where: { id: existing.id },
                     data: {
-                        fullName: dto.customerDetails.fullName || existing.fullName,
-                        companyName: dto.customerDetails.companyName || existing.companyName,
-                        gstin: dto.customerDetails.gstin || existing.gstin,
-                        phone: dto.customerDetails.phone || existing.phone,
+                        fullName: customerInfo.fullName || existing.fullName,
+                        companyName: customerInfo.companyName || existing.companyName,
+                        gstin: customerInfo.gstin || existing.gstin,
+                        phone: customerInfo.phone || existing.phone,
                     },
                 });
             }
@@ -214,7 +215,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
             const configRules = product.configurationRules || [];
             const optionGroups = product.optionGroups || [];
             if (configRules.length > 0 && optionGroups.length > 0) {
-                const rawChoices = itemDto.options || itemDto.fieldValues || {};
+                const rawChoices = itemDto.options || itemDto.fieldValues || itemDto.selectedOptions || {};
                 const ruleEval = (0, product_rules_engine_1.evaluateProductConfiguration)(optionGroups.map((g) => ({
                     id: g.id,
                     name: g.name,
@@ -248,7 +249,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 productId: product.id,
                 quantity: itemQty,
                 options: itemDto.options,
-                fieldValues: itemDto.fieldValues,
+                fieldValues: itemDto.fieldValues || itemDto.selectedOptions,
                 variantLines: itemDto.variantLines,
                 hasArtwork,
                 hasDesignService: wantsDesign,
@@ -352,8 +353,11 @@ let OrdersService = OrdersService_1 = class OrdersService {
                     data: {
                         customerId,
                         type: 'SHIPPING',
-                        contactName: dto.shippingAddress.contactName || dto.customerDetails?.fullName || 'Customer',
-                        phone: dto.shippingAddress.phone || dto.customerDetails?.phone || '',
+                        contactName: dto.shippingAddress.contactName ||
+                            dto.shippingAddress.fullName ||
+                            customerInfo?.fullName ||
+                            'Customer',
+                        phone: dto.shippingAddress.phone || customerInfo?.phone || '',
                         street: dto.shippingAddress.street,
                         city: dto.shippingAddress.city,
                         state: dto.shippingAddress.state,
@@ -363,14 +367,15 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 });
                 shippingAddressId = addr.id;
             }
-            const isSplit = dto.paymentMode === 'SPLIT_50';
+            const isSplit = dto.paymentMode === 'SPLIT_50' || dto.paymentSplitType === 'SPLIT_50';
+            const isFullPrepaid = dto.paymentMode === 'FULL' || dto.paymentSplitType === 'FULL_PREPAID';
             const expectedAdvance = isSplit ? Math.round(totalAmount * 0.5 * 100) / 100 : totalAmount;
             const expectedBalance = isSplit ? Math.round((totalAmount - expectedAdvance) * 100) / 100 : 0.0;
             let initialPaid = 0.0;
             if (dto.paidAmount !== undefined && Number(dto.paidAmount) > 0) {
                 initialPaid = isSplit ? expectedAdvance : totalAmount;
             }
-            else if (dto.paymentMethod === 'ONLINE_PREPAID') {
+            else if (dto.paymentMethod === 'ONLINE_PREPAID' || isFullPrepaid) {
                 initialPaid = isSplit ? expectedAdvance : totalAmount;
             }
             const initialBalance = Math.max(0, Math.round((totalAmount - initialPaid) * 100) / 100);
@@ -575,7 +580,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 data: {
                     orderId: createdOrder.id,
                     invoiceNumber: `INV-${orderNumber}`,
-                    customerGstin: dto.customerDetails?.gstin || null,
+                    customerGstin: customerInfo?.gstin || null,
                     subtotal,
                     shippingAmount: Number(shippingAmount || 0),
                     cgst: Math.round((totalTax / 2) * 100) / 100,

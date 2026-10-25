@@ -130,6 +130,7 @@ describe('Sprint Critical Regression Tests (5 Verified Defects)', () => {
                     },
                 ],
                 shippingAddress: {
+                    contactName: 'Test Buyer',
                     fullName: 'Test Buyer',
                     phone: '9876543210',
                     street: '123 Print Way',
@@ -138,6 +139,7 @@ describe('Sprint Critical Regression Tests (5 Verified Defects)', () => {
                     postalCode: '600001',
                 },
                 billingAddress: {
+                    contactName: 'Test Buyer',
                     fullName: 'Test Buyer',
                     phone: '9876543210',
                     street: '123 Print Way',
