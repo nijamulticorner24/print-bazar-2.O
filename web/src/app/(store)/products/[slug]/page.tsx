@@ -17,6 +17,8 @@ import {
   ProductConfigurationResult,
   LivePricingSummary,
 } from '@/components/configurator/ProductConfigurationFlow';
+import { RigidBoxProductView } from '@/components/products/RigidBoxProductView';
+import { CartDrawer, CartDrawerItem } from '@/components/cart/CartDrawer';
 import { useAuth } from '@/lib/auth-context';
 import { CustomerAuthModal } from '@/components/auth/CustomerAuthModal';
 import { Button } from '@/components/ui';
@@ -25,7 +27,7 @@ export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
-  const slug = params.slug as string;
+  const slug = (params.slug as string) || '';
 
   const [product, setProduct] = useState<DynamicProduct | null>(null);
   const [isLoadingProduct, setIsLoadingProduct] = useState(true);
@@ -33,6 +35,10 @@ export default function ProductDetailPage() {
   const [pendingCheckoutResult, setPendingCheckoutResult] = useState<ProductConfigurationResult | null>(null);
   const [livePricing, setLivePricing] = useState<LivePricingSummary | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Cart Drawer State for generic products
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [drawerCartItem, setDrawerCartItem] = useState<CartDrawerItem | null>(null);
 
   // Fetch Product Schema from API
   useEffect(() => {
@@ -53,7 +59,7 @@ export default function ProductDetailPage() {
     }
   }, [slug]);
 
-  // Handle Add to Cart
+  // Handle Add to Cart for standard configurator
   const handleAddToCart = (result: ProductConfigurationResult) => {
     const minQ = Math.max(1, Number(result.product.minQuantity) || 1);
     const refUnit = Number(result.product.basePrice || 0) / minQ;
@@ -65,30 +71,31 @@ export default function ProductDetailPage() {
     const balanceAmount = isSplit ? (result.balanceAmount || Math.round((grandTotal - advanceAmount) * 100) / 100) : 0;
     const unitPrice = result.quote?.unitPrice || (result.quantity > 0 ? subtotal / result.quantity : refUnit);
 
-    const cartItem = {
+    const cartItem: CartDrawerItem = {
       productId: result.product.id,
       productName: result.product.name,
       sku: result.product.sku,
       quantity: result.quantity,
-      fieldValues: result.fieldValues,
-      variantLines: result.variantLines || result.quote?.variantLines,
-      artworkFile: result.artworkFile,
-      artworkFiles: result.artworkFiles,
-      referenceImage: result.referenceImage,
-      selectedDesignService: result.hasDesignService,
-      designNotes: result.designNotes,
-      personalization: result.personalization || null,
       unitPrice,
       totalPrice: subtotal,
       subtotal,
       taxAmount: tax,
       grandTotal,
+      specificationsSnapshot: result.quote?.specificationsSnapshot || result.fieldValues || {},
+      selectedOptionsSummary: result.quote?.selectedOptionsSummary || [],
+      artworkFile: result.artworkFile
+        ? {
+            fileUrl: result.artworkFile.fileUrl,
+            originalFileName: result.artworkFile.originalFileName,
+            fileSize: result.artworkFile.fileSize,
+            mimeType: result.artworkFile.mimeType,
+            storageKey: result.artworkFile.storageKey,
+          }
+        : null,
+      designNotes: result.designNotes,
       paymentMode: result.paymentMode || 'FULL',
       advanceAmount,
       balanceAmount,
-      specificationsSnapshot: result.quote?.specificationsSnapshot || result.fieldValues,
-      selectedOptionsSummary: result.quote?.selectedOptionsSummary || [],
-      shippingPincode: result.shippingPincode || (typeof window !== 'undefined' ? localStorage.getItem('pb2_user_pincode') || undefined : undefined),
       quote: result.quote,
     };
 
@@ -99,10 +106,20 @@ export default function ProductDetailPage() {
       if (!Array.isArray(currentCart)) currentCart = [];
     } catch {}
 
-    currentCart.push(cartItem);
+    const existingIdx = currentCart.findIndex((it: any) => it.sku === cartItem.sku || it.productId === cartItem.productId);
+    if (existingIdx >= 0) {
+      currentCart[existingIdx] = cartItem;
+    } else {
+      currentCart.push(cartItem);
+    }
+
     localStorage.setItem('pb2_cart', JSON.stringify(currentCart));
     sessionStorage.setItem('pb2_active_cart', JSON.stringify(cartItem));
     window.dispatchEvent(new Event('cart-updated'));
+
+    // Open side drawer
+    setDrawerCartItem(cartItem);
+    setIsDrawerOpen(true);
   };
 
   // Handle Direct Buy Now / Checkout
@@ -143,10 +160,24 @@ export default function ProductDetailPage() {
     );
   }
 
+  // Check if this is the approved Custom Luxury Rigid Box product
+  const normalizedSlug = slug.toLowerCase().trim();
+  const isRigidBox =
+    normalizedSlug === 'custom-rigid-box' ||
+    normalizedSlug === 'custom-luxury-rigid-box' ||
+    normalizedSlug === 'rigid-box' ||
+    normalizedSlug === 'custom-packaging' ||
+    product.sku === 'PRD-PKG-002' ||
+    product.slug === 'custom-rigid-box';
+
+  if (isRigidBox) {
+    return <RigidBoxProductView product={product} />;
+  }
+
+  // Standard dynamic product view for other catalog items
   return (
     <div className="min-h-screen bg-[#F8FAFC] pb-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
-        {/* Dynamic Breadcrumbs & Product Title Header */}
         <div>
           <nav className="flex items-center gap-2 text-xs font-semibold text-slate-400 mb-3 uppercase tracking-wider">
             <Link href="/" className="hover:text-slate-800 transition-colors">
@@ -165,11 +196,10 @@ export default function ProductDetailPage() {
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-slate-600 max-w-3xl">
             {product.description ||
-              'Make a lasting impression with premium business cards. High-precision commercial print calibrated on Heidelberg offset & HP Indigo presses.'}
+              'High-precision commercial print calibrated on Heidelberg offset & HP Indigo presses.'}
           </p>
         </div>
 
-        {/* 3-Column Guided Customization Flow (Left: Gallery & Tips | Center: Step 1-2-3 | Right: Order Summary) */}
         <ProductConfigurationFlow
           product={product}
           onAddToCart={handleAddToCart}
@@ -177,7 +207,23 @@ export default function ProductDetailPage() {
           onPriceChange={setLivePricing}
         />
 
-        {/* Customer Checkout Authentication Gate Modal */}
+        <CartDrawer
+          isOpen={isDrawerOpen}
+          onClose={() => setIsDrawerOpen(false)}
+          activeItem={drawerCartItem}
+          onUpdateItem={(up) => setDrawerCartItem(up)}
+          onProceedToCheckout={() => {
+            if (drawerCartItem) {
+              sessionStorage.setItem('pb2_active_cart', JSON.stringify(drawerCartItem));
+            }
+            if (user) {
+              router.push('/checkout');
+            } else {
+              setIsAuthModalOpen(true);
+            }
+          }}
+        />
+
         <CustomerAuthModal
           isOpen={isAuthModalOpen}
           onClose={() => setIsAuthModalOpen(false)}

@@ -567,6 +567,18 @@ async function main() {
     },
   });
 
+  // Tiered Volume Pricing Matrix for Custom Luxury Rigid Box
+  await prisma.pricingMatrix.deleteMany({ where: { productId: prodBox.id } });
+  await prisma.pricingMatrix.createMany({
+    data: [
+      { productId: prodBox.id, minQty: 50, maxQty: 99, unitPrice: 65.0, attributeCombination: { isBasePrice: true, label: '50 units tier' } },
+      { productId: prodBox.id, minQty: 100, maxQty: 249, unitPrice: 58.0, attributeCombination: { isBasePrice: true, label: '100 units tier' } },
+      { productId: prodBox.id, minQty: 250, maxQty: 499, unitPrice: 51.0, attributeCombination: { isBasePrice: true, label: '250 units tier' } },
+      { productId: prodBox.id, minQty: 500, maxQty: 999, unitPrice: 45.0, attributeCombination: { isBasePrice: true, label: '500 units tier' } },
+      { productId: prodBox.id, minQty: 1000, maxQty: 100000, unitPrice: 40.0, attributeCombination: { isBasePrice: true, label: '1000 units tier' } },
+    ],
+  });
+
   // 6. Seed Product 3: Luxury Roll-Up Standee (Signage & Banners)
   const prodStandee = await prisma.product.upsert({
     where: { slug: 'luxury-rollup-standee' },

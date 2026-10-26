@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   Home,
   Grid,
-  ShoppingBag,
+  ShoppingCart,
   Truck,
   User,
 } from 'lucide-react';
@@ -21,7 +21,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: 'Home', href: '/', icon: Home },
   { label: 'Catalog', href: '/products', icon: Grid },
-  { label: 'Cart', href: '/cart', icon: ShoppingBag, isCart: true },
+  { label: 'Cart', href: '/cart', icon: ShoppingCart, isCart: true },
   { label: 'Account', href: '/account', icon: User },
 ];
 

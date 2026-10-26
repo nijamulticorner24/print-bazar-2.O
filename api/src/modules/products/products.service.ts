@@ -69,6 +69,8 @@ export class ProductsService {
       'luxury-standee': 'luxury-rollup-standee',
       'rigid-box': 'custom-rigid-box',
       'rigid-boxes': 'custom-rigid-box',
+      'custom-luxury-rigid-box': 'custom-rigid-box',
+      'custom-packaging': 'custom-rigid-box',
     };
     const targetSlug = aliasMap[normalized] || normalized;
 

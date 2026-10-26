@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  ShoppingBag,
+  ShoppingCart,
+  Heart,
   Search,
   Truck,
   User,
@@ -19,17 +21,19 @@ import {
   Layers,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
+import { useWishlist } from '@/lib/wishlist';
+import { SearchDrawer } from '@/components/search/SearchDrawer';
 import { Button } from '@/components/ui';
 
 const CATEGORIES = [
   { name: 'All Products', href: '/products', id: 'ALL' },
-  { name: 'Visiting Cards', href: '/products/premium-visiting-cards', id: 'CARDS' },
-  { name: 'Roll-Up Standees', href: '/products/roll-up-luxury-standee', id: 'STAND' },
-  { name: 'Custom Rigid Boxes', href: '/products', id: 'BOXES' },
-  { name: 'Marketing Flyers', href: '/products', id: 'FLYERS' },
-  { name: 'Corporate Apparel', href: '/products', id: 'APPAREL' },
-  { name: 'Labels & Stickers', href: '/products', id: 'LABELS' },
-  { name: 'Letterheads & Stationery', href: '/products', id: 'OFFICE' },
+  { name: 'Visiting Cards', href: '/products?category=visiting-cards', id: 'CARDS' },
+  { name: 'Roll-Up Standees', href: '/products?category=signs-banners', id: 'STAND' },
+  { name: 'Custom Rigid Boxes', href: '/products/custom-rigid-box', id: 'BOXES' },
+  { name: 'Marketing Flyers', href: '/products?category=marketing-materials', id: 'FLYERS' },
+  { name: 'Corporate Apparel', href: '/products?category=corporate-apparel', id: 'APPAREL' },
+  { name: 'Labels & Stickers', href: '/products?category=labels-stickers', id: 'LABELS' },
+  { name: 'Letterheads & Stationery', href: '/products?category=stationery', id: 'OFFICE' },
 ];
 
 export function Navbar() {
@@ -38,8 +42,9 @@ export function Navbar() {
   const { user, isAuthenticated, logout, getRoleDestination } = useAuth();
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchDrawerOpen, setSearchDrawerOpen] = useState(false);
   const [cartCount, setCartCount] = useState<number>(0);
+  const { wishlistCount } = useWishlist();
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on click outside
@@ -84,14 +89,6 @@ export function Navbar() {
     };
   }, []);
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
-      setMobileMenuOpen(false);
-    }
-  };
-
   const handleLogout = async () => {
     setUserDropdownOpen(false);
     await logout();
@@ -125,11 +122,11 @@ export function Navbar() {
             </Link>
             <span className="text-[#525252]">|</span>
             <a
-              href="tel:+912289402100"
+              href="tel:+912228402100"
               className="hover:text-[#FFED00] transition-colors flex items-center gap-1 font-normal"
             >
               <PhoneCall className="h-3 w-3 text-[#FFED00]" />
-              <span>B2B Desk: +91 (022) 8940-2100</span>
+              <span>B2B Desk: +91 (022) 2840-2100</span>
             </a>
           </div>
         </div>
@@ -139,63 +136,61 @@ export function Navbar() {
       <header className="px-3 sm:px-8 py-2.5 sm:py-3.5 bg-white border-b border-[#E5E5E5] w-full relative z-30">
         <div className="mx-auto max-w-7xl flex items-center justify-between gap-2 sm:gap-4 lg:gap-8">
           {/* Brand Logo */}
-          <Link href="/" className="flex items-center gap-2 sm:gap-3 group flex-shrink min-w-0">
-            <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-[8px] bg-[#FFED00] flex items-center justify-center text-black font-bold shadow-xs border border-neutral-300 transition-transform group-hover:scale-105 flex-shrink-0">
-              <Printer className="h-4 w-4 sm:h-5 sm:w-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1 sm:gap-1.5">
-                <span className="text-[15px] sm:text-[18px] md:text-[20px] font-semibold tracking-tight text-black font-sans truncate">
-                  PRINT BAZZAR
-                </span>
-                <span className="bg-black text-[#FFED00] text-[9px] sm:text-[10px] font-mono font-bold px-1 sm:px-1.5 py-0.5 rounded flex-shrink-0">
-                  2.0
-                </span>
-              </div>
-              <p className="text-[9px] sm:text-[10px] uppercase font-semibold text-[#737373] tracking-wider font-mono truncate hidden xs:block">
-                Customer-to-Production OS
-              </p>
-            </div>
+          <Link href="/" className="flex items-center group flex-shrink-0">
+            <Image
+              src="/brand-logo.png"
+              alt="Print Bazzar"
+              width={160}
+              height={44}
+              priority
+              className="h-9 sm:h-10 w-auto object-contain transition-transform group-hover:scale-102"
+            />
           </Link>
 
-          {/* Search Bar (Desktop) */}
-          <form
-            onSubmit={handleSearchSubmit}
-            className="hidden md:flex flex-1 max-w-lg relative items-center"
-          >
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search products by SKU, GSM, substrate, or finish..."
-              className="w-full h-9 pl-9 pr-20 text-[13px] font-normal bg-[#F5F5F5] text-black border border-[#E5E5E5] rounded-[8px] focus:outline-none focus:border-black focus:bg-white transition-all placeholder:text-[#737373]"
-            />
-            <Search className="h-4 w-4 text-[#737373] absolute left-3 top-1/2 -translate-y-1/2" />
-            <button
-              type="submit"
-              className="absolute right-1 top-1/2 -translate-y-1/2 px-2.5 py-1 text-[12px] font-medium bg-[#FFED00] text-black rounded-[6px] border border-neutral-300 hover:bg-[#F2E100] transition-colors"
-            >
-              Search
-            </button>
-          </form>
-
           {/* Right Actions */}
-          <div className="flex items-center gap-3">
-            {/* Cart Button */}
-            <Link
-              href="/cart"
-              className="relative flex items-center gap-2 px-3 py-1.5 text-black hover:text-black rounded-[8px] hover:bg-[#F5F5F5] transition-colors border border-[#E5E5E5] shadow-xs"
-              title="Shopping Cart"
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            {/* Search Icon Button - Opens Side Drawer */}
+            <button
+              type="button"
+              onClick={() => setSearchDrawerOpen(true)}
+              aria-label="Open search drawer"
+              className="relative w-9 h-9 flex items-center justify-center text-black hover:text-black rounded-full hover:bg-neutral-100 transition-colors group cursor-pointer"
+              title="Search products"
             >
-              <div className="relative">
-                <ShoppingBag className="h-4 w-4 text-black" />
-                {cartCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-[#FFED00] text-black font-bold text-[9px] flex items-center justify-center border border-black">
-                    {cartCount}
+              <Search className="h-[20px] w-[20px] text-black group-hover:scale-110 transition-transform" />
+            </button>
+            {/* Wishlist Button - Icon Only */}
+            <Link
+              href="/wishlist"
+              className="relative w-9 h-9 flex items-center justify-center text-black hover:text-black rounded-full hover:bg-neutral-100 transition-colors group"
+              title="Saved Wishlist"
+              aria-label="Wishlist"
+            >
+              <div className="relative flex items-center justify-center">
+                <Heart className="h-[20px] w-[20px] text-black group-hover:scale-110 transition-transform" />
+                {wishlistCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[17px] h-[17px] px-0.5 rounded-full bg-[#FFED00] text-black font-bold text-[9px] flex items-center justify-center border border-black shadow-xs">
+                    {wishlistCount > 99 ? '99+' : wishlistCount}
                   </span>
                 )}
               </div>
-              <span className="hidden sm:inline text-[13px] font-medium">Cart</span>
+            </Link>
+
+            {/* Cart Button - Icon Only */}
+            <Link
+              href="/cart"
+              className="relative w-9 h-9 flex items-center justify-center text-black hover:text-black rounded-full hover:bg-neutral-100 transition-colors group"
+              title="Shopping Cart"
+              aria-label="Shopping Cart"
+            >
+              <div className="relative flex items-center justify-center">
+                <ShoppingCart className="h-[20px] w-[20px] text-black group-hover:scale-110 transition-transform" />
+                {cartCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[17px] h-[17px] px-0.5 rounded-full bg-[#FFED00] text-black font-bold text-[9px] flex items-center justify-center border border-black shadow-xs">
+                    {cartCount > 99 ? '99+' : cartCount}
+                  </span>
+                )}
+              </div>
             </Link>
 
             {/* User Profile or Login */}
@@ -204,19 +199,19 @@ export function Navbar() {
                 <button
                   type="button"
                   onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-[8px] border border-[#E5E5E5] hover:border-black text-[13px] font-medium text-black bg-white transition cursor-pointer shadow-xs"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-[8px] border border-[#E5E7EB] hover:border-black text-[13px] font-semibold text-black bg-white transition cursor-pointer shadow-2xs"
                 >
-                  <div className="h-5 w-5 rounded-full bg-[#FFED00] text-black font-bold text-[10px] flex items-center justify-center border border-neutral-300">
+                  <div className="h-5 w-5 rounded-full bg-[#FFED00] text-black font-bold text-[10px] flex items-center justify-center border border-black/10">
                     {user.fullName.charAt(0).toUpperCase()}
                   </div>
                   <span className="hidden sm:inline max-w-[120px] truncate">
                     {user.fullName.split(' ')[0]}
                   </span>
-                  <ChevronDown className="h-3 w-3 text-[#737373]" />
+                  <ChevronDown className="h-3 w-3 text-[#64748B]" />
                 </button>
 
                 {userDropdownOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-[#E5E5E5] rounded-[8px] shadow-2xl py-2 text-xs text-black z-[9999] animate-in fade-in-50 zoom-in-95 duration-150 divide-y divide-[#E5E5E5]">
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-[#E5E7EB] rounded-[8px] shadow-2xl py-2 text-xs text-black z-[9999] animate-in fade-in-50 zoom-in-95 duration-150 divide-y divide-[#E5E7EB]">
                     <div className="px-4 py-2 bg-[#F8F8F8]">
                       <p className="font-semibold text-black truncate">{user.fullName}</p>
                       <p className="text-[11px] text-[#737373] font-mono truncate">{user.email}</p>
@@ -270,20 +265,14 @@ export function Navbar() {
                 )}
               </div>
             ) : (
-              <Link href="/login">
-                <Button variant="secondary" size="sm">
-                  Sign In
-                </Button>
+              <Link
+                href="/login"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-[8px] bg-[#FFED00] text-black text-[13px] font-bold border border-black/10 shadow-xs hover:bg-[#F2E100] transition-colors cursor-pointer"
+              >
+                <User className="h-4 w-4" />
+                <span>Login</span>
               </Link>
             )}
-
-            {/* Instant Configure Primary CTA */}
-            <Link href="/products/premium-visiting-cards" className="hidden sm:inline-flex">
-              <Button variant="primary" size="sm">
-                <span>Start Print Job</span>
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Button>
-            </Link>
 
             {/* Mobile Menu Toggle */}
             <button
@@ -297,31 +286,36 @@ export function Navbar() {
       </header>
 
       {/* 3. CATEGORY NAVIGATION STRIP */}
-      <nav className="hidden md:block bg-white border-b border-[#E5E5E5] px-4 sm:px-8 py-2 relative z-10">
+      <nav className="hidden md:block bg-white border-b border-[#E5E7EB] px-4 sm:px-8 py-2 relative z-10">
         <div className="mx-auto max-w-7xl flex items-center justify-between gap-4 overflow-x-auto no-scrollbar">
-          <div className="flex items-center gap-1 text-[13px] font-medium">
+          <div className="flex items-center gap-1.5 text-[13px] font-medium">
             {CATEGORIES.map((cat) => {
               const isActive =
-                cat.href === pathname || (cat.href !== '/' && pathname.startsWith(cat.href));
+                cat.id === 'ALL'
+                  ? pathname === '/products'
+                  : cat.id === 'BOXES'
+                  ? pathname.includes('rigid') || pathname.includes('packaging')
+                  : cat.href === pathname || (cat.href !== '/products' && pathname.startsWith(cat.href));
               return (
                 <Link
                   key={cat.id}
                   href={cat.href}
-                  className={`px-3 py-1.5 rounded-[6px] whitespace-nowrap transition-colors ${
+                  className={`px-3 py-1.5 rounded-[6px] whitespace-nowrap transition-colors flex items-center gap-1.5 ${
                     isActive
-                      ? 'bg-black text-white font-medium'
-                      : 'text-[#525252] hover:text-black hover:bg-[#F5F5F5]'
+                      ? 'bg-[#FFED00] text-black font-semibold shadow-xs'
+                      : 'text-[#64748B] hover:text-[#080808] hover:bg-[#F8FAFC]'
                   }`}
                 >
-                  {cat.name}
+                  {cat.id === 'ALL' && <Layers className="h-3.5 w-3.5 text-black" />}
+                  <span>{cat.name}</span>
                 </Link>
               );
             })}
           </div>
 
           <div className="flex items-center gap-3 text-[13px] text-[#525252] flex-shrink-0 font-medium">
-            <Link href="/products" className="hover:text-black flex items-center gap-1 font-semibold text-black">
-              <Sparkles className="h-3.5 w-3.5 text-[#854D0E]" />
+            <Link href="/products" className="hover:text-black flex items-center gap-1.5 font-bold text-black transition-colors">
+              <Sparkles className="h-3.5 w-3.5 text-black" />
               <span>Full Catalogue ➔</span>
             </Link>
           </div>
@@ -331,16 +325,17 @@ export function Navbar() {
       {/* 4. MOBILE DRAWER */}
       {mobileMenuOpen && (
         <div className="md:hidden bg-white border-b border-[#E5E5E5] p-4 space-y-4 animate-in slide-in-from-top-2 duration-150">
-          <form onSubmit={handleSearchSubmit} className="relative">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search products..."
-              className="w-full h-9 pl-9 pr-4 text-[13px] bg-[#F5F5F5] border border-[#E5E5E5] rounded-[8px] text-black"
-            />
+          <button
+            type="button"
+            onClick={() => {
+              setMobileMenuOpen(false);
+              setSearchDrawerOpen(true);
+            }}
+            className="w-full h-9 pl-9 pr-4 text-[13px] bg-[#F5F5F5] border border-[#E5E5E5] rounded-[8px] text-left text-[#737373] relative flex items-center cursor-pointer"
+          >
             <Search className="h-4 w-4 text-[#737373] absolute left-3 top-1/2 -translate-y-1/2" />
-          </form>
+            <span>Search products, rigid boxes, cards...</span>
+          </button>
 
           <div className="space-y-1">
             <p className="text-[10px] font-mono font-bold text-[#737373] uppercase tracking-wider px-2">
@@ -377,6 +372,12 @@ export function Navbar() {
           </div>
         </div>
       )}
+
+      {/* 5. SEARCH SIDE DRAWER */}
+      <SearchDrawer
+        isOpen={searchDrawerOpen}
+        onClose={() => setSearchDrawerOpen(false)}
+      />
     </div>
   );
 }

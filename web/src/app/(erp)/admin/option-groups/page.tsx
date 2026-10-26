@@ -14,17 +14,13 @@ import {
   RiCloseLine,
   RiEditLine,
   RiFileCopyLine,
-  RiInformationLine,
   RiCheckboxCircleLine,
   RiErrorWarningLine,
   RiFileTextLine,
   RiRefreshLine,
   RiInputMethodLine,
-  RiEyeLine,
   RiSettings4Line,
   RiListCheck2,
-  RiPriceTag3Line,
-  RiEqualizerLine,
   RiArrowLeftSLine,
   RiArrowRightSLine,
   RiScissorsCutLine,
@@ -73,7 +69,7 @@ interface OptionValueItem {
   isDefault?: boolean;
 }
 
-type EditorTab = 'settings' | 'values' | 'pricing' | 'advanced';
+type EditorTab = 'settings' | 'values';
 
 export default function OptionGroupsLibraryPage() {
   const [groups, setGroups] = useState<ReusableOptionGroup[]>([]);
@@ -673,39 +669,6 @@ export default function OptionGroupsLibraryPage() {
               {formOptions.length}
             </span>
           </button>
-
-          {!isCreatingNew && (
-            <>
-              <button
-                type="button"
-                onClick={() => setActiveTab('pricing')}
-                className={`pb-3 px-3 sm:px-4 text-xs flex items-center gap-2 cursor-pointer transition-colors relative ${
-                  activeTab === 'pricing'
-                    ? 'font-bold text-slate-900 border-b-2 border-[#FFED00]'
-                    : 'font-medium text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <RiPriceTag3Line className={`w-4 h-4 ${activeTab === 'pricing' ? 'text-slate-900' : 'text-slate-400'}`} />
-                <span>Pricing</span>
-                {formEnableAdditionalPricing && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('advanced')}
-                className={`pb-3 px-3 sm:px-4 text-xs flex items-center gap-2 cursor-pointer transition-colors relative ${
-                  activeTab === 'advanced'
-                    ? 'font-bold text-slate-900 border-b-2 border-[#FFED00]'
-                    : 'font-medium text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <RiEqualizerLine className={`w-4 h-4 ${activeTab === 'advanced' ? 'text-slate-900' : 'text-slate-400'}`} />
-                <span>Advanced</span>
-              </button>
-            </>
-          )}
         </div>
 
         {/* ======================================================== */}
@@ -818,27 +781,6 @@ export default function OptionGroupsLibraryPage() {
                   <div>
                     <div className="text-xs font-bold text-slate-900">Active</div>
                     <div className="text-[11px] text-slate-500">Group can be used in products</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Additional Pricing Section */}
-              <div className="space-y-3 pt-2">
-                <h3 className="text-sm font-bold text-slate-900">Additional Pricing</h3>
-
-                <div className="flex items-center gap-3">
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formEnableAdditionalPricing}
-                      onChange={(e) => setFormEnableAdditionalPricing(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FFED00]"></div>
-                  </label>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">Enable Pricing</div>
-                    <div className="text-[11px] text-slate-500">Values in this group can have price adjustments</div>
                   </div>
                 </div>
               </div>
@@ -1014,243 +956,6 @@ export default function OptionGroupsLibraryPage() {
                 </table>
               </div>
             )}
-          </div>
-        )}
-
-        {/* ======================================================== */}
-        {/* TAB 3: PRICING CONFIGURATION                             */}
-        {/* ======================================================== */}
-        {activeTab === 'pricing' && !isCreatingNew && (
-          <div className="space-y-5 pt-2">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Pricing Configuration</h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Configure additional pricing adjustments and eligibility for Step 4 Pricing matrix.
-              </p>
-            </div>
-
-            {!formEnableAdditionalPricing ? (
-              <div className="p-6 border border-amber-200 bg-amber-50/50 rounded-2xl space-y-3">
-                <div className="flex items-center gap-2.5 text-amber-900 font-bold text-xs">
-                  <RiInformationLine className="w-4 h-4 text-amber-600" />
-                  <span>Additional pricing is currently disabled for this group</span>
-                </div>
-                <p className="text-xs text-amber-800 leading-relaxed max-w-2xl">
-                  When additional pricing is disabled, selections in this group do not contribute to quantity-tier price add-ons. To enable per-value adjustments, switch on <strong>Enable Pricing</strong> in Settings or click the button below.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setFormEnableAdditionalPricing(true)}
-                  className="h-8 px-3.5 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg border border-amber-300 shadow-2xs transition-colors cursor-pointer"
-                >
-                  Enable Additional Pricing for &ldquo;{formName || 'Group'}&rdquo;
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <RiCheckboxCircleLine className="w-4 h-4 text-emerald-600" />
-                    <span>
-                      <strong>Pricing is enabled:</strong> Values configured here will contribute base add-on rates in product calculation.
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setFormEnableAdditionalPricing(false)}
-                    className="text-xs font-semibold text-emerald-800 hover:underline cursor-pointer"
-                  >
-                    Disable Pricing
-                  </button>
-                </div>
-
-                <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[11px] tracking-wider border-b border-slate-200">
-                      <tr>
-                        <th className="py-2.5 px-3">Option Label</th>
-                        <th className="py-2.5 px-3">Value Code</th>
-                        <th className="py-2.5 px-3 w-40">Price Adjustment (₹)</th>
-                        <th className="py-2.5 px-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-mono">
-                      {formOptions.length === 0 ? (
-                        <tr>
-                          <td colSpan={4} className="p-6 text-center text-slate-400 font-sans">
-                            No option values configured. Switch to the Option Values tab to add values.
-                          </td>
-                        </tr>
-                      ) : (
-                        formOptions.map((opt, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
-                            <td className="py-2.5 px-3 font-sans font-semibold text-slate-900">
-                              {opt.label}
-                            </td>
-                            <td className="py-2.5 px-3 text-slate-600">
-                              {opt.value}
-                            </td>
-                            <td className="py-2.5 px-3 font-sans">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-slate-500 font-mono text-xs">+₹</span>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  value={opt.priceModifier || ''}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value) || 0;
-                                    setFormOptions((prev) => {
-                                      const copy = [...prev];
-                                      copy[idx] = { ...copy[idx], priceModifier: val };
-                                      return copy;
-                                    });
-                                  }}
-                                  placeholder="0.00"
-                                  className="w-24 h-7 px-2 text-xs font-mono bg-white border border-slate-300 rounded focus:outline-none focus:border-amber-500"
-                                />
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-sans">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenAddValueModal(idx)}
-                                className="text-xs text-amber-700 hover:underline font-semibold cursor-pointer"
-                              >
-                                Edit Details
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ======================================================== */}
-        {/* TAB 4: ADVANCED SETTINGS & WIDGET PREVIEW                */}
-        {/* ======================================================== */}
-        {activeTab === 'advanced' && !isCreatingNew && (
-          <div className="space-y-6 pt-2">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Advanced Configuration & Preview</h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Inspect live storefront presentation and library clone synchronization mechanics.
-              </p>
-            </div>
-
-            {/* Live Storefront Widget Preview */}
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
-                  <RiEyeLine className="w-4 h-4 text-amber-500" />
-                  Live Storefront Widget Preview
-                </span>
-                <span className="text-slate-500 font-mono text-[10px]">
-                  Widget: <strong className="text-slate-800">{formInputType}</strong>
-                </span>
-              </div>
-
-              <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3 max-w-lg">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-900 uppercase tracking-tight">
-                    {formName || 'Group Label Preview'}
-                  </label>
-                  <span className="text-[10px] text-slate-400 font-mono">(Storefront View)</span>
-                </div>
-
-                {formInputType === 'SELECT' && (
-                  <select disabled className="w-full h-9 px-3 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg">
-                    {formOptions.length > 0 ? (
-                      formOptions.map((o, idx) => (
-                        <option key={idx}>{o.label}</option>
-                      ))
-                    ) : (
-                      <option>Choose {formName || 'Option'}...</option>
-                    )}
-                  </select>
-                )}
-
-                {formInputType === 'RADIO' && (
-                  <div className="grid grid-cols-2 gap-2">
-                    {(formOptions.length > 0 ? formOptions.slice(0, 4) : [{ label: 'Option A' }, { label: 'Option B' }]).map((o, idx) => (
-                      <div key={idx} className={`p-2 rounded-lg border text-xs flex items-center gap-2 ${idx === 0 ? 'bg-black text-white border-black font-semibold' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
-                        <div className={`w-3 h-3 rounded-full border ${idx === 0 ? 'border-[#FFED00] bg-[#FFED00]' : 'border-slate-300'}`} />
-                        <span className="truncate">{o.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {formInputType === 'CHECKBOX' && (
-                  <div className="space-y-1.5">
-                    {(formOptions.length > 0 ? formOptions.slice(0, 3) : [{ label: 'Option A' }, { label: 'Option B' }]).map((o, idx) => (
-                      <div key={idx} className={`p-2 rounded-lg border text-xs flex items-center justify-between ${idx === 0 ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
-                        <span className="truncate font-medium">{o.label}</span>
-                        <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${idx === 0 ? 'bg-[#FFED00] border-[#FFED00] text-black' : 'border-slate-300 bg-white'}`}>
-                          {idx === 0 && <RiCheckLine className="w-3 h-3 stroke-[2]" />}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {formInputType === 'TOGGLE' && (
-                  <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-                    <span className="text-xs font-semibold text-slate-800">
-                      {formOptions[0]?.label || 'Enable setting'}
-                    </span>
-                    <div className="w-10 h-5 bg-slate-900 rounded-full relative p-0.5">
-                      <div className="w-4 h-4 bg-white rounded-full ml-auto shadow-xs" />
-                    </div>
-                  </div>
-                )}
-
-                {isTextInputType(formInputType) && (
-                  <div className="space-y-1.5">
-                    <input
-                      type={formInputType === 'NUMBER' ? 'number' : formInputType === 'DATE' ? 'date' : 'text'}
-                      disabled
-                      placeholder={`Enter ${formName || 'custom text'}...`}
-                      className="w-full h-9 px-3 text-xs bg-slate-50 text-slate-700 border border-slate-300 rounded-lg"
-                    />
-                    {formOptions.length > 0 && (
-                      <div className="flex flex-wrap gap-1 items-center pt-0.5">
-                        <span className="text-[10px] uppercase font-bold text-slate-400">Presets:</span>
-                        {formOptions.map((o, idx) => (
-                          <span key={idx} className="px-2 py-0.5 text-[10px] bg-slate-100 text-slate-700 rounded-md border border-slate-200 font-medium">
-                            {o.label}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Product Studio Sync Information */}
-            <div className="p-4 bg-white border border-slate-200 rounded-2xl space-y-2 shadow-2xs">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
-                <RiCheckboxCircleLine className="w-4 h-4 text-emerald-500" />
-                <span>Product Studio Sync: Decoupled Clones Architecture</span>
-              </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Changes saved to library option groups serve as central templates for product configuration. When attached to individual products in the <strong>Product Setup Studio</strong>, independent cloned copies are created so that existing job cards and historical orders are never corrupted by upstream library edits.
-              </p>
-              <div className="pt-1">
-                <Link
-                  href="/admin/products"
-                  className="text-xs font-semibold text-amber-700 hover:text-amber-800 hover:underline inline-flex items-center gap-1"
-                >
-                  View Product Setup Studio &rarr;
-                </Link>
-              </div>
-            </div>
           </div>
         )}
       </div>
