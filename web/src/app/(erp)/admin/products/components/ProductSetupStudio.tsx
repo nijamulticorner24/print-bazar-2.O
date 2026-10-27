@@ -70,7 +70,11 @@ export function ProductSetupStudio({
   const [basePrice, setBasePrice] = useState<number | string>(initialProduct?.basePrice || 0);
   const [pricingModel, setPricingModel] = useState(initialProduct?.pricingModel || 'MATRIX');
   const [minQuantity, setMinQuantity] = useState<number>(initialProduct?.minQuantity || 100);
-  const [quantityStep, setQuantityStep] = useState<number>(initialProduct?.quantityStep || 100);
+  const [quantityStep, setQuantityStep] = useState<number>(
+    initialProduct?.quantityStep !== undefined && initialProduct?.quantityStep !== null
+      ? Number(initialProduct.quantityStep)
+      : 100
+  );
   const [maxQuantity, setMaxQuantity] = useState<number>(initialProduct?.maxQuantity || 100000);
   const [productionDays, setProductionDays] = useState<number>(initialProduct?.productionDays || 2);
   const [description, setDescription] = useState(initialProduct?.description || '');
@@ -261,7 +265,7 @@ export function ProductSetupStudio({
       basePrice: Number(basePrice) || 0,
       pricingModel,
       minQuantity: Number(minQuantity) || 1,
-      quantityStep: Number(quantityStep) || 100,
+      quantityStep: typeof quantityStep === 'number' ? quantityStep : (Number(quantityStep) >= 0 ? Number(quantityStep) : 100),
       maxQuantity: Number(maxQuantity) || 100000,
       productionDays: Number(productionDays) || 2,
       description: description.trim(),
@@ -396,14 +400,13 @@ export function ProductSetupStudio({
     }
   };
 
-  const [rulesSubTab, setRulesSubTab] = useState<'RULES' | 'ARTWORK'>('RULES');
-
   const TABS: { id: StudioTab; label: string; number: number }[] = [
     { id: 'BASICS', label: '1. Basic Details', number: 1 },
-    { id: 'OPTIONS', label: '2. Groups & Combinations', number: 2 },
-    { id: 'ARTWORK_CONDITIONS', label: '3. Option Rules & Artwork Conditions', number: 3 },
-    { id: 'PRICING', label: '4. Pricing', number: 4 },
-    { id: 'REVIEW', label: '5. Review & Publish', number: 5 },
+    { id: 'OPTIONS', label: '2. Groups & Choices', number: 2 },
+    { id: 'RULES', label: '3. Option Dependencies & Rules', number: 3 },
+    { id: 'ARTWORK', label: '4. Artwork Upload & Design Matrix', number: 4 },
+    { id: 'PRICING', label: '5. Pricing', number: 5 },
+    { id: 'REVIEW', label: '6. Review & Publish', number: 6 },
   ];
 
   return (
@@ -624,68 +627,34 @@ export function ProductSetupStudio({
           />
         )}
 
-        {(activeTab === 'ARTWORK_CONDITIONS' || (activeTab as any) === 'RULES') && (
-          <div className="space-y-4">
-            {/* Step 3 Subtab Switcher */}
-            <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl w-fit border border-slate-200 shadow-2xs">
-              <button
-                type="button"
-                onClick={() => setRulesSubTab('RULES')}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-                  rulesSubTab === 'RULES'
-                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <span>Option Dependencies & Conditional Rules</span>
-                <span className="text-[10px] font-mono bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-bold">
-                  {rules.filter((r) => r.actionType !== 'ARTWORK_CONDITIONS').length}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setRulesSubTab('ARTWORK')}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-                  rulesSubTab === 'ARTWORK'
-                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <span>Artwork Upload & Design Matrix</span>
-                <span className="text-[10px] font-mono bg-indigo-100 text-indigo-900 px-1.5 py-0.5 rounded font-bold">
-                  {rules.filter((r) => r.actionType === 'ARTWORK_CONDITIONS').length}
-                </span>
-              </button>
-            </div>
+        {activeTab === 'RULES' && (
+          <StudioTabRules
+            rules={rules}
+            setRules={setRules}
+            optionGroups={optionGroups}
+            onChange={markDirty}
+          />
+        )}
 
-            {rulesSubTab === 'RULES' ? (
-              <StudioTabRules
-                rules={rules}
-                setRules={setRules}
-                optionGroups={optionGroups}
-                onChange={markDirty}
-              />
-            ) : (
-              <StudioTabArtworkConditions
-                rules={rules}
-                setRules={setRules}
-                optionGroups={optionGroups}
-                artworkRequirement={artworkRequirement}
-                setArtworkRequirement={setArtworkRequirement}
-                artworkFileFormats={artworkFileFormats}
-                setArtworkFileFormats={setArtworkFileFormats}
-                maxArtworkFileSizeMb={maxArtworkFileSizeMb}
-                setMaxArtworkFileSizeMb={setMaxArtworkFileSizeMb}
-                minimumArtworkMegapixels={minimumArtworkMegapixels}
-                setMinimumArtworkMegapixels={setMinimumArtworkMegapixels}
-                designServiceRequirement={designServiceRequirement}
-                setDesignServiceRequirement={setDesignServiceRequirement}
-                designServiceFee={designServiceFee}
-                setDesignServiceFee={setDesignServiceFee}
-                onChange={markDirty}
-              />
-            )}
-          </div>
+        {activeTab === 'ARTWORK' && (
+          <StudioTabArtworkConditions
+            rules={rules}
+            setRules={setRules}
+            optionGroups={optionGroups}
+            artworkRequirement={artworkRequirement}
+            setArtworkRequirement={setArtworkRequirement}
+            artworkFileFormats={artworkFileFormats}
+            setArtworkFileFormats={setArtworkFileFormats}
+            maxArtworkFileSizeMb={maxArtworkFileSizeMb}
+            setMaxArtworkFileSizeMb={setMaxArtworkFileSizeMb}
+            minimumArtworkMegapixels={minimumArtworkMegapixels}
+            setMinimumArtworkMegapixels={setMinimumArtworkMegapixels}
+            designServiceRequirement={designServiceRequirement}
+            setDesignServiceRequirement={setDesignServiceRequirement}
+            designServiceFee={designServiceFee}
+            setDesignServiceFee={setDesignServiceFee}
+            onChange={markDirty}
+          />
         )}
 
         {activeTab === 'PRICING' && (
@@ -698,6 +667,8 @@ export function ProductSetupStudio({
             minQuantity={minQuantity}
             setMinQuantity={setMinQuantity}
             maxQuantity={maxQuantity}
+            quantityStep={quantityStep}
+            setQuantityStep={setQuantityStep}
             optionGroups={optionGroups}
             setOptionGroups={setOptionGroups}
             rules={rules}

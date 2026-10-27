@@ -26,6 +26,7 @@ import {
   RiEqualizerLine,
   RiStackLine,
   RiCheckDoubleLine,
+  RiLockLine,
 } from 'react-icons/ri';
 import { ProductOptionGroup, ProductOption, ProductAdditionalPricingTier, api } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -93,6 +94,8 @@ export interface StudioTabPricingProps {
   minQuantity: number;
   setMinQuantity?: (val: number) => void;
   maxQuantity?: number;
+  quantityStep?: number;
+  setQuantityStep?: (val: number) => void;
   optionGroups: ProductOptionGroup[];
   setOptionGroups?: React.Dispatch<React.SetStateAction<ProductOptionGroup[]>>;
   rules: any[];
@@ -132,6 +135,8 @@ export function StudioTabPricing({
   minQuantity,
   setMinQuantity,
   maxQuantity,
+  quantityStep = 100,
+  setQuantityStep,
   optionGroups,
   setOptionGroups,
   rules = [],
@@ -150,6 +155,20 @@ export function StudioTabPricing({
   const startingReferenceRate = Number(basePrice) || 0;
   const moq = Math.max(1, Number(minQuantity) || 1);
   const referenceUnitPrice = Math.round((startingReferenceRate / moq) * 10000) / 10000;
+
+  // Quantity increment / Price Increasing mode:
+  // If OFF: only fixed predefined quantities (quantityStep === 0)
+  // If ON: price increasing based on the step increment (quantityStep > 0)
+  const isIncrementalMode = quantityStep !== undefined && quantityStep !== null ? Number(quantityStep) > 0 : true;
+
+  const handleToggleIncrementalMode = (enabled: boolean) => {
+    if (!enabled) {
+      setQuantityStep?.(0);
+    } else {
+      setQuantityStep?.(100);
+    }
+    onChange?.();
+  };
 
   // View toggle: Combination Pricing Table vs Additional Pricing vs Option Surcharges
   const [activePricingView, setActivePricingView] = useState<'MATRIX' | 'ADDITIONAL_PRICING' | 'OPTIONS'>('MATRIX');
@@ -242,36 +261,135 @@ export function StudioTabPricing({
       return Array.from(tierMap.values()).sort((a, b) => a.minQty - b.minQty);
     }
 
+    if (pricingModel === 'BULK_RANGE') {
+      return [
+        { id: '1-10', minQty: 1, maxQty: 10, label: '1–10 pcs' },
+        { id: '11-20', minQty: 11, maxQty: 20, label: '11–20 pcs' },
+        { id: '21-50', minQty: 21, maxQty: 50, label: '21–50 pcs' },
+        { id: '51-100', minQty: 51, maxQty: 100, label: '51–100 pcs' },
+      ];
+    }
+
     return [
-      { id: '1-10', minQty: 1, maxQty: 10, label: '1–10 pcs' },
       { id: '100', minQty: 100, maxQty: 100, label: '100 pcs' },
       { id: '200', minQty: 200, maxQty: 200, label: '200 pcs' },
       { id: '300', minQty: 300, maxQty: 300, label: '300 pcs' },
+      { id: '500', minQty: 500, maxQty: 500, label: '500 pcs' },
     ];
   });
 
-  // Modals for Quantity Tiers
+  // Modals for Quantity Tiers & Bulk Range Brackets
   const [isAddAddonTierModalOpen, setIsAddAddonTierModalOpen] = useState(false);
+  const [addTierMode, setAddTierMode] = useState<'range' | 'single' | 'custom'>('range');
+  const [rangeMinInput, setRangeMinInput] = useState<number | ''>(51);
+  const [rangeMaxInput, setRangeMaxInput] = useState<number | ''>(100);
+  const [rangeInitialRate, setRangeInitialRate] = useState<number | ''>('');
+  const [singleQtyInput, setSingleQtyInput] = useState<number | ''>(100);
+  const [singleInitialRate, setSingleInitialRate] = useState<number | ''>('');
   const [newAddonTierInput, setNewAddonTierInput] = useState('');
   const [addonTierError, setAddonTierError] = useState<string | null>(null);
 
   const [editingAddonTier, setEditingAddonTier] = useState<AddonQuantityTierItem | null>(null);
   const [editAddonTierInput, setEditAddonTierInput] = useState('');
 
+  const openAddTierModal = () => {
+    const isBulk = pricingModel === 'BULK_RANGE';
+    setAddTierMode(isBulk ? 'range' : 'single');
+
+    if (isBulk) {
+      const highestMax = addonQuantityTiers.reduce((max, t) => Math.max(max, t.maxQty), 0);
+      const nextMin = highestMax > 0 ? highestMax + 1 : 1;
+      const nextMax = nextMin === 1 ? 10 : nextMin + (nextMin <= 20 ? 9 : nextMin <= 50 ? 29 : 49);
+      setRangeMinInput(nextMin);
+      setRangeMaxInput(nextMax);
+      setRangeInitialRate('');
+    } else {
+      const highestQty = addonQuantityTiers.reduce((max, t) => Math.max(max, t.maxQty), 0);
+      setSingleQtyInput(highestQty > 0 ? highestQty + 100 : 100);
+      setSingleInitialRate('');
+    }
+
+    setNewAddonTierInput('');
+    setAddonTierError(null);
+    setIsAddAddonTierModalOpen(true);
+  };
+
   const handleAddAddonTier = () => {
-    const parsed = parseQuantityTier(newAddonTierInput);
-    if (!parsed) {
-      setAddonTierError('Enter a valid quantity number (e.g. 100) or range (e.g. 1-10).');
+    let parsed: AddonQuantityTierItem | null = null;
+    let initialRate: number | '' = '';
+
+    if (addTierMode === 'range') {
+      const min = Number(rangeMinInput);
+      const max = Number(rangeMaxInput);
+      if (!min || isNaN(min) || min <= 0) {
+        setAddonTierError('Please enter a valid starting quantity (From > 0).');
+        return;
+      }
+      if (!max || isNaN(max) || max < min) {
+        setAddonTierError('Ending quantity (To) must be greater than or equal to starting quantity (From).');
+        return;
+      }
+      const id = min === max ? `${min}` : `${min}-${max}`;
+      const label = min === max ? `${min} pcs` : `${min}–${max} pcs`;
+      parsed = { id, minQty: min, maxQty: max, label };
+      initialRate = rangeInitialRate;
+    } else if (addTierMode === 'single') {
+      const q = Number(singleQtyInput);
+      if (!q || isNaN(q) || q <= 0) {
+        setAddonTierError('Please enter a valid positive quantity number.');
+        return;
+      }
+      parsed = { id: `${q}`, minQty: q, maxQty: q, label: `${q} pcs` };
+      initialRate = singleInitialRate;
+    } else {
+      parsed = parseQuantityTier(newAddonTierInput);
+      if (!parsed) {
+        setAddonTierError('Enter a valid quantity number (e.g. 100) or range (e.g. 51-100).');
+        return;
+      }
+    }
+
+    if (addonQuantityTiers.some((t) => t.id === parsed!.id)) {
+      setAddonTierError(`Quantity tier "${parsed!.id}" already exists.`);
       return;
     }
-    if (addonQuantityTiers.some((t) => t.id === parsed.id)) {
-      setAddonTierError(`Quantity tier "${parsed.id}" already exists.`);
-      return;
+
+    const newTier = parsed!;
+    setAddonQuantityTiers((prev) => [...prev, newTier].sort((a, b) => a.minQty - b.minQty));
+
+    // If initial unit rate was provided, immediately configure base tier price
+    if (initialRate !== '' && Number(initialRate) > 0) {
+      handleBaseTierPriceChange(newTier, Number(initialRate));
     }
-    setAddonQuantityTiers((prev) => [...prev, parsed].sort((a, b) => a.minQty - b.minQty));
+
     setNewAddonTierInput('');
     setAddonTierError(null);
     setIsAddAddonTierModalOpen(false);
+    onChange?.();
+  };
+
+  const handleAutoGenerateBulkRanges = () => {
+    const standardBulkRanges: AddonQuantityTierItem[] = [
+      { id: '1-50', minQty: 1, maxQty: 50, label: '1–50 pcs' },
+      { id: '51-100', minQty: 51, maxQty: 100, label: '51–100 pcs' },
+      { id: '101-250', minQty: 101, maxQty: 250, label: '101–250 pcs' },
+      { id: '251-500', minQty: 251, maxQty: 500, label: '251–500 pcs' },
+      { id: '501-1000', minQty: 501, maxQty: 1000, label: '501–1,000 pcs' },
+      { id: '1001-5000', minQty: 1001, maxQty: 5000, label: '1,001–5,000 pcs' },
+    ];
+
+    setAddonQuantityTiers((prev) => {
+      const map = new Map<string, AddonQuantityTierItem>();
+      for (const t of prev) {
+        map.set(t.id, t);
+      }
+      for (const s of standardBulkRanges) {
+        if (!map.has(s.id)) {
+          map.set(s.id, s);
+        }
+      }
+      return Array.from(map.values()).sort((a, b) => a.minQty - b.minQty);
+    });
     onChange?.();
   };
 
@@ -383,8 +501,8 @@ export function StudioTabPricing({
   // ---------------------------------------------------------------------------
   const getBaseTierPrice = (tier: AddonQuantityTierItem): number | '' => {
     if (!matrixRows || matrixRows.length === 0) {
-      if (tier.minQty === 1 && Number(basePrice) > 0) {
-        return Number(basePrice);
+      if (tier.minQty === Number(minQuantity) && Number(basePrice) > 0) {
+        return Math.round((Number(basePrice) / tier.minQty) * 10000) / 10000;
       }
       return '';
     }
@@ -394,7 +512,7 @@ export function StudioTabPricing({
         combo.isBasePrice === true ||
         combo.type === 'BASE' ||
         Object.keys(combo).filter(
-          (k) => !['label', 'rangeLabel', 'discountPercent', 'isBasePrice', 'type'].includes(k)
+          (k) => !['label', 'rangeLabel', 'discountPercent', 'isBasePrice', 'type', 'totalPrice', 'price'].includes(k)
         ).length === 0;
 
       return (
@@ -408,16 +526,67 @@ export function StudioTabPricing({
       return Number(match.unitPrice);
     }
 
-    if (tier.minQty === 1 && Number(basePrice) > 0) {
+    if (tier.minQty === Number(minQuantity) && Number(basePrice) > 0) {
+      return Math.round((Number(basePrice) / tier.minQty) * 10000) / 10000;
+    }
+
+    return '';
+  };
+
+  const getBaseTierTotalPrice = (tier: AddonQuantityTierItem): number | '' => {
+    if (!matrixRows || matrixRows.length === 0) {
+      if (tier.minQty === Number(minQuantity) && Number(basePrice) > 0) {
+        return Number(basePrice);
+      }
+      return '';
+    }
+    const match = matrixRows.find((r) => {
+      const combo = (r.attributeCombination as any) || {};
+      const isBase =
+        combo.isBasePrice === true ||
+        combo.type === 'BASE' ||
+        Object.keys(combo).filter(
+          (k) => !['label', 'rangeLabel', 'discountPercent', 'isBasePrice', 'type', 'totalPrice', 'price'].includes(k)
+        ).length === 0;
+
+      return (
+        isBase &&
+        r.minQty === tier.minQty &&
+        (r.maxQty === tier.maxQty || (!r.maxQty && tier.minQty === tier.maxQty))
+      );
+    });
+
+    if (match) {
+      const combo = (match.attributeCombination as any) || {};
+      const exactTotal = combo.totalPrice ?? combo.price;
+      if (exactTotal !== undefined && exactTotal !== null && exactTotal !== '') {
+        return Number(exactTotal);
+      }
+      if (match.unitPrice !== undefined && match.unitPrice !== null && match.unitPrice !== '') {
+        return Math.round(Number(match.unitPrice) * tier.minQty * 100) / 100;
+      }
+    }
+
+    if (tier.minQty === Number(minQuantity) && Number(basePrice) > 0) {
       return Number(basePrice);
     }
 
     return '';
   };
 
-  const handleBaseTierPriceChange = (tier: AddonQuantityTierItem, newRate: number) => {
-    if (isNaN(newRate) || newRate < 0) return;
+  const handleBaseTierTotalPriceChange = (tier: AddonQuantityTierItem, totalAmount: number) => {
+    if (isNaN(totalAmount) || totalAmount < 0) return;
+    const unitRate = tier.minQty > 0 ? Math.round((totalAmount / tier.minQty) * 10000) / 10000 : totalAmount;
+    saveBaseTierPrice(tier, totalAmount, unitRate);
+  };
 
+  const handleBaseTierPriceChange = (tier: AddonQuantityTierItem, unitRate: number) => {
+    if (isNaN(unitRate) || unitRate < 0) return;
+    const totalAmount = Math.round(unitRate * tier.minQty * 100) / 100;
+    saveBaseTierPrice(tier, totalAmount, unitRate);
+  };
+
+  const saveBaseTierPrice = (tier: AddonQuantityTierItem, totalAmount: number, unitRate: number) => {
     setMatrixRows((prev) => {
       const existingIdx = prev.findIndex((r) => {
         const combo = (r.attributeCombination as any) || {};
@@ -425,7 +594,7 @@ export function StudioTabPricing({
           combo.isBasePrice === true ||
           combo.type === 'BASE' ||
           Object.keys(combo).filter(
-            (k) => !['label', 'rangeLabel', 'discountPercent', 'isBasePrice', 'type'].includes(k)
+            (k) => !['label', 'rangeLabel', 'discountPercent', 'isBasePrice', 'type', 'totalPrice', 'price'].includes(k)
           ).length === 0;
 
         return (
@@ -439,12 +608,14 @@ export function StudioTabPricing({
         const copy = [...prev];
         copy[existingIdx] = {
           ...copy[existingIdx],
-          unitPrice: newRate,
+          unitPrice: unitRate,
           attributeCombination: {
             ...((copy[existingIdx].attributeCombination as any) || {}),
             isBasePrice: true,
             type: 'BASE',
             label: tier.label,
+            totalPrice: totalAmount,
+            price: totalAmount,
           },
           label: tier.label,
         };
@@ -453,11 +624,13 @@ export function StudioTabPricing({
         const newBaseRow: MatrixRowItem = {
           minQty: tier.minQty,
           maxQty: tier.maxQty,
-          unitPrice: newRate,
+          unitPrice: unitRate,
           attributeCombination: {
             isBasePrice: true,
             type: 'BASE',
             label: tier.label,
+            totalPrice: totalAmount,
+            price: totalAmount,
           },
           status: 'ACTIVE',
           isExcluded: false,
@@ -467,10 +640,10 @@ export function StudioTabPricing({
       }
     });
 
-    // Sync basePrice and minQuantity for lowest tier
+    // Sync basePrice and minQuantity for lowest tier (Total starting amount)
     const sorted = [...addonQuantityTiers].sort((a, b) => a.minQty - b.minQty);
     if (sorted[0]?.id === tier.id) {
-      setBasePrice?.(newRate);
+      setBasePrice?.(totalAmount);
       setMinQuantity?.(tier.minQty);
     }
 
@@ -1599,18 +1772,203 @@ export function StudioTabPricing({
               <span className="text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full border border-indigo-200">
                 Core Printing Rates
               </span>
+              <span
+                className={`text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
+                  pricingModel === 'BULK_RANGE'
+                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                    : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                }`}
+              >
+                {pricingModel === 'BULK_RANGE' ? '📦 Bulk Quantity Range Mode' : '📦 Single Fixed Quantity Mode'}
+              </span>
             </div>
             <p className="text-xs text-slate-500 mt-1 max-w-3xl">
-              Manually define the foundational product base price (<strong>₹ per printed unit</strong>) for each configured quantity tier or range (e.g., 1–10 pcs, 100 pcs, 200 pcs). Quotation requests will automatically look up the matching tier base rate.
+              Manually define the foundational product base price for each configured quantity tier or range.
             </p>
           </div>
 
           <div className="text-right">
-            <span className="text-[11px] font-mono text-slate-400 block">Base Formula:</span>
+            <span className="text-[11px] font-mono text-slate-400 block">Pricing Formula:</span>
             <span className="text-xs font-mono font-bold text-slate-800">
-              Order Qty × Base Rate (₹/pc)
+              {pricingModel === 'BULK_RANGE'
+                ? 'Order Qty × Tier Rate (₹/pc)'
+                : 'Selected Batch Total (₹)'}
             </span>
           </div>
+        </div>
+
+        {/* Active Pricing Structure Banner */}
+        <div
+          className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
+            pricingModel === 'BULK_RANGE'
+              ? 'bg-amber-50/80 border-amber-300/80 text-amber-950'
+              : 'bg-slate-50 border-slate-200 text-slate-800'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                pricingModel === 'BULK_RANGE'
+                  ? 'bg-[#FFED00] text-slate-900 border border-amber-400 shadow-2xs'
+                  : 'bg-slate-200 text-slate-700'
+              }`}
+            >
+              {pricingModel === 'BULK_RANGE' ? (
+                <RiPriceTag3Line className="w-4 h-4" />
+              ) : (
+                <RiStackLine className="w-4 h-4" />
+              )}
+            </div>
+            <div>
+              <div className="font-bold text-xs flex items-center gap-2">
+                <span>
+                  Stage 1 Pricing Structure:{' '}
+                  <strong>
+                    {pricingModel === 'BULK_RANGE'
+                      ? 'Bulk Quantity Range'
+                      : 'Single Fixed Quantity'}
+                  </strong>
+                </span>
+                <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-white/70 border border-slate-200">
+                  {pricingModel === 'BULK_RANGE'
+                    ? 'Dynamic Unit Multiplier'
+                    : 'Fixed Batch Packages'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 mt-0.5">
+                {pricingModel === 'BULK_RANGE'
+                  ? 'Tiers represent wholesale brackets (e.g. 1–10 pcs @ ₹100/pc, 11–20 pcs @ ₹90/pc). On storefront, ordering 11 units multiplies as 11 × ₹90 = ₹990.'
+                  : 'Tiers represent fixed discrete package quantities (e.g. 100 pcs, 200 pcs, 500 pcs) with set batch total prices.'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const next = pricingModel === 'BULK_RANGE' ? 'FIXED' : 'BULK_RANGE';
+              setPricingModel?.(next);
+              onChange?.();
+            }}
+            className="shrink-0 px-3 py-1.5 text-[11px] font-bold rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 transition cursor-pointer shadow-2xs"
+          >
+            Switch to {pricingModel === 'BULK_RANGE' ? 'Single Fixed Quantity' : 'Bulk Quantity Range'}
+          </button>
+        </div>
+
+        {/* ======================================================== */}
+        {/* 2.A: QUANTITY & PRICE INCREASING MODE TOGGLE             */}
+        {/* ======================================================== */}
+        <div className="p-4 bg-gradient-to-r from-slate-50 via-amber-50/20 to-slate-50 border border-slate-200/90 rounded-xl space-y-3 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-900 font-mono">
+                  Price Increasing Mode
+                </span>
+                {isIncrementalMode ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full">
+                    <RiCheckboxCircleLine className="w-3.5 h-3.5 text-emerald-600" />
+                    Price Increasing ON (Increment-Based)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 bg-slate-200 border border-slate-300 px-2.5 py-0.5 rounded-full">
+                    <RiLockLine className="w-3.5 h-3.5 text-slate-500" />
+                    Price Increasing OFF (Fixed Quantities Only)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500">
+                {isIncrementalMode
+                  ? 'Price increasing is ON. Customers can order quantities increasing dynamically by the increment step (e.g. +100 units). Pricing scales across tiers.'
+                  : 'Price increasing is OFF. Customers can ONLY select the exact fixed quantities defined in the tiers below. Stepper and custom counts are disabled.'}
+              </p>
+            </div>
+
+            {/* The Switch Toggle */}
+            <div className="flex items-center gap-3 shrink-0 bg-white p-1.5 rounded-xl border border-slate-200 shadow-2xs">
+              <span className={`text-xs font-bold ${!isIncrementalMode ? 'text-slate-900' : 'text-slate-400'}`}>
+                Fixed Qty Only
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isIncrementalMode}
+                onClick={() => handleToggleIncrementalMode(!isIncrementalMode)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  isIncrementalMode ? 'bg-amber-500' : 'bg-slate-300'
+                }`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                    isIncrementalMode ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+              <span className={`text-xs font-bold ${isIncrementalMode ? 'text-amber-600' : 'text-slate-400'}`}>
+                Incremental
+              </span>
+            </div>
+          </div>
+
+          {/* If Incremental Mode is ON: Show step configurator & presets */}
+          {isIncrementalMode ? (
+            <div className="pt-2 border-t border-slate-200/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-slate-700">Increment Step:</span>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="1"
+                    max="10000"
+                    step="1"
+                    value={quantityStep || 100}
+                    onChange={(e) => {
+                      const val = Math.max(1, parseInt(e.target.value) || 1);
+                      setQuantityStep?.(val);
+                      onChange?.();
+                    }}
+                    className="w-24 px-2.5 py-1 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-amber-500"
+                  />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
+                    units
+                  </span>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex items-center gap-1">
+                  {[25, 50, 100, 250, 500].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => {
+                        setQuantityStep?.(preset);
+                        onChange?.();
+                      }}
+                      className={`px-2 py-0.5 text-[11px] font-mono rounded cursor-pointer transition ${
+                        (quantityStep || 100) === preset
+                          ? 'bg-amber-500 text-white font-bold shadow-2xs'
+                          : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      +{preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="text-[11px] text-slate-500 font-mono">
+                Order steps: {moq}, {moq + (quantityStep || 100)}, {moq + 2 * (quantityStep || 100)}... up to {maxQuantity || 100000}
+              </div>
+            </div>
+          ) : (
+            <div className="pt-2 border-t border-slate-200/60 flex items-center gap-2 text-xs text-slate-600">
+              <RiInformationLine className="w-4 h-4 text-slate-400 shrink-0" />
+              <span>
+                Storefront will restrict customers strictly to the quantity tier cards defined below. Stepper and custom quantities will be hidden.
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Quantity Tiers Toolbar & Chips */}
@@ -1653,16 +2011,50 @@ export function StudioTabPricing({
 
               <button
                 type="button"
-                onClick={() => {
-                  setNewAddonTierInput('');
-                  setAddonTierError(null);
-                  setIsAddAddonTierModalOpen(true);
-                }}
-                className="px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                onClick={openAddTierModal}
+                className="px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                title="Add a Quantity Tier or Bulk Range Bracket"
               >
-                <RiAddLine className="w-3.5 h-3.5" />
-                <span>Add Tier</span>
+                <RiAddLine className="w-3.5 h-3.5 text-slate-700" />
+                <span>+ Add Tier</span>
               </button>
+
+              {pricingModel === 'BULK_RANGE' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddonQuantityTiers([
+                      { id: '1-10', minQty: 1, maxQty: 10, label: '1–10 pcs' },
+                      { id: '11-20', minQty: 11, maxQty: 20, label: '11–20 pcs' },
+                      { id: '21-50', minQty: 21, maxQty: 50, label: '21–50 pcs' },
+                      { id: '51-100', minQty: 51, maxQty: 100, label: '51–100 pcs' },
+                      { id: '101-250', minQty: 101, maxQty: 250, label: '101–250 pcs' },
+                    ]);
+                    onChange?.();
+                  }}
+                  className="px-2 py-1 text-amber-800 hover:text-amber-950 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-[11px] font-bold rounded-lg transition cursor-pointer"
+                  title="Reset to standard wholesale brackets (1-10, 11-20, 21-50, 51-100, 101-250)"
+                >
+                  Standard Bulk Ranges
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddonQuantityTiers([
+                      { id: '100', minQty: 100, maxQty: 100, label: '100 pcs' },
+                      { id: '250', minQty: 250, maxQty: 250, label: '250 pcs' },
+                      { id: '500', minQty: 500, maxQty: 500, label: '500 pcs' },
+                      { id: '1000', minQty: 1000, maxQty: 1000, label: '1,000 pcs' },
+                    ]);
+                    onChange?.();
+                  }}
+                  className="px-2 py-1 text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-300 text-[11px] font-bold rounded-lg transition cursor-pointer"
+                  title="Reset to standard batch quantities (100, 250, 500, 1000)"
+                >
+                  Standard Batches
+                </button>
+              )}
 
               <button
                 type="button"
@@ -1691,14 +2083,28 @@ export function StudioTabPricing({
                 <th className="py-3 px-3.5 whitespace-nowrap min-w-[140px]">
                   Status
                 </th>
-                {addonQuantityTiers.map((tier) => (
-                  <th key={tier.id} className="py-3 px-3.5 text-right whitespace-nowrap min-w-[140px]">
-                    <div>{tier.label}</div>
-                    <span className="text-[9px] font-normal text-slate-400 lowercase block font-sans">
-                      ₹ / pc (Base Rate)
-                    </span>
-                  </th>
-                ))}
+                {addonQuantityTiers.map((tier) => {
+                  const isRange = tier.minQty !== tier.maxQty;
+                  return (
+                    <th key={tier.id} className="py-3 px-3.5 text-right whitespace-nowrap min-w-[190px]">
+                      <div className="flex flex-col items-end gap-1">
+                        {isRange ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 border border-indigo-200">
+                            Bulk Range
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-200 text-slate-700">
+                            Fixed Qty
+                          </span>
+                        )}
+                        <div className="font-bold text-slate-900 text-xs">{tier.label}</div>
+                        <span className="text-[9px] font-normal text-slate-400 lowercase block font-sans">
+                          {isRange ? `${tier.minQty} to ${tier.maxQty} pcs` : `Exactly ${tier.minQty} pcs`}
+                        </span>
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
@@ -1717,46 +2123,112 @@ export function StudioTabPricing({
                 </td>
                 {addonQuantityTiers.map((tier) => {
                   const currentRate = getBaseTierPrice(tier);
-                  const numRate = typeof currentRate === 'number' ? currentRate : 0;
-                  const isBracket = tier.minQty !== tier.maxQty;
-                  const minTotal = Math.round(numRate * tier.minQty * 100) / 100;
-                  const maxTotal = Math.round(numRate * tier.maxQty * 100) / 100;
+                  const totalPrice = getBaseTierTotalPrice(tier);
+                  const isRange = tier.minQty !== tier.maxQty;
+                  const minCost = currentRate !== '' && Number(currentRate) > 0 ? Math.round(Number(currentRate) * tier.minQty * 100) / 100 : (totalPrice !== '' ? Number(totalPrice) : 0);
+                  const maxCost = isRange && currentRate !== '' && Number(currentRate) > 0 ? Math.round(Number(currentRate) * tier.maxQty * 100) / 100 : minCost;
 
                   return (
                     <td key={tier.id} className="py-2.5 px-3.5 text-right">
-                      <div className="inline-flex flex-col items-end">
-                        <div className="relative">
-                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-[11px]">
-                            ₹
-                          </span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={currentRate !== '' ? currentRate : ''}
-                            onChange={(e) => {
-                              const parsed = parseFloat(e.target.value);
-                              handleBaseTierPriceChange(
-                                tier,
-                                isNaN(parsed) || e.target.value === '' ? 0 : parsed
-                              );
-                            }}
-                            placeholder="0.00"
-                            className="w-28 pl-6 pr-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-right font-mono text-xs font-bold text-slate-900 focus:outline-none focus:border-slate-900"
-                          />
-                        </div>
-                        <span className="text-[10px] font-mono text-slate-500 mt-0.5">
-                          {numRate > 0 ? (
-                            isBracket ? (
-                              `= ₹${minTotal}–₹${maxTotal} total`
-                            ) : (
-                              `= ₹${minTotal} for ${tier.minQty} pcs`
-                            )
+                      {isRange ? (
+                        <div className="inline-flex flex-col items-end gap-1">
+                          {/* Range Tier: Primary Per-Piece Unit Rate */}
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] text-amber-900 font-mono font-black">
+                              Rate:
+                            </span>
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-[11px]">
+                                ₹
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={currentRate !== '' ? currentRate : ''}
+                                onChange={(e) => {
+                                  const parsed = parseFloat(e.target.value);
+                                  handleBaseTierPriceChange(
+                                    tier,
+                                    isNaN(parsed) || e.target.value === '' ? 0 : parsed
+                                  );
+                                }}
+                                placeholder="0.00"
+                                className="w-24 pl-5 pr-2 py-1 bg-amber-50/70 border border-amber-300 rounded-lg text-right font-mono text-xs font-black text-slate-900 focus:outline-none focus:border-amber-500 shadow-2xs"
+                                title={`Per product price between ${tier.minQty} and ${tier.maxQty} pcs`}
+                              />
+                            </div>
+                            <span className="text-[10px] text-slate-500 font-mono font-bold">/pc</span>
+                          </div>
+
+                          {/* Live Breakdown for Range */}
+                          {currentRate !== '' && Number(currentRate) > 0 ? (
+                            <div className="text-[10px] font-mono text-slate-600 bg-slate-50 px-2 py-1 rounded border border-slate-200 mt-1 text-right leading-tight">
+                              <div>
+                                {tier.minQty} pc{tier.minQty > 1 ? 's' : ''} = <strong className="text-slate-900">₹{(Number(currentRate) * tier.minQty).toLocaleString()}</strong>
+                              </div>
+                              <div className="text-[9px] text-slate-400">
+                                {tier.maxQty} pcs = ₹{(Number(currentRate) * tier.maxQty).toLocaleString()}
+                              </div>
+                            </div>
                           ) : (
-                            'Set base rate'
+                            <span className="text-[9px] text-slate-400 font-mono mt-1">
+                              Enter ₹/pc
+                            </span>
                           )}
-                        </span>
-                      </div>
+                        </div>
+                      ) : (
+                        <div className="inline-flex flex-col items-end gap-1.5">
+                          {/* Single Fixed Quantity Tier: Total & Unit Rate */}
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-slate-500 font-mono font-bold">Total:</span>
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-[11px]">
+                                ₹
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={totalPrice !== '' ? totalPrice : ''}
+                                onChange={(e) => {
+                                  const parsed = parseFloat(e.target.value);
+                                  handleBaseTierTotalPriceChange(
+                                    tier,
+                                    isNaN(parsed) || e.target.value === '' ? 0 : parsed
+                                  );
+                                }}
+                                placeholder="0"
+                                className="w-24 pl-5 pr-2 py-1 bg-white border border-slate-300 rounded-lg text-right font-mono text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-500 shadow-2xs"
+                                title={`Total amount for ${tier.minQty} units`}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Per-Unit Rate Input */}
+                          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-mono">
+                            <span>₹/pc:</span>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={currentRate !== '' ? currentRate : ''}
+                                onChange={(e) => {
+                                  const parsed = parseFloat(e.target.value);
+                                  handleBaseTierPriceChange(
+                                    tier,
+                                    isNaN(parsed) || e.target.value === '' ? 0 : parsed
+                                  );
+                                }}
+                                placeholder="0.00"
+                                className="w-16 px-1.5 py-0.5 bg-slate-50 border border-slate-200 rounded text-right font-mono text-[11px] text-slate-600 focus:outline-none focus:border-amber-500"
+                                title="Per unit rate"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </td>
                   );
                 })}
@@ -1904,16 +2376,14 @@ export function StudioTabPricing({
 
                         <button
                           type="button"
-                          onClick={() => {
-                            setNewAddonTierInput('');
-                            setAddonTierError(null);
-                            setIsAddAddonTierModalOpen(true);
-                          }}
-                          className="px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                          onClick={openAddTierModal}
+                          className="px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                          title="Add a Single Fixed Quantity or Bulk Range Bracket"
                         >
-                          <RiAddLine className="w-3.5 h-3.5" />
-                          <span>Add Tier</span>
+                          <RiAddLine className="w-3.5 h-3.5 text-slate-700" />
+                          <span>+ Add Tier</span>
                         </button>
+
 
                         <button
                           type="button"
@@ -2377,7 +2847,7 @@ export function StudioTabPricing({
       {/* ================================================================== */}
       {/* MODALS: ADDITIONAL PRICING QUANTITY TIERS (ADD & EDIT)              */}
       {/* ================================================================== */}
-      {/* Modal 3: Add Additional Pricing Quantity Tier */}
+      {/* Modal 3: Add Pricing Tier / Bulk Range Bracket */}
       {isAddAddonTierModalOpen && (
         <Modal
           isOpen={isAddAddonTierModalOpen}
@@ -2385,12 +2855,43 @@ export function StudioTabPricing({
             setIsAddAddonTierModalOpen(false);
             setAddonTierError(null);
           }}
-          title="Add Additional Pricing Quantity Tier"
+          title="Add Quantity Tier"
         >
           <div className="space-y-4">
-            <p className="text-xs text-slate-500">
-              Define a single quantity size (e.g. 100, 200, 500) or a quantity range (e.g. 1-10, 11-50, 51-100 pieces).
-            </p>
+            {/* Clean Segmented Tab Switcher */}
+            <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => {
+                  setAddTierMode('single');
+                  setAddonTierError(null);
+                }}
+                className={`py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  addTierMode === 'single'
+                    ? 'bg-white text-slate-900 shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <RiStackLine className="w-3.5 h-3.5 text-slate-700" />
+                <span>Single Fixed Quantity</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAddTierMode('range');
+                  setAddonTierError(null);
+                }}
+                className={`py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  addTierMode === 'range'
+                    ? 'bg-white text-slate-900 shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <RiPriceTag3Line className="w-3.5 h-3.5 text-amber-600" />
+                <span>Bulk Quantity Range</span>
+              </button>
+            </div>
 
             {addonTierError && (
               <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg font-bold flex items-center gap-1.5">
@@ -2399,27 +2900,211 @@ export function StudioTabPricing({
               </div>
             )}
 
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700 block">
-                Quantity Tier or Range (pieces) <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={newAddonTierInput}
-                onChange={(e) => {
-                  setNewAddonTierInput(e.target.value);
-                  setAddonTierError(null);
-                }}
-                placeholder="e.g. 1-10 or 250"
-                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-slate-900"
-                autoFocus
-              />
-              <span className="text-[11px] text-slate-400 block">
-                Supports ranges like <code>1-10</code>, <code>11-50</code>, or single quantities like <code>100</code>.
+            {/* TAB 1: SINGLE FIXED QUANTITY */}
+            {addTierMode === 'single' && (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 block">
+                    Quantity (pieces) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={singleQtyInput}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      setSingleQtyInput(isNaN(val) ? '' : val);
+                      setAddonTierError(null);
+                    }}
+                    placeholder="e.g. 100"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-500"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Quick Presets */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Popular Quantities
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[50, 100, 200, 250, 500, 1000, 2500, 5000].map((qty) => (
+                      <button
+                        key={qty}
+                        type="button"
+                        onClick={() => {
+                          setSingleQtyInput(qty);
+                          setAddonTierError(null);
+                        }}
+                        className={`px-2.5 py-1 text-xs rounded-lg font-mono font-bold border transition cursor-pointer ${
+                          singleQtyInput === qty
+                            ? 'bg-slate-900 border-slate-900 text-white shadow-2xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                        }`}
+                      >
+                        {qty} pcs
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Optional Unit Rate */}
+                <div className="space-y-1 pt-1">
+                  <label className="text-xs font-bold text-slate-700 block">
+                    Initial Unit Rate (₹ / pc) <span className="text-slate-400 font-normal">(Optional)</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-sm">
+                      ₹
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={singleInitialRate}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setSingleInitialRate(isNaN(val) ? '' : val);
+                      }}
+                      placeholder="0.00"
+                      className="w-full pl-7 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: BULK QUANTITY RANGE */}
+            {addTierMode === 'range' && (
+              <div className="space-y-4">
+                {/* Range From & To */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block">
+                      From (Min Qty) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={rangeMinInput}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        setRangeMinInput(isNaN(val) ? '' : val);
+                        setAddonTierError(null);
+                      }}
+                      placeholder="e.g. 51"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block">
+                      To (Max Qty) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={rangeMaxInput}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        setRangeMaxInput(isNaN(val) ? '' : val);
+                        setAddonTierError(null);
+                      }}
+                      placeholder="e.g. 100"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Presets for Ranges */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Popular Bulk Ranges
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { min: 1, max: 10, label: '1–10 pcs' },
+                      { min: 11, max: 20, label: '11–20 pcs' },
+                      { min: 21, max: 50, label: '21–50 pcs' },
+                      { min: 51, max: 100, label: '51–100 pcs' },
+                      { min: 101, max: 250, label: '101–250 pcs' },
+                      { min: 251, max: 500, label: '251–500 pcs' },
+                      { min: 501, max: 1000, label: '501–1,000 pcs' },
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          setRangeMinInput(preset.min);
+                          setRangeMaxInput(preset.max);
+                          setAddonTierError(null);
+                        }}
+                        className={`px-2.5 py-1 text-xs rounded-lg font-mono font-bold border transition cursor-pointer ${
+                          rangeMinInput === preset.min && rangeMaxInput === preset.max
+                            ? 'bg-amber-50 border-amber-400 text-amber-900 ring-2 ring-amber-400/20'
+                            : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Per-Piece Bulk Rate */}
+                <div className="space-y-1 pt-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 block">
+                      Per-Piece Unit Rate (₹ / pc) <span className="text-slate-400 font-normal">(Optional)</span>
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      Applied to every piece in this range
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-sm">
+                      ₹
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={rangeInitialRate}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setRangeInitialRate(isNaN(val) ? '' : val);
+                      }}
+                      placeholder="e.g. 100 (or 90 for 11-20)"
+                      className="w-full pl-7 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  {rangeInitialRate !== '' && Number(rangeInitialRate) > 0 && rangeMinInput && rangeMaxInput && (
+                    <div className="p-2.5 bg-amber-50/80 border border-amber-200 rounded-lg text-xs space-y-1 mt-2">
+                      <div className="font-bold text-amber-950 flex items-center justify-between">
+                        <span>Per-Piece Rate:</span>
+                        <span className="font-mono text-sm">₹{Number(rangeInitialRate).toFixed(2)} / pc</span>
+                      </div>
+                      <div className="text-[11px] text-amber-800 font-mono leading-relaxed">
+                        • {rangeMinInput} pc{Number(rangeMinInput) > 1 ? 's' : ''} = ₹{(Number(rangeInitialRate) * Number(rangeMinInput)).toLocaleString()}
+                        {Number(rangeMaxInput) > Number(rangeMinInput) + 1 ? `, ${Number(rangeMinInput) + 1} pcs = ₹${(Number(rangeInitialRate) * (Number(rangeMinInput) + 1)).toLocaleString()}` : ''}
+                        {' ... up to '}
+                        {rangeMaxInput} pcs = ₹{(Number(rangeInitialRate) * Number(rangeMaxInput)).toLocaleString()}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Custom Input Helper */}
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[11px] text-slate-400">
+                Supports single count (<code>100</code>) or range brackets (<code>51-100</code>)
               </span>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => {

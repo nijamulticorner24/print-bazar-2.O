@@ -175,6 +175,8 @@ export function resolveArtworkConditions(
       ? rawLabels
       : slotCount === 2
       ? ['Front Side', 'Back Side']
+      : slotCount === 1
+      ? ['Front Side']
       : Array.from({ length: slotCount }, (_, i) => `Artwork File ${i + 1}`);
 
     const slots: ArtworkSlotConfig[] = [];
@@ -220,23 +222,91 @@ export function resolveArtworkConditions(
     };
   }
 
-  // Fallback heuristic from selected option group option definitions (e.g. printing_side = both)
+  // Fallback heuristic from selected option group option definitions (e.g. printing_side = both, fileCount)
   let heuristicSlots: ArtworkSlotConfig[] = [];
   let detectedCount = 1;
-  let detectedLabels: string[] = ['Production Artwork File'];
+  let detectedLabels: string[] = ['Front Side'];
 
   for (const grp of availableOptionGroups) {
     const val = selectedOptions[grp.code];
     if (!val) continue;
     const opt = grp.options?.find((o) => normalizeKey(o.value) === normalizeKey(val));
+    const valStr = String(val).toLowerCase();
+    const lblStr = String(opt?.label || '').toLowerCase();
+    const grpCodeStr = String(grp.code).toLowerCase();
+    const grpNameStr = String(grp.name).toLowerCase();
+    const isSidesOrDesignGroup =
+      grpCodeStr.includes('side') ||
+      grpCodeStr.includes('print') ||
+      grpCodeStr.includes('design') ||
+      grpCodeStr.includes('upload') ||
+      grpCodeStr.includes('location') ||
+      grpNameStr.includes('side') ||
+      grpNameStr.includes('print') ||
+      grpNameStr.includes('design') ||
+      grpNameStr.includes('upload') ||
+      grpNameStr.includes('location');
+
     if (opt && opt.fileCount && opt.fileCount > 0) {
       detectedCount = opt.fileCount;
       if (opt.fileSlotLabels && opt.fileSlotLabels.length > 0) {
         detectedLabels = opt.fileSlotLabels;
       } else if (detectedCount === 2) {
         detectedLabels = ['Front Side', 'Back Side'];
+      } else if (detectedCount === 1) {
+        detectedLabels = ['Front Side'];
+      } else {
+        detectedLabels = Array.from({ length: detectedCount }, (_, i) => `Artwork File ${i + 1}`);
       }
       break;
+    }
+
+    if (isSidesOrDesignGroup) {
+      if (
+        valStr.includes('both') ||
+        valStr.includes('double') ||
+        valStr.includes('front_and_back') ||
+        valStr.includes('front_back') ||
+        valStr.includes('2_side') ||
+        valStr.includes('2_design') ||
+        valStr === '2' ||
+        lblStr.includes('both') ||
+        lblStr.includes('double') ||
+        lblStr.includes('front & back') ||
+        lblStr.includes('front and back') ||
+        lblStr.includes('2 side') ||
+        lblStr.includes('2 design')
+      ) {
+        detectedCount = 2;
+        detectedLabels = ['Front Side', 'Back Side'];
+        break;
+      } else if (
+        valStr.includes('front') ||
+        valStr.includes('single') ||
+        valStr.includes('1_side') ||
+        valStr.includes('1_design') ||
+        valStr === '1' ||
+        lblStr.includes('front') ||
+        lblStr.includes('single') ||
+        lblStr.includes('1 side') ||
+        lblStr.includes('1 design')
+      ) {
+        detectedCount = 1;
+        detectedLabels = ['Front Side'];
+        break;
+      } else if (valStr.includes('back') || lblStr.includes('back')) {
+        detectedCount = 1;
+        detectedLabels = ['Back Side'];
+        break;
+      } else if (valStr.includes('3') || lblStr.includes('3')) {
+        detectedCount = 3;
+        detectedLabels = ['Artwork File 1', 'Artwork File 2', 'Artwork File 3'];
+        break;
+      } else if (valStr.includes('4') || lblStr.includes('4')) {
+        detectedCount = 4;
+        detectedLabels = ['Artwork File 1', 'Artwork File 2', 'Artwork File 3', 'Artwork File 4'];
+        break;
+      }
     }
   }
 

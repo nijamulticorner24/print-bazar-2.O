@@ -658,16 +658,19 @@ export function StudioTabArtworkConditions({
   return (
     <div className="w-full space-y-6">
       {/* Informational Header */}
-      <div className="p-4 bg-amber-50/80 border border-amber-200/90 rounded-xl text-amber-950 text-xs flex items-start gap-3 shadow-2xs">
-        <RiInformationLine className="w-5 h-5 shrink-0 text-amber-600 mt-0.5" />
+      <div className="p-4 bg-indigo-50/80 border border-indigo-200/90 rounded-xl text-indigo-950 text-xs flex items-start gap-3 shadow-2xs">
+        <RiInformationLine className="w-5 h-5 shrink-0 text-indigo-600 mt-0.5" />
         <div className="space-y-1">
-          <span className="font-bold block text-sm">
-            Admin-Controlled Dynamic Artwork Conditions
-          </span>
-          <p className="text-[11px] text-amber-900 leading-relaxed">
-            Artwork requirements are dynamically governed by customer choices configured in Step 2.
-            Printing Location remains selectable independently from Design Service. Configure required upload slots,
-            design briefs, and reference requirements per combination below without hardcoding frontend logic.
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono font-bold bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded">
+              Stage 4
+            </span>
+            <span className="font-bold text-sm">
+              Artwork Upload & Design Matrix
+            </span>
+          </div>
+          <p className="text-[11px] text-indigo-900/90 leading-relaxed">
+            Configure customer upload requirements, print slots (e.g. Front Side, Back Side), allowed file extensions, max file sizes, and design service fees per option combination.
           </p>
         </div>
       </div>

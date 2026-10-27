@@ -20,7 +20,7 @@ import { MatrixRowItem } from './StudioTabPricing';
 import { formatCurrency } from '@/lib/utils';
 import { validateArtworkConditions } from '@/lib/artwork-rule-resolver';
 
-export type StudioTab = 'BASICS' | 'OPTIONS' | 'ARTWORK_CONDITIONS' | 'PRICING' | 'REVIEW';
+export type StudioTab = 'BASICS' | 'OPTIONS' | 'RULES' | 'ARTWORK' | 'PRICING' | 'REVIEW';
 
 export interface PrePublishIssue {
   tab: StudioTab;
@@ -159,41 +159,27 @@ export function StudioTabReview({
       }
     }
 
-    // 3. Step 3 — Artwork Conditions Validation
-    const { errors: artworkErrors, warnings: artworkWarnings } = validateArtworkConditions(rules, optionGroups);
-    for (const err of artworkErrors) {
-      list.push({
-        tab: 'ARTWORK_CONDITIONS',
-        field: `artwork_conflict_${err.ruleName}`,
-        message: err.message,
-        severity: 'ERROR',
-      });
-    }
-    for (const w of artworkWarnings) {
-      list.push({
-        tab: 'ARTWORK_CONDITIONS',
-        field: `artwork_warning_${w.ruleName}`,
-        message: w.message,
-        severity: 'WARNING',
-      });
-    }
-
-    // Additional general rules validation
+    // 3. Step 3 — Option Dependencies & Rules Validation
     const groupCodes = new Set(optionGroups.map((g) => g.code));
     for (const r of rules) {
-      const p = (r.actionPayload as any) || {};
-      if (p.conditionCombination) continue; // Already covered by validateArtworkConditions
+      if (
+        r.actionType === 'ARTWORK_CONDITIONS' ||
+        r.actionType === 'REQUIRE_ARTWORK_FILES' ||
+        r.actionType === 'CONFIGURE_ARTWORK'
+      ) {
+        continue;
+      }
       if (!groupCodes.has(r.conditionGroupCode)) {
         list.push({
-          tab: 'ARTWORK_CONDITIONS',
+          tab: 'RULES',
           field: `rule_orphan_${r.name}`,
           message: `Rule "${r.name}" references non-existent condition group "${r.conditionGroupCode}".`,
           severity: 'ERROR',
         });
       }
-      if (r.targetGroupCode && !groupCodes.has(r.targetGroupCode) && r.actionType !== 'REQUIRE_ARTWORK_FILES') {
+      if (r.targetGroupCode && !groupCodes.has(r.targetGroupCode)) {
         list.push({
-          tab: 'ARTWORK_CONDITIONS',
+          tab: 'RULES',
           field: `rule_target_${r.name}`,
           message: `Rule "${r.name}" targets non-existent option group "${r.targetGroupCode}".`,
           severity: 'ERROR',
@@ -201,14 +187,33 @@ export function StudioTabReview({
       }
     }
 
-    // 4. Design Pricing & Scope Validation
+    // 4. Step 4 — Artwork Conditions & Design Matrix Validation
+    const { errors: artworkErrors, warnings: artworkWarnings } = validateArtworkConditions(rules, optionGroups);
+    for (const err of artworkErrors) {
+      list.push({
+        tab: 'ARTWORK',
+        field: `artwork_conflict_${err.ruleName}`,
+        message: err.message,
+        severity: 'ERROR',
+      });
+    }
+    for (const w of artworkWarnings) {
+      list.push({
+        tab: 'ARTWORK',
+        field: `artwork_warning_${w.ruleName}`,
+        message: w.message,
+        severity: 'WARNING',
+      });
+    }
+
+    // Design Pricing & Scope Validation
     for (const r of rules) {
       const p = (r.actionPayload as any) || {};
       if (p.designFee !== undefined && p.designFee !== null) {
         const feeNum = Number(p.designFee);
         if (isNaN(feeNum) || feeNum < 0) {
           list.push({
-            tab: 'ARTWORK_CONDITIONS',
+            tab: 'ARTWORK',
             field: `design_fee_negative_${r.name}`,
             message: `Rule "${r.name}" configures a negative design fee (₹${p.designFee}). All design fees must be non-negative.`,
             severity: 'ERROR',
@@ -224,7 +229,7 @@ export function StudioTabReview({
       });
       if (!hasConfiguredFee) {
         list.push({
-          tab: 'ARTWORK_CONDITIONS',
+          tab: 'ARTWORK',
           field: 'missing_required_design_price',
           message: 'Product marks Design Service as REQUIRED, but no positive design fee is configured.',
           severity: 'ERROR',
@@ -647,7 +652,7 @@ export function StudioTabReview({
 
                 <button
                   type="button"
-                  onClick={() => onNavigateToTab((issue.tab as string) === 'RULES' ? 'ARTWORK_CONDITIONS' : issue.tab)}
+                  onClick={() => onNavigateToTab(issue.tab)}
                   className="text-xs font-semibold text-amber-700 hover:text-amber-900 hover:underline flex items-center gap-1 shrink-0"
                 >
                   <span>
@@ -655,13 +660,15 @@ export function StudioTabReview({
                     {issue.tab === 'BASICS'
                       ? 'Step 1: Basic Details'
                       : issue.tab === 'OPTIONS'
-                      ? 'Step 2: Groups & Combinations'
-                      : issue.tab === 'ARTWORK_CONDITIONS' || (issue.tab as string) === 'RULES'
-                      ? 'Step 3: Artwork Conditions & Design Pricing'
+                      ? 'Step 2: Groups & Choices'
+                      : issue.tab === 'RULES'
+                      ? 'Step 3: Option Dependencies & Rules'
+                      : issue.tab === 'ARTWORK'
+                      ? 'Step 4: Artwork Upload & Design Matrix'
                       : issue.tab === 'PRICING'
-                      ? 'Step 4: Pricing'
+                      ? 'Step 5: Pricing'
                       : issue.tab === 'REVIEW'
-                      ? 'Step 5: Review & Publish'
+                      ? 'Step 6: Review & Publish'
                       : issue.tab}
                   </span>
                   <RiArrowRightLine className="w-3.5 h-3.5" />

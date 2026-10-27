@@ -26,6 +26,7 @@ import {
   api,
   DynamicProduct,
   ProductCategoryItem,
+  resolveImageUrl,
 } from '@/lib/api';
 import { Button, Badge, Modal } from '@/components/ui';
 import { ProductSetupStudio } from './components/ProductSetupStudio';
@@ -37,6 +38,7 @@ export default function AdminProductsPage() {
   const [products, setProducts] = useState<DynamicProduct[]>([]);
   const [categories, setCategories] = useState<ProductCategoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   // Filters
@@ -58,15 +60,32 @@ export default function AdminProductsPage() {
 
   const loadData = async () => {
     setIsLoading(true);
+    setLoadError(null);
     try {
-      const [prodsRes, catsRes] = await Promise.all([
+      const [prodsRes, catsRes] = await Promise.allSettled([
         api.adminListProducts({ limit: 100 }),
         api.adminListCategories(),
       ]);
-      setProducts(prodsRes.data || []);
-      setCategories(catsRes || []);
-    } catch (err) {
+
+      if (prodsRes.status === 'fulfilled') {
+        const val = prodsRes.value;
+        const list = Array.isArray(val) ? val : (val as any)?.data || [];
+        setProducts(list);
+      } else {
+        console.error('Failed to load products:', prodsRes.reason);
+        setLoadError(prodsRes.reason?.message || 'Failed to load products from server.');
+      }
+
+      if (catsRes.status === 'fulfilled') {
+        const val = catsRes.value;
+        const list = Array.isArray(val) ? val : (val as any)?.data || [];
+        setCategories(list);
+      } else {
+        console.error('Failed to load categories:', catsRes.reason);
+      }
+    } catch (err: any) {
       console.error('Failed to load products:', err);
+      setLoadError(err?.message || 'Failed to load products from server.');
     } finally {
       setIsLoading(false);
     }
@@ -87,7 +106,7 @@ export default function AdminProductsPage() {
       }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchName = prod.name.toLowerCase().includes(q);
+        const matchName = prod.name?.toLowerCase().includes(q);
         const matchSku = prod.sku?.toLowerCase().includes(q);
         const matchSlug = prod.slug?.toLowerCase().includes(q);
         if (!matchName && !matchSku && !matchSlug) return false;
@@ -227,6 +246,23 @@ export default function AdminProductsPage() {
         </div>
       )}
 
+      {/* Error Alert if Load Failed */}
+      {loadError && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-rose-800 text-xs shadow-2xs">
+          <div>
+            <span className="font-bold">Failed to synchronize products: </span>
+            <span>{loadError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={loadData}
+            className="flex items-center gap-1 bg-white border border-rose-300 hover:bg-rose-100 text-rose-800 font-semibold px-3 py-1.5 rounded-lg text-xs transition cursor-pointer shrink-0"
+          >
+            <RiRefreshLine className="w-3.5 h-3.5" /> Retry
+          </button>
+        </div>
+      )}
+
       {/* Filters Toolbar */}
       <div className="bg-white border border-slate-200/90 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs">
         <div className="relative w-full md:w-80">
@@ -240,7 +276,7 @@ export default function AdminProductsPage() {
           />
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-medium text-slate-500">Category:</span>
             <select
@@ -248,7 +284,7 @@ export default function AdminProductsPage() {
               onChange={(e) => setSelectedCategoryFilter(e.target.value)}
               className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-amber-500 shadow-2xs cursor-pointer"
             >
-              <option value="ALL">All Categories</option>
+              <option value="ALL">All Categories ({categories.length})</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -264,12 +300,35 @@ export default function AdminProductsPage() {
               onChange={(e) => setSelectedStatusFilter(e.target.value)}
               className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-amber-500 shadow-2xs cursor-pointer"
             >
-              <option value="ALL">All Status</option>
-              <option value="PUBLISHED">Published</option>
-              <option value="DRAFT">Draft</option>
-              <option value="ARCHIVED">Archived</option>
+              <option value="ALL">All Status ({products.length})</option>
+              <option value="PUBLISHED">Published ({products.filter((p) => p.status === 'PUBLISHED').length})</option>
+              <option value="DRAFT">Draft ({products.filter((p) => p.status === 'DRAFT').length})</option>
+              <option value="ARCHIVED">Archived ({products.filter((p) => p.status === 'ARCHIVED').length})</option>
             </select>
           </div>
+
+          {(selectedCategoryFilter !== 'ALL' || selectedStatusFilter !== 'ALL' || searchQuery.trim()) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCategoryFilter('ALL');
+                setSelectedStatusFilter('ALL');
+                setSearchQuery('');
+              }}
+              className="text-xs text-slate-500 hover:text-slate-900 underline font-medium cursor-pointer"
+            >
+              Reset Filters
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={loadData}
+            title="Refresh catalogue list"
+            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+          >
+            <RiRefreshLine className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       </div>
 
@@ -281,8 +340,36 @@ export default function AdminProductsPage() {
             <span className="text-xs font-medium">Loading catalogue products...</span>
           </div>
         ) : filteredProducts.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 text-xs">
-            No products found matching your filter criteria.
+          <div className="p-12 text-center text-slate-500 text-xs flex flex-col items-center justify-center gap-2">
+            {products.length > 0 ? (
+              <>
+                <p className="font-semibold text-slate-700">No products match your filter criteria.</p>
+                <p className="text-slate-400">There are {products.length} products total in the catalogue.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategoryFilter('ALL');
+                    setSelectedStatusFilter('ALL');
+                    setSearchQuery('');
+                  }}
+                  className="mt-2 text-xs font-semibold text-amber-700 hover:text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg cursor-pointer"
+                >
+                  Clear Filters
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold text-slate-700">No products found in catalogue.</p>
+                <p className="text-slate-400">Get started by creating your first product in Setup Studio.</p>
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingProduct(true)}
+                  className="mt-2 text-xs font-bold text-slate-900 bg-[#FFED00] hover:bg-[#F2E100] border border-[#E3A008]/40 px-3.5 py-1.5 rounded-lg shadow-2xs cursor-pointer"
+                >
+                  + Create New Product
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -309,7 +396,7 @@ export default function AdminProductsPage() {
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden flex-shrink-0 flex items-center justify-center">
                             {primaryImg ? (
-                              <img src={primaryImg.url} alt={prod.name} className="w-full h-full object-cover" />
+                              <img src={resolveImageUrl(primaryImg.url)} alt={prod.name} className="w-full h-full object-cover" />
                             ) : (
                               <span className="text-[10px] text-slate-400 font-semibold">NO IMG</span>
                             )}

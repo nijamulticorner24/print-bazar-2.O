@@ -647,7 +647,7 @@ export function StudioTabOptions({
     }
 
     if (onNavigateToTab) {
-      onNavigateToTab('ARTWORK_CONDITIONS');
+      onNavigateToTab('RULES');
     }
   };
 
@@ -1203,7 +1203,7 @@ export function StudioTabOptions({
                     {onNavigateToTab && (
                       <button
                         type="button"
-                        onClick={() => onNavigateToTab('ARTWORK_CONDITIONS')}
+                        onClick={() => onNavigateToTab('RULES')}
                         className="text-[11px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-2.5 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer"
                       >
                         <span>Configure Rules in Step 3</span>
@@ -1253,7 +1253,7 @@ export function StudioTabOptions({
                   <span>No conditional rules linked to <strong>{activeGroup.name}</strong> yet.</span>
                   <button
                     type="button"
-                    onClick={() => onNavigateToTab('ARTWORK_CONDITIONS')}
+                    onClick={() => onNavigateToTab('RULES')}
                     className="text-[11px] font-bold text-amber-800 hover:text-amber-950 underline flex items-center gap-1 cursor-pointer"
                   >
                     <span>Add conditional dependency</span>
@@ -1429,7 +1429,6 @@ export function StudioTabOptions({
                           </th>
                           <th className="p-3">Label</th>
                           <th className="p-3">Value Code</th>
-                          <th className="p-3">Price Delta</th>
                           <th className="p-3 text-center">Default</th>
                           <th className="p-3 text-center">Art Slots</th>
                           <th className="p-3 text-right">Actions</th>
@@ -1499,25 +1498,7 @@ export function StudioTabOptions({
                                 />
                               </td>
 
-                              {/* 4. Price Delta */}
-                              <td className="p-2.5">
-                                <div className="flex items-center gap-1">
-                                  <span className="text-[11px] text-slate-500">+₹</span>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    value={opt.priceModifier}
-                                    onChange={(e) =>
-                                      updateOption(optIdx, {
-                                        priceModifier: parseFloat(e.target.value) || 0,
-                                      })
-                                    }
-                                    className="w-20 bg-white border border-slate-200 rounded px-2 py-1 text-xs font-mono text-slate-900 focus:outline-none focus:border-amber-500"
-                                  />
-                                </div>
-                              </td>
-
-                              {/* 5. Default Choice */}
+                              {/* 4. Default Choice */}
                               <td className="p-2.5 text-center">
                                 <input
                                   type="radio"

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -23,6 +23,37 @@ import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui';
 
+export interface CartDrawerArtworkSlot {
+  slotKey: string;
+  label: string;
+  minMegapixels?: number;
+  isRequired?: boolean;
+  isCustomerSupplied?: boolean;
+}
+
+export interface CartDrawerArtworkConfig {
+  status: 'REQUIRED' | 'OPTIONAL' | 'DISABLED';
+  allowedFormats?: string[];
+  maxFileSizeMb?: number;
+  minimumMegapixels?: number;
+  slots?: CartDrawerArtworkSlot[];
+  requireDesignBrief?: boolean;
+  showDesignBrief?: boolean;
+  requireReferenceImage?: boolean;
+  matchedRuleName?: string;
+}
+
+export interface CartDrawerArtworkFile {
+  fileUrl: string;
+  originalFileName: string;
+  fileSize: number;
+  mimeType?: string;
+  storageKey?: string;
+  slotKey?: string;
+  slotLabel?: string;
+  uploadedAt?: string;
+}
+
 export interface CartDrawerItem {
   productId: string;
   productName: string;
@@ -39,13 +70,9 @@ export interface CartDrawerItem {
     optionLabel?: string;
     value?: string;
   }>;
-  artworkFile?: {
-    fileUrl: string;
-    originalFileName: string;
-    fileSize: number;
-    mimeType?: string;
-    storageKey?: string;
-  } | null;
+  artworkConfig?: CartDrawerArtworkConfig;
+  artworkFile?: CartDrawerArtworkFile | null;
+  artworkFiles?: Record<string, CartDrawerArtworkFile>;
   designNotes?: string;
   personalization?: any;
   paymentMode?: 'FULL' | 'SPLIT_50';
@@ -73,7 +100,8 @@ export function CartDrawer({
   const drawerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [isUploading, setIsUploading] = useState(false);
+  const [uploadingSlotKey, setUploadingSlotKey] = useState<string | null>(null);
+  const [activeUploadSlotKey, setActiveUploadSlotKey] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [customerNotes, setCustomerNotes] = useState(activeItem?.designNotes || '');
   const [isNotesExpanded, setIsNotesExpanded] = useState(false);
@@ -105,8 +133,6 @@ export function CartDrawer({
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
-
   const item = activeItem;
   const specs = item?.specificationsSnapshot || {};
   const qty = item?.quantity || 50;
@@ -115,42 +141,122 @@ export function CartDrawer({
   const tax = item?.taxAmount || Math.round(subtotal * 0.18 * 100) / 100;
   const grandTotal = item?.grandTotal || subtotal + tax;
 
-  const hasArtwork = Boolean(item?.artworkFile?.fileUrl);
+  const artworkConfig = item?.artworkConfig;
+  const artworkStatus = artworkConfig?.status || 'REQUIRED';
+  const maxFileSizeMb = Number(artworkConfig?.maxFileSizeMb) || 50;
+  const allowedFormats =
+    artworkConfig?.allowedFormats && artworkConfig.allowedFormats.length > 0
+      ? artworkConfig.allowedFormats
+      : ['PDF', 'AI', 'PSD', 'EPS', 'TIFF', 'PNG', 'JPG', 'ZIP'];
+  const acceptPattern = allowedFormats
+    .map((fmt) => (fmt.startsWith('.') ? fmt.toLowerCase() : `.${fmt.toLowerCase()}`))
+    .join(',');
+  const formatsDisplayText = allowedFormats.join(', ');
 
-  // File Upload Handler
+  // Deterministically resolve slots: if 1 slot -> 1 slot, if 2 slots -> 2 slots
+  const effectiveSlots: CartDrawerArtworkSlot[] = useMemo(() => {
+    if (artworkConfig?.slots && artworkConfig.slots.length > 0) {
+      return artworkConfig.slots;
+    }
+    if (artworkStatus !== 'DISABLED') {
+      return [
+        {
+          slotKey: 'slot_1_front_side',
+          label: 'Front Side',
+          isRequired: artworkStatus === 'REQUIRED',
+        },
+      ];
+    }
+    return [];
+  }, [artworkConfig?.slots, artworkStatus]);
+
+  // Map of uploaded files per slotKey with fallback to legacy artworkFile
+  const slotFilesMap: Record<string, CartDrawerArtworkFile> = useMemo(() => {
+    const map: Record<string, CartDrawerArtworkFile> = { ...(item?.artworkFiles || {}) };
+    if (item?.artworkFile && Object.keys(map).length === 0 && effectiveSlots.length > 0) {
+      map[effectiveSlots[0].slotKey] = item.artworkFile;
+    }
+    return map;
+  }, [item?.artworkFiles, item?.artworkFile, effectiveSlots]);
+
+  const uploadedCount = useMemo(() => {
+    return effectiveSlots.filter((slot) => Boolean(slotFilesMap[slot.slotKey]?.fileUrl)).length;
+  }, [effectiveSlots, slotFilesMap]);
+
+  const allRequiredUploaded = useMemo(() => {
+    const requiredSlots = effectiveSlots.filter((s) => s.isRequired);
+    if (requiredSlots.length === 0) {
+      return uploadedCount > 0;
+    }
+    return requiredSlots.every((s) => Boolean(slotFilesMap[s.slotKey]?.fileUrl));
+  }, [effectiveSlots, slotFilesMap, uploadedCount]);
+
+  // Trigger file selection for a specific upload slot
+  const triggerUploadForSlot = (slotKey: string) => {
+    setActiveUploadSlotKey(slotKey);
+    setUploadError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  // File Upload Handler (Per-Slot)
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !item) return;
+    const targetSlotKey = activeUploadSlotKey || effectiveSlots[0]?.slotKey;
+    if (!file || !item || !targetSlotKey) return;
 
-    // Validate size (max 50MB) and type
-    const validExtensions = ['.pdf', '.ai', '.psd', '.eps', '.png', '.jpg', '.jpeg', '.tiff', '.zip'];
+    // Validate size and extensions dynamically from artworkConfig
+    const validExtensions = allowedFormats.map((f) =>
+      f.startsWith('.') ? f.toLowerCase() : `.${f.toLowerCase()}`
+    );
+    if (validExtensions.includes('.jpg') && !validExtensions.includes('.jpeg')) {
+      validExtensions.push('.jpeg');
+    }
+
     const hasValidExt = validExtensions.some((ext) => file.name.toLowerCase().endsWith(ext));
     if (!hasValidExt) {
-      setUploadError('Please select a valid print-ready file (.pdf, .ai, .psd, .tiff, .png, .jpg)');
+      setUploadError(`Please select a valid print-ready file (${formatsDisplayText})`);
       return;
     }
 
-    if (file.size > 50 * 1024 * 1024) {
-      setUploadError('Artwork exceeds the maximum allowable size of 50 MB.');
+    const maxBytes = maxFileSizeMb * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setUploadError(`Artwork exceeds the maximum allowable size of ${maxFileSizeMb} MB.`);
       return;
     }
 
-    setIsUploading(true);
+    setUploadingSlotKey(targetSlotKey);
     setUploadError(null);
 
     try {
       const res = await api.uploadArtwork(file, item.productId);
-      const updatedArtwork = {
+      const targetSlot = effectiveSlots.find((s) => s.slotKey === targetSlotKey);
+
+      const newArtworkFile: CartDrawerArtworkFile = {
         fileUrl: res.fileUrl,
         originalFileName: file.name,
         fileSize: file.size,
         mimeType: file.type,
         storageKey: res.storageKey,
+        slotKey: targetSlotKey,
+        slotLabel: targetSlot?.label || 'Artwork File',
+        uploadedAt: new Date().toISOString(),
       };
+
+      const updatedArtworkFiles: Record<string, CartDrawerArtworkFile> = {
+        ...slotFilesMap,
+        [targetSlotKey]: newArtworkFile,
+      };
+
+      // Keep primary artworkFile synchronized for backward compatibility
+      const primaryFile = updatedArtworkFiles[effectiveSlots[0]?.slotKey] || newArtworkFile;
 
       const updatedItem: CartDrawerItem = {
         ...item,
-        artworkFile: updatedArtwork,
+        artworkFiles: updatedArtworkFiles,
+        artworkFile: primaryFile,
       };
 
       if (onUpdateItem) {
@@ -162,19 +268,30 @@ export function CartDrawer({
     } catch (err: any) {
       setUploadError(err?.message || 'Failed to upload artwork. Please try again.');
     } finally {
-      setIsUploading(false);
+      setUploadingSlotKey(null);
+      setActiveUploadSlotKey(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     }
   };
 
-  const handleRemoveArtwork = () => {
+  const handleRemoveSlotArtwork = (slotKey: string) => {
     if (!item) return;
+    const updatedArtworkFiles: Record<string, CartDrawerArtworkFile> = {
+      ...slotFilesMap,
+    };
+    delete updatedArtworkFiles[slotKey];
+
+    const remainingFiles = Object.values(updatedArtworkFiles);
+    const primaryFile = remainingFiles.length > 0 ? remainingFiles[0] : null;
+
     const updatedItem: CartDrawerItem = {
       ...item,
-      artworkFile: null,
+      artworkFiles: updatedArtworkFiles,
+      artworkFile: primaryFile,
     };
+
     if (onUpdateItem) {
       onUpdateItem(updatedItem);
     }
@@ -226,6 +343,8 @@ export function CartDrawer({
       router.push('/checkout');
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex justify-end">
@@ -301,61 +420,56 @@ export function CartDrawer({
                   </div>
                 </div>
 
-                {/* Compact Spec Grid */}
+                {/* Specifications Grid */}
                 <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 space-y-2 text-xs">
-                  <div className="flex items-center justify-between py-1 border-b border-slate-200/60">
-                    <span className="text-slate-500 font-medium">Box Style:</span>
-                    <span className="font-semibold text-slate-900">
-                      {specs.boxStyle || specs['Box Style'] || 'Lid & Base (2-Piece)'}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between py-1 border-b border-slate-200/60">
-                    <span className="text-slate-500 font-medium">Dimensions (mm):</span>
-                    <span className="font-mono font-semibold text-slate-900">
-                      {specs.length || 220} × {specs.width || 160} × {specs.height || 60} mm
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between py-1 border-b border-slate-200/60">
-                    <span className="text-slate-500 font-medium">Calculated Volume:</span>
-                    <span className="font-mono text-slate-700 font-medium">
-                      {(
-                        (Number(specs.length) || 220) *
-                        (Number(specs.width) || 160) *
-                        (Number(specs.height) || 60)
-                      ).toLocaleString()}{' '}
-                      mm³
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between py-1 border-b border-slate-200/60">
-                    <span className="text-slate-500 font-medium">Board Thickness:</span>
-                    <span className="font-semibold text-slate-900">
-                      {specs.boardThickness || specs['Board Thickness'] || '1000 GSM (1.5 mm)'}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between py-1 border-b border-slate-200/60">
-                    <span className="text-slate-500 font-medium">Outer Wrap Material:</span>
-                    <span className="font-semibold text-slate-900">
-                      {specs.outerWrap || specs['Outer Wrap Material'] || 'Coated Art Paper (157 GSM)'}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between py-1 border-b border-slate-200/60">
-                    <span className="text-slate-500 font-medium">Finishing:</span>
-                    <span className="font-semibold text-slate-900">
-                      {specs.finishing || specs['Finishing Options'] || 'None'}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between py-1 border-b border-slate-200/60">
-                    <span className="text-slate-500 font-medium">Insert Option:</span>
-                    <span className="font-semibold text-slate-900">
-                      {specs.insert || specs['Insert Options'] || 'None'}
-                    </span>
-                  </div>
+                  {item.selectedOptionsSummary && item.selectedOptionsSummary.length > 0 ? (
+                    item.selectedOptionsSummary.map((opt, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between py-1 border-b border-slate-200/60 last:border-0"
+                      >
+                        <span className="text-slate-500 font-medium">
+                          {opt.fieldLabel || 'Option'}:
+                        </span>
+                        <span className="font-semibold text-slate-900 text-right truncate max-w-[60%]">
+                          {opt.optionLabel || opt.value}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <>
+                      {specs.boxStyle && (
+                        <div className="flex items-center justify-between py-1 border-b border-slate-200/60">
+                          <span className="text-slate-500 font-medium">Box Style:</span>
+                          <span className="font-semibold text-slate-900">{specs.boxStyle}</span>
+                        </div>
+                      )}
+                      {specs.dimensions && (
+                        <div className="flex items-center justify-between py-1 border-b border-slate-200/60">
+                          <span className="text-slate-500 font-medium">Dimensions:</span>
+                          <span className="font-mono font-semibold text-slate-900">{specs.dimensions}</span>
+                        </div>
+                      )}
+                      {specs.boardThickness && (
+                        <div className="flex items-center justify-between py-1 border-b border-slate-200/60">
+                          <span className="text-slate-500 font-medium">Board Thickness:</span>
+                          <span className="font-semibold text-slate-900">{specs.boardThickness}</span>
+                        </div>
+                      )}
+                      {specs.outerWrap && (
+                        <div className="flex items-center justify-between py-1 border-b border-slate-200/60">
+                          <span className="text-slate-500 font-medium">Outer Wrap:</span>
+                          <span className="font-semibold text-slate-900">{specs.outerWrap}</span>
+                        </div>
+                      )}
+                      {specs.finishing && (
+                        <div className="flex items-center justify-between py-1 border-b border-slate-200/60">
+                          <span className="text-slate-500 font-medium">Finishing:</span>
+                          <span className="font-semibold text-slate-900">{specs.finishing}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
 
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-slate-500 font-medium">Quantity:</span>
@@ -367,117 +481,193 @@ export function CartDrawer({
               </div>
 
               {/* ======================================================== */}
-              {/* C. ARTWORK STATUS WORKFLOW                               */}
+              {/* C. ARTWORK STATUS WORKFLOW (DYNAMIC MULTI-SLOT MATRIX)   */}
               {/* ======================================================== */}
-              <div className="space-y-3 pt-5">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                    <RiFileTextLine className="w-4 h-4 text-[#E3A008]" />
-                    <span>Artwork Status</span>
-                  </h4>
-                  {hasArtwork ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                      <RiCheckLine className="w-3.5 h-3.5" />
-                      Uploaded
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                      <RiAlertLine className="w-3.5 h-3.5" />
-                      Artwork Required
-                    </span>
-                  )}
+              {artworkStatus === 'DISABLED' ? (
+                <div className="pt-3">
+                  <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl flex items-center gap-2.5 text-xs text-emerald-900">
+                    <RiShieldCheckLine className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    <span>No artwork upload required for this product. Ready for production.</span>
+                  </div>
                 </div>
-
-                {!hasArtwork ? (
-                  <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-2.5">
-                    <div className="flex items-start gap-2.5">
-                      <RiInformationLine className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                      <div className="text-xs text-amber-900 space-y-1">
-                        <p className="font-semibold">Artwork is needed for fabrication</p>
-                        <p className="text-[11px] text-amber-800 leading-relaxed">
-                          You can upload your print-ready die-line or vector design now, or provide it after checkout. Production begins after proof approval.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="pt-1 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={isUploading}
-                        className="h-8 px-3.5 bg-white hover:bg-amber-100/60 text-slate-900 text-xs font-bold rounded-lg border border-amber-300 shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                      >
-                        {isUploading ? (
-                          <>
-                            <RiLoader4Line className="w-3.5 h-3.5 animate-spin" />
-                            <span>Uploading...</span>
-                          </>
-                        ) : (
-                          <>
-                            <RiUploadCloud2Line className="w-3.5 h-3.5 text-amber-700" />
-                            <span>Upload Artwork Now</span>
-                          </>
-                        )}
-                      </button>
-                      <span className="text-[11px] text-amber-700 font-mono">
-                        PDF, AI, PSD, PNG (Max 50MB)
+              ) : (
+                <div className="space-y-3.5 pt-5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <RiFileTextLine className="w-4 h-4 text-[#E3A008]" />
+                      <span>
+                        Artwork Files ({uploadedCount}/{effectiveSlots.length} Attached)
                       </span>
-                    </div>
-
-                    {uploadError && (
-                      <p className="text-xs text-rose-600 font-medium pt-1">
-                        {uploadError}
-                      </p>
+                    </h4>
+                    {allRequiredUploaded && uploadedCount > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                        <RiCheckLine className="w-3.5 h-3.5" />
+                        {uploadedCount === effectiveSlots.length
+                          ? 'All Uploaded'
+                          : `${uploadedCount}/${effectiveSlots.length} Uploaded`}
+                      </span>
+                    ) : artworkStatus === 'REQUIRED' ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                        <RiAlertLine className="w-3.5 h-3.5" />
+                        {effectiveSlots.length > 1
+                          ? `${effectiveSlots.length} Uploads Required`
+                          : 'Artwork Required'}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+                        <RiInformationLine className="w-3.5 h-3.5" />
+                        Artwork Optional
+                      </span>
                     )}
                   </div>
-                ) : (
-                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center flex-shrink-0">
-                        <RiFileTextLine className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-slate-900 truncate">
-                          {item.artworkFile?.originalFileName}
-                        </p>
-                        <p className="text-[10px] text-slate-500 font-mono">
-                          {item.artworkFile?.fileSize
-                            ? `${(item.artworkFile.fileSize / (1024 * 1024)).toFixed(2)} MB • Ready for Prepress`
-                            : 'Validated'}
-                        </p>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={isUploading}
-                        className="text-xs font-semibold text-slate-700 hover:text-black hover:underline px-2 py-1 cursor-pointer"
-                      >
-                        Replace
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleRemoveArtwork}
-                        className="p-1 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                        title="Remove artwork"
-                      >
-                        <RiDeleteBinLine className="w-4 h-4" />
-                      </button>
-                    </div>
+                  {/* Format & Size Specs */}
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 bg-slate-50 border border-slate-200/80 px-3 py-1.5 rounded-lg font-mono">
+                    <span className="truncate max-w-[65%]">Formats: {formatsDisplayText}</span>
+                    <span className="shrink-0">Max {maxFileSizeMb} MB/slot</span>
                   </div>
-                )}
 
-                {/* Hidden File Input */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.ai,.psd,.eps,.tiff,.png,.jpg,.jpeg,.zip"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-              </div>
+                  {/* Configured Upload Slots (Dynamic based on selected options / matrix) */}
+                  <div className="space-y-2.5">
+                    {effectiveSlots.map((slot, index) => {
+                      const file = slotFilesMap[slot.slotKey];
+                      const hasFile = Boolean(file?.fileUrl);
+                      const isThisSlotUploading = uploadingSlotKey === slot.slotKey;
+
+                      return (
+                        <div
+                          key={slot.slotKey || index}
+                          className={`p-3.5 rounded-xl border transition-all ${
+                            hasFile
+                              ? 'bg-emerald-50/40 border-emerald-200'
+                              : slot.isRequired
+                              ? 'bg-amber-50/40 border-amber-200/90'
+                              : 'bg-slate-50/80 border-slate-200'
+                          }`}
+                        >
+                          {/* Slot Header */}
+                          <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200/60">
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded-full bg-slate-200/80 text-slate-700 font-mono text-[10px] font-bold flex items-center justify-center">
+                                {index + 1}
+                              </span>
+                              <span className="text-xs font-bold text-slate-900 font-display">
+                                {slot.label}
+                              </span>
+                            </div>
+                            <div>
+                              {slot.isRequired ? (
+                                <span className="text-[10px] font-bold text-amber-800 bg-amber-100/80 border border-amber-300 px-2 py-0.5 rounded-full">
+                                  Required
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+                                  Optional
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Slot Body: Uploaded Card or Upload Trigger */}
+                          <div className="pt-2.5">
+                            {hasFile ? (
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center flex-shrink-0">
+                                    <RiCheckboxCircleLine className="w-4 h-4 text-emerald-700" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-bold text-slate-900 truncate">
+                                      {file.originalFileName}
+                                    </p>
+                                    <p className="text-[10px] text-slate-500 font-mono">
+                                      {file.fileSize
+                                        ? `${(file.fileSize / (1024 * 1024)).toFixed(2)} MB • Ready for Prepress`
+                                        : 'Validated'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => triggerUploadForSlot(slot.slotKey)}
+                                    disabled={Boolean(uploadingSlotKey)}
+                                    className="text-xs font-semibold text-slate-700 hover:text-black hover:underline px-2 py-1 cursor-pointer disabled:opacity-50"
+                                  >
+                                    Replace
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveSlotArtwork(slot.slotKey)}
+                                    disabled={Boolean(uploadingSlotKey)}
+                                    className="p-1 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer disabled:opacity-50"
+                                    title="Remove file"
+                                  >
+                                    <RiDeleteBinLine className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2 min-w-0 text-slate-500">
+                                  <RiUploadCloud2Line className="w-4 h-4 text-amber-600 shrink-0" />
+                                  <span className="text-[11px] truncate">
+                                    {isThisSlotUploading
+                                      ? `Uploading ${slot.label}...`
+                                      : `Attach ${slot.label} design`}
+                                  </span>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => triggerUploadForSlot(slot.slotKey)}
+                                  disabled={Boolean(uploadingSlotKey)}
+                                  className="h-8 px-3.5 bg-white hover:bg-amber-100/70 text-slate-900 text-xs font-bold rounded-lg border border-amber-300 shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                                >
+                                  {isThisSlotUploading ? (
+                                    <>
+                                      <RiLoader4Line className="w-3.5 h-3.5 animate-spin" />
+                                      <span>Uploading...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <RiAddLine className="w-3.5 h-3.5 text-amber-700" />
+                                      <span>Upload {slot.label}</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {uploadError && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                      <RiAlertLine className="w-4 h-4 shrink-0 text-rose-600" />
+                      <span>{uploadError}</span>
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-slate-500 leading-relaxed pt-0.5">
+                    {artworkStatus === 'REQUIRED'
+                      ? 'Attach print-ready files for each side now, or submit post-checkout. Production begins upon digital proof sign-off.'
+                      : 'Attach your artwork files now or proceed to checkout and coordinate with our design prepress team.'}
+                  </p>
+
+                  {/* Hidden File Input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={acceptPattern}
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                </div>
+              )}
 
               {/* ======================================================== */}
               {/* D. ADDITIONAL DETAILS / PRODUCTION NOTES                 */}

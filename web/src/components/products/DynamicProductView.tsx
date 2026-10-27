@@ -31,6 +31,11 @@ import {
   RiFileList2Line,
   RiCalendarEventLine,
   RiErrorWarningLine,
+  RiAddLine,
+  RiSubtractLine,
+  RiLockLine,
+  RiArrowUpCircleLine,
+  RiLoader4Line,
 } from 'react-icons/ri';
 import {
   api,
@@ -44,6 +49,7 @@ import { formatCurrency } from '@/lib/utils';
 import { CartDrawer, CartDrawerItem } from '@/components/cart/CartDrawer';
 import { CustomerAuthModal } from '@/components/auth/CustomerAuthModal';
 import { useAuth } from '@/lib/auth-context';
+import { resolveArtworkConditions } from '@/lib/artwork-rule-resolver';
 
 interface PresetDimension {
   id: string;
@@ -124,7 +130,6 @@ interface DynamicProductViewProps {
 export function DynamicProductView({ product }: DynamicProductViewProps) {
   const router = useRouter();
   const { user } = useAuth();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Check if product specifically has dimensional input fields configured in DB or is custom rigid box
   const hasDimensionalInputs = useMemo(() => {
@@ -360,66 +365,181 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
 
   // Quantity & Pricing Tiers
   const minQty = Math.max(1, Number(product.minQuantity) || 1);
+  const maxQty = Math.max(minQty, Number(product.maxQuantity) || 100000);
   const baseRate = Math.max(1, Number(product.basePrice) || 500);
 
+  // Price Increasing / Increment Mode from Product Configuration:
+  // If product.quantityStep === 0 -> OFF (Fixed Quantities Only)
+  // If product.quantityStep > 0 -> ON (Incremental based on step)
+  const isIncrementalMode =
+    product.quantityStep !== undefined && product.quantityStep !== null
+      ? Number(product.quantityStep) > 0
+      : true;
+  const quantityStep = isIncrementalMode ? Math.max(1, Number(product.quantityStep) || 100) : 0;
+
   const quantityTiers = useMemo(() => {
-    // 1. Deduplicate unique quantities from pricing matrices
-    if (product.pricingMatrices && product.pricingMatrices.length >= 2) {
-      const qtyMap = new Map<number, number>();
-      for (const pm of product.pricingMatrices) {
-        const q = Number(pm.minQty);
-        const price = Number(pm.unitPrice);
-        if (q > 0 && (!qtyMap.has(q) || price < (qtyMap.get(q) ?? Infinity))) {
-          qtyMap.set(q, price);
+    // 1. Strict priority: Check base rate tiers configured in Stage 5 Section 2 (Product Base Price by Quantity)
+    const baseMatrices = (product.pricingMatrices || []).filter((m) => {
+      const c = (m.attributeCombination as any) || {};
+      const isBase =
+        c.isBasePrice === true ||
+        c.type === 'BASE' ||
+        Object.keys(c).filter(
+          (k) =>
+            !['label', 'rangeLabel', 'discountPercent', 'isBasePrice', 'type', 'isExcluded', 'status', 'totalPrice', 'price'].includes(k)
+        ).length === 0;
+      return isBase && !c.isExcluded && c.status !== 'EXCLUDED' && (Number(m.unitPrice) > 0 || Number(c.totalPrice) > 0);
+    });
+
+    if (baseMatrices.length > 0) {
+      const sorted = [...baseMatrices].sort((a, b) => Number(a.minQty) - Number(b.minQty));
+      const tierList: Array<{
+        quantity: number;
+        minQty: number;
+        maxQty: number;
+        isRange: boolean;
+        label: string;
+        unitPrice: number;
+        totalPrice: number;
+        maxTotalPrice: number;
+        isConfiguredFromMatrix: boolean;
+      }> = [];
+
+      for (const m of sorted) {
+        const q = Number(m.minQty);
+        const maxQ = m.maxQty && Number(m.maxQty) >= q ? Number(m.maxQty) : q;
+        const isRange = maxQ > q;
+        const c = (m.attributeCombination as any) || {};
+        const exactTotal = c.totalPrice ?? c.price;
+        const uPrice = Number(m.unitPrice) || (exactTotal && q > 0 ? Number(exactTotal) / q : 0);
+        const tPrice =
+          exactTotal !== undefined && exactTotal !== null && Number(exactTotal) > 0
+            ? Number(exactTotal)
+            : Math.round(uPrice * q);
+        const maxTPrice = isRange ? Math.round(uPrice * maxQ) : tPrice;
+        const label = c.label || m.label || (isRange ? `${q}–${maxQ} units` : `${q} units`);
+
+        if (q > 0 && !tierList.some((t) => t.minQty === q && t.maxQty === maxQ)) {
+          tierList.push({
+            quantity: q,
+            minQty: q,
+            maxQty: maxQ,
+            isRange,
+            label,
+            unitPrice: uPrice,
+            totalPrice: tPrice,
+            maxTotalPrice: maxTPrice,
+            isConfiguredFromMatrix: true,
+          });
         }
       }
 
-      if (qtyMap.size >= 2) {
+      return tierList;
+    }
+
+    // 2. Secondary priority: Check any active pricing matrices from Stage 5
+    if (product.pricingMatrices && product.pricingMatrices.length > 0) {
+      const activeMatrices = product.pricingMatrices.filter((m) => {
+        const c = (m.attributeCombination as any) || {};
+        return !c.isExcluded && c.status !== 'EXCLUDED' && Number(m.unitPrice) > 0;
+      });
+
+      if (activeMatrices.length > 0) {
+        const qtyMap = new Map<number, number>();
+        for (const pm of activeMatrices) {
+          const q = Number(pm.minQty);
+          const price = Number(pm.unitPrice);
+          if (q > 0 && (!qtyMap.has(q) || price < (qtyMap.get(q) ?? Infinity))) {
+            qtyMap.set(q, price);
+          }
+        }
+
         const sortedQuantities = Array.from(qtyMap.keys()).sort((a, b) => a - b);
         return sortedQuantities.slice(0, 5).map((q) => {
           const unitPrice = qtyMap.get(q) || 1;
           return {
             quantity: q,
+            minQty: q,
+            maxQty: q,
+            isRange: false,
+            label: `${q} units`,
             unitPrice,
             totalPrice: Math.round(unitPrice * q),
+            maxTotalPrice: Math.round(unitPrice * q),
+            isConfiguredFromMatrix: true,
           };
         });
       }
     }
 
-    // 2. Fallback smart tier calculation
-    let multipliers = [1, 2, 5, 10, 20];
-    if (minQty === 1) {
-      multipliers = [1, 2, 5, 10, 25];
-    } else if (minQty <= 50) {
-      multipliers = [1, 2, 5, 10, 20];
-    } else {
-      multipliers = [1, 2.5, 5, 10, 25];
-    }
+    // 3. Fallback when product has no matrix tiers configured in Stage 5:
+    // Strictly compute linear prices from product.basePrice and minQuantity WITHOUT fake/random discounts!
+    const officialBaseRate = Number(product.basePrice) || 500;
+    const refUnitPrice = minQty > 0 ? officialBaseRate / minQty : officialBaseRate;
+    const step = quantityStep > 0 ? quantityStep : minQty;
+    const fallbackQuantities = [minQty, minQty + step, minQty + 2 * step, minQty + 4 * step, minQty + 9 * step];
+    const uniqueQuantities = Array.from(new Set(fallbackQuantities)).filter((q) => q > 0);
 
-    const refUnitPrice = baseRate / minQty;
-    const tierMap = new Map<number, { quantity: number; unitPrice: number; totalPrice: number }>();
-
-    multipliers.forEach((mul, idx) => {
-      const q = Math.max(1, Math.round(minQty * mul));
-      if (!tierMap.has(q)) {
-        const discountPct = [0, 0.05, 0.12, 0.2, 0.28][idx] || 0;
-        const unitP = Math.max(1, Math.round(refUnitPrice * (1 - discountPct) * 100) / 100);
-        const totalP = Math.round(unitP * q);
-        tierMap.set(q, {
-          quantity: q,
-          unitPrice: unitP,
-          totalPrice: totalP,
-        });
-      }
+    return uniqueQuantities.slice(0, 5).map((q) => {
+      const unitP = Math.round(refUnitPrice * 100) / 100;
+      return {
+        quantity: q,
+        minQty: q,
+        maxQty: q,
+        isRange: false,
+        label: `${q} units`,
+        unitPrice: unitP,
+        totalPrice: Math.round(unitP * q),
+        maxTotalPrice: Math.round(unitP * q),
+        isConfiguredFromMatrix: false,
+      };
     });
-
-    return Array.from(tierMap.values());
-  }, [product.pricingMatrices, minQty, baseRate]);
+  }, [product.pricingMatrices, product.basePrice, minQty, quantityStep]);
 
   const [selectedQuantity, setSelectedQuantity] = useState<number>(() => {
     return quantityTiers[0]?.quantity || minQty;
   });
+
+  // Identify active matched tier (handles range brackets like 51–100)
+  const activeMatchedTier = useMemo(() => {
+    return (
+      quantityTiers.find((t) =>
+        t.isRange
+          ? selectedQuantity >= t.minQty && selectedQuantity <= t.maxQty
+          : t.quantity === selectedQuantity
+      ) ||
+      quantityTiers.find((t) => t.quantity === selectedQuantity) ||
+      quantityTiers[0]
+    );
+  }, [quantityTiers, selectedQuantity]);
+
+  // Strict enforcement: If incremental mode is OFF, ensure selectedQuantity snaps to a valid fixed tier or range
+  useEffect(() => {
+    if (!isIncrementalMode && quantityTiers.length > 0) {
+      const isMatchingTier = quantityTiers.some((t) =>
+        t.isRange ? selectedQuantity >= t.minQty && selectedQuantity <= t.maxQty : t.quantity === selectedQuantity
+      );
+      if (!isMatchingTier) {
+        setSelectedQuantity(quantityTiers[0].quantity);
+      }
+    }
+  }, [isIncrementalMode, quantityTiers, selectedQuantity]);
+
+  const handleDecrementQty = () => {
+    if (!isIncrementalMode) return;
+    setSelectedQuantity((prev) => Math.max(minQty, prev - quantityStep));
+  };
+
+  const handleIncrementQty = () => {
+    if (!isIncrementalMode) return;
+    setSelectedQuantity((prev) => Math.min(maxQty, prev + quantityStep));
+  };
+
+  const handleDirectQuantityChange = (val: number) => {
+    if (!isIncrementalMode) return;
+    const clamped = Math.max(minQty, Math.min(maxQty, val));
+    setSelectedQuantity(clamped);
+  };
 
   // Ensure personalizationItemValues matches selectedQuantity
   useEffect(() => {
@@ -432,7 +552,7 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
     });
   }, [selectedQuantity]);
 
-  // Artwork Upload State
+  // Artwork Upload State (Synced with Cart Drawer)
   const [uploadedArtwork, setUploadedArtwork] = useState<{
     fileUrl: string;
     originalFileName: string;
@@ -440,8 +560,6 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
     mimeType?: string;
     storageKey?: string;
   } | null>(null);
-  const [isUploadingArtwork, setIsUploadingArtwork] = useState(false);
-  const [artworkUploadError, setArtworkUploadError] = useState<string | null>(null);
 
   // Authoritative Pricing State
   const [serverUnitPrice, setServerUnitPrice] = useState<number>(quantityTiers[0]?.unitPrice || baseRate);
@@ -490,12 +608,23 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
         }
       } catch (err) {
         if (!isCancelled) {
-          const tier = quantityTiers.find((t) => t.quantity === selectedQuantity) || quantityTiers[0];
+          const tier =
+            quantityTiers.find((t) =>
+              t.isRange
+                ? selectedQuantity >= t.minQty && selectedQuantity <= t.maxQty
+                : t.quantity === selectedQuantity
+            ) || quantityTiers[0];
+
           if (tier) {
+            const calculatedSubtotal =
+              tier.isRange || selectedQuantity !== tier.quantity
+                ? Math.round(tier.unitPrice * selectedQuantity)
+                : tier.totalPrice;
+
             setServerUnitPrice(tier.unitPrice);
-            setServerSubtotal(tier.totalPrice);
-            setServerTax(Math.round(tier.totalPrice * 0.18 * 100) / 100);
-            setServerGrandTotal(tier.totalPrice + Math.round(tier.totalPrice * 0.18 * 100) / 100);
+            setServerSubtotal(calculatedSubtotal);
+            setServerTax(Math.round(calculatedSubtotal * 0.18 * 100) / 100);
+            setServerGrandTotal(calculatedSubtotal + Math.round(calculatedSubtotal * 0.18 * 100) / 100);
           }
         }
       } finally {
@@ -601,6 +730,22 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
     return Object.keys(errors).length === 0;
   };
 
+  // Resolve Artwork Matrix configuration dynamically from Product Setup Studio
+  const resolvedArtwork = useMemo(() => {
+    return resolveArtworkConditions(
+      product.configurationRules || [],
+      selectedOptions,
+      {
+        artworkRequirement: product.artworkRequirement || 'OPTIONAL',
+        artworkFileFormats: product.artworkFileFormats,
+        maxArtworkFileSizeMb: product.maxArtworkFileSizeMb,
+        minimumArtworkMegapixels: product.minimumArtworkMegapixels ?? undefined,
+        designServiceRequirement: product.designServiceRequirement,
+      },
+      product.optionGroups || []
+    );
+  }, [product, selectedOptions]);
+
   // Build the Authoritative Cart Item
   const buildCurrentCartItem = (): CartDrawerItem => {
     const specificationsSnapshot: Record<string, any> = {
@@ -678,6 +823,17 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
       grandTotal: serverGrandTotal,
       specificationsSnapshot,
       selectedOptionsSummary,
+      artworkConfig: {
+        status: resolvedArtwork.artworkStatus,
+        allowedFormats: resolvedArtwork.allowedFormats,
+        maxFileSizeMb: resolvedArtwork.maxArtworkFileSizeMb,
+        minimumMegapixels: resolvedArtwork.minimumArtworkMegapixels,
+        slots: resolvedArtwork.slots,
+        requireDesignBrief: resolvedArtwork.requireDesignBrief,
+        showDesignBrief: resolvedArtwork.showDesignBrief,
+        requireReferenceImage: resolvedArtwork.requireReferenceImage,
+        matchedRuleName: resolvedArtwork.matchedRuleName,
+      },
       artworkFile: uploadedArtwork,
       personalization: personalizationPayload,
       paymentMode: 'FULL',
@@ -714,44 +870,6 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
 
     setActiveCartItem(item);
     setIsCartDrawerOpen(true);
-  };
-
-  // Artwork Upload Handler
-  const handleDirectArtworkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 50 * 1024 * 1024) {
-      setArtworkUploadError('File size exceeds 50 MB limit.');
-      return;
-    }
-
-    setIsUploadingArtwork(true);
-    setArtworkUploadError(null);
-
-    try {
-      const res = await api.uploadArtwork(file, product.id);
-      const art = {
-        fileUrl: res.fileUrl,
-        originalFileName: file.name,
-        fileSize: file.size,
-        mimeType: file.type,
-        storageKey: res.storageKey,
-      };
-      setUploadedArtwork(art);
-
-      if (activeCartItem) {
-        const updated = { ...activeCartItem, artworkFile: art };
-        setActiveCartItem(updated);
-      }
-    } catch (err: any) {
-      setArtworkUploadError(err?.message || 'Upload failed. Please try again.');
-    } finally {
-      setIsUploadingArtwork(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
   };
 
   return (
@@ -1089,6 +1207,19 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
                   <span className="w-2 h-2 rounded-full bg-emerald-500" />
                   <span>In Stock</span>
                 </div>
+              </div>
+
+              {/* Starting Price from Stage 5 Pricing */}
+              <div className="flex items-baseline gap-2 pt-1 pb-0.5">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  Starting from
+                </span>
+                <span className="text-2xl sm:text-3xl font-black text-slate-950 font-mono">
+                  {formatCurrency(Number(product.basePrice) || (quantityTiers[0]?.totalPrice ?? 0))}
+                </span>
+                <span className="text-xs font-mono text-slate-500">
+                  (₹{((Number(product.basePrice) || (quantityTiers[0]?.totalPrice ?? 0)) / minQty).toFixed(2)}/unit for {minQty} pcs)
+                </span>
               </div>
 
               <p className="text-xs sm:text-sm text-slate-600 leading-relaxed pt-1">
@@ -1637,18 +1768,32 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
             {/* ====================================================== */}
             {/* QUANTITY & PRICING                                     */}
             {/* ====================================================== */}
-            <div className="space-y-2.5 pt-1">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                  <span>
-                    {(hasDimensionalInputs ? 1 : 0) +
-                      effectiveOptionGroups.length +
-                      (personalizationTemplate?.isActive ? 1 : 0) +
-                      1}
-                    . Quantity & Pricing
-                  </span>
-                  <RiInformationLine className="w-3.5 h-3.5 text-slate-400" />
-                </label>
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <span>
+                      {(hasDimensionalInputs ? 1 : 0) +
+                        effectiveOptionGroups.length +
+                        (personalizationTemplate?.isActive ? 1 : 0) +
+                        1}
+                      . Quantity & Pricing
+                    </span>
+                    <RiInformationLine className="w-3.5 h-3.5 text-slate-400" />
+                  </label>
+
+                  {isIncrementalMode ? (
+                    <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200/90 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                      <RiArrowUpCircleLine className="w-3 h-3 text-amber-600" />
+                      Step: +{quantityStep} units
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-slate-700 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                      <RiLockLine className="w-3 h-3 text-slate-500" />
+                      Fixed Quantities Only
+                    </span>
+                  )}
+                </div>
 
                 <button
                   type="button"
@@ -1661,15 +1806,28 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
                 </button>
               </div>
 
-              {/* 5 Quantity Pricing Cards */}
+              {/* Quantity Pricing Cards (Fixed Counts & Bulk Range Brackets) */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
                 {quantityTiers.map((tier, idx) => {
-                  const isSelected = selectedQuantity === tier.quantity;
+                  const isSelected = tier.isRange
+                    ? selectedQuantity >= tier.minQty && selectedQuantity <= tier.maxQty
+                    : selectedQuantity === tier.quantity;
+
+                  const displayTotalPrice = isSelected
+                    ? serverSubtotal
+                    : tier.isRange
+                    ? tier.totalPrice
+                    : tier.totalPrice;
+
+                  const displayUnitPrice = isSelected && !tier.isRange ? serverUnitPrice : tier.unitPrice;
+
                   return (
                     <button
-                      key={`qty-tier-${tier.quantity}-${idx}`}
+                      key={`qty-tier-${tier.minQty}-${tier.maxQty}-${idx}`}
                       type="button"
-                      onClick={() => setSelectedQuantity(tier.quantity)}
+                      onClick={() => {
+                        setSelectedQuantity(tier.quantity);
+                      }}
                       className={`relative p-3 rounded-xl border text-center transition-all cursor-pointer ${
                         isSelected
                           ? 'border-2 border-[#FFED00] bg-amber-50/20 shadow-xs'
@@ -1681,19 +1839,133 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
                           <RiCheckLine className="w-3 h-3 stroke-[2.5]" />
                         </div>
                       )}
+
+                      {tier.isRange && (
+                        <span className="inline-block px-1.5 py-0.2 mb-1 rounded text-[8px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          Bulk Range
+                        </span>
+                      )}
+
                       <span className="text-xs font-bold text-slate-800 block">
-                        {tier.quantity} units
+                        {tier.isRange ? `${tier.minQty}–${tier.maxQty} units` : `${tier.quantity} units`}
                       </span>
+
                       <span className="text-sm font-black text-slate-950 font-mono block mt-0.5">
-                        {formatCurrency(tier.totalPrice)}
+                        {isSelected
+                          ? formatCurrency(displayTotalPrice)
+                          : tier.isRange
+                          ? `From ${formatCurrency(tier.totalPrice)}`
+                          : formatCurrency(displayTotalPrice)}
                       </span>
+
                       <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-                        ₹{tier.unitPrice.toFixed(2)} / unit
+                        ₹{displayUnitPrice.toFixed(2)} / unit
                       </span>
                     </button>
                   );
                 })}
               </div>
+
+              {/* Active Bulk Range Alert Banner */}
+              {activeMatchedTier?.isRange && (
+                <div className="p-2.5 bg-amber-50/90 border border-amber-300 rounded-xl flex items-center justify-between text-xs text-amber-950">
+                  <div className="flex items-center gap-2">
+                    <RiSparklingFill className="w-4 h-4 text-amber-600 shrink-0" />
+                    <div>
+                      <span className="font-bold">Bulk Range Applied: </span>
+                      <span>
+                        Ordering <strong>{selectedQuantity} units</strong> qualifies for the{' '}
+                        <strong className="font-mono">{activeMatchedTier.minQty}–{activeMatchedTier.maxQty} pcs</strong> rate (
+                        <strong className="font-mono">₹{activeMatchedTier.unitPrice.toFixed(2)} / unit</strong>
+                        ). Price = <strong className="font-mono">{selectedQuantity} × ₹{activeMatchedTier.unitPrice.toFixed(2)} = {formatCurrency(serverSubtotal)}</strong>.
+                      </span>
+                    </div>
+                  </div>
+                  <span className="hidden sm:inline-block font-mono font-bold text-amber-800 text-[11px] bg-amber-100/90 px-2 py-0.5 rounded border border-amber-300 shrink-0">
+                    ₹{activeMatchedTier.unitPrice.toFixed(2)}/pc Active
+                  </span>
+                </div>
+              )}
+
+              {/* If Incremental Mode: Custom Stepper & Increment Controller */}
+              {isIncrementalMode ? (
+                <div className="p-3 bg-slate-50/90 border border-slate-200 rounded-xl space-y-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 block">
+                        Custom Quantity Stepper
+                      </span>
+                      <span className="text-[11px] text-slate-500">
+                        Adjust order count in increments of {quantityStep} units
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleDecrementQty}
+                        disabled={selectedQuantity <= minQty}
+                        className="w-8 h-8 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-slate-800 font-bold transition shadow-2xs cursor-pointer"
+                        title={`Decrease by ${quantityStep}`}
+                      >
+                        <RiSubtractLine className="w-3.5 h-3.5" />
+                      </button>
+
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={minQty}
+                          max={maxQty}
+                          step={quantityStep}
+                          value={selectedQuantity}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            if (!isNaN(val)) {
+                              handleDirectQuantityChange(val);
+                            }
+                          }}
+                          className="w-24 h-8 px-2 text-center text-xs font-bold font-mono bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleIncrementQty}
+                        disabled={selectedQuantity >= maxQty}
+                        className="w-8 h-8 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-slate-800 font-bold transition shadow-2xs cursor-pointer"
+                        title={`Increase by ${quantityStep}`}
+                      >
+                        <RiAddLine className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Quick step jump chips */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-slate-200/70">
+                    <span className="text-[11px] font-medium text-slate-500">Quick add:</span>
+                    {[quantityStep, quantityStep * 2, quantityStep * 5].map((stepAdd) => (
+                      <button
+                        key={stepAdd}
+                        type="button"
+                        onClick={() => handleDirectQuantityChange(selectedQuantity + stepAdd)}
+                        className="px-2 py-0.5 text-[11px] font-mono font-medium rounded-md bg-white border border-slate-200 text-slate-700 hover:bg-amber-50 hover:border-amber-300 transition cursor-pointer"
+                      >
+                        +{stepAdd} units
+                      </button>
+                    ))}
+                    <span className="text-[11px] text-slate-400 font-mono ml-auto">
+                      Min: {minQty} | Max: {maxQty}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-2.5 bg-slate-100 border border-slate-200 rounded-xl flex items-center gap-2 text-xs text-slate-700 font-medium">
+                  <RiLockLine className="w-4 h-4 text-slate-500 shrink-0" />
+                  <span>
+                    This product is available exclusively in the <strong>predefined fixed quantities</strong> shown above. Custom quantity increments are disabled.
+                  </span>
+                </div>
+              )}
 
               <div className="p-2.5 bg-emerald-50 border border-emerald-200/90 rounded-xl flex items-center gap-2 text-xs text-emerald-900 font-medium">
                 <RiCheckboxCircleLine className="w-4 h-4 text-emerald-600 flex-shrink-0" />
@@ -1710,9 +1982,59 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
             )}
 
             {/* ====================================================== */}
+            {/* AUTHORITATIVE PRICING SUMMARY CARD (STAGE 5 DRIVEN)    */}
+            {/* ====================================================== */}
+            <div className="p-4 bg-slate-900 text-white rounded-2xl shadow-card space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400">
+                      Authoritative Quotation
+                    </span>
+                    {isCalculatingPrice ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-300">
+                        <RiLoader4Line className="w-3 h-3 animate-spin" />
+                        Calculating...
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400">
+                        <RiCheckboxCircleLine className="w-3 h-3" />
+                        Stage 5 Verified
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-300 font-mono">
+                    {selectedQuantity} units × ₹{serverUnitPrice.toFixed(2)} / unit
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <div className="text-2xl sm:text-3xl font-black font-mono text-white">
+                    {formatCurrency(serverSubtotal)}
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono">
+                    Subtotal (Excl. Tax)
+                  </div>
+                </div>
+              </div>
+
+              {/* Price Details Bar */}
+              <div className="pt-2.5 border-t border-slate-800 flex items-center justify-between text-xs text-slate-300 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400">Estimated GST (18%):</span>
+                  <span className="font-mono text-slate-200">+{formatCurrency(serverTax)}</span>
+                </div>
+                <div className="flex items-center gap-2 font-bold text-white">
+                  <span className="text-slate-300">Total Payable:</span>
+                  <span className="font-mono text-amber-400 font-black text-base">{formatCurrency(serverGrandTotal)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* ====================================================== */}
             {/* PRIMARY & SECONDARY CTA BUTTONS                        */}
             {/* ====================================================== */}
-            <div className="space-y-3 pt-3">
+            <div className="space-y-3 pt-1">
               <button
                 type="button"
                 onClick={handleAddToCart}
@@ -1723,55 +2045,16 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
                 <span>Add to Cart</span>
               </button>
 
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="h-10 px-4 bg-white hover:bg-slate-50 text-slate-900 text-xs font-bold rounded-lg border border-slate-300 flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                >
-                  <RiUploadCloud2Line className="w-4 h-4 text-slate-700" />
-                  <span>{uploadedArtwork ? 'Replace Design' : 'Upload Design'}</span>
-                </button>
-
+              <div>
                 <button
                   type="button"
                   onClick={() => setIsDesignerModalOpen(true)}
-                  className="h-10 px-4 bg-white hover:bg-slate-50 text-slate-900 text-xs font-bold rounded-lg border border-slate-300 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  className="w-full h-11 px-4 bg-white hover:bg-slate-50 text-slate-900 text-xs font-bold rounded-xl border border-slate-300 flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-2xs"
                 >
                   <RiCustomerService2Line className="w-4 h-4 text-slate-700" />
                   <span>No Design? Contact Designer</span>
                 </button>
               </div>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,.ai,.psd,.eps,.tiff,.png,.jpg,.jpeg,.zip"
-                onChange={handleDirectArtworkUpload}
-                className="hidden"
-              />
-
-              {artworkUploadError && (
-                <p className="text-xs text-rose-600 font-semibold">{artworkUploadError}</p>
-              )}
-
-              {uploadedArtwork && (
-                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-xs text-emerald-900">
-                  <div className="flex items-center gap-2 truncate">
-                    <RiCheckboxCircleLine className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                    <span className="truncate font-semibold">
-                      {uploadedArtwork.originalFileName} attached
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setUploadedArtwork(null)}
-                    className="text-xs text-slate-500 hover:text-rose-600 font-medium ml-2"
-                  >
-                    Remove
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         </div>

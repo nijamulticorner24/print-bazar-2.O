@@ -305,6 +305,18 @@ export function RigidBoxProductView({ product }: RigidBoxProductViewProps) {
         { fieldLabel: 'Finishing', value: specificationsSnapshot.finishing },
         { fieldLabel: 'Insert', value: specificationsSnapshot.insert },
       ],
+      artworkConfig: {
+        status: (product.artworkRequirement as any) || 'REQUIRED',
+        allowedFormats: product.artworkFileFormats || ['PDF', 'AI', 'PSD', 'EPS', 'TIFF', 'PNG', 'JPG', 'ZIP'],
+        maxFileSizeMb: product.maxArtworkFileSizeMb || 50,
+        slots: [
+          {
+            slotKey: 'slot_1_rigid_box_dieline',
+            label: 'Box Die-line & Artwork',
+            isRequired: product.artworkRequirement !== 'OPTIONAL' && product.artworkRequirement !== 'DISABLED',
+          },
+        ],
+      },
       artworkFile: uploadedArtwork,
       paymentMode: 'FULL',
     };
@@ -1145,58 +1157,16 @@ export function RigidBoxProductView({ product }: RigidBoxProductViewProps) {
               </button>
 
               {/* Secondary Action Buttons */}
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="h-10 px-4 bg-white hover:bg-slate-50 text-slate-900 text-xs font-bold rounded-lg border border-slate-300 flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                >
-                  <RiUploadCloud2Line className="w-4 h-4 text-slate-700" />
-                  <span>
-                    {uploadedArtwork ? 'Replace Design' : 'Upload Design'}
-                  </span>
-                </button>
-
+              <div>
                 <button
                   type="button"
                   onClick={() => setIsDesignerModalOpen(true)}
-                  className="h-10 px-4 bg-white hover:bg-slate-50 text-slate-900 text-xs font-bold rounded-lg border border-slate-300 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  className="w-full h-11 px-4 bg-white hover:bg-slate-50 text-slate-900 text-xs font-bold rounded-xl border border-slate-300 flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-2xs"
                 >
                   <RiCustomerService2Line className="w-4 h-4 text-slate-700" />
                   <span>No Design? Contact Designer</span>
                 </button>
               </div>
-
-              {/* Hidden File Input for Direct Artwork Upload */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,.ai,.psd,.eps,.tiff,.png,.jpg,.jpeg,.zip"
-                onChange={handleDirectArtworkUpload}
-                className="hidden"
-              />
-
-              {artworkUploadError && (
-                <p className="text-xs text-rose-600 font-semibold">{artworkUploadError}</p>
-              )}
-
-              {uploadedArtwork && (
-                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-xs text-emerald-900">
-                  <div className="flex items-center gap-2 truncate">
-                    <RiCheckboxCircleLine className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                    <span className="truncate font-semibold">
-                      {uploadedArtwork.originalFileName} attached
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setUploadedArtwork(null)}
-                    className="text-xs text-slate-500 hover:text-rose-600 font-medium ml-2"
-                  >
-                    Remove
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         </div>

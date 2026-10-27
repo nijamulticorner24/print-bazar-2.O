@@ -179,18 +179,6 @@ export const ACTION_PRESETS: ActionPreset[] = [
     needsTargetGroup: false,
     needsTargetOption: false,
   },
-  {
-    id: 'CONFIGURE_ARTWORK',
-    label: 'Configure Artwork Upload Slots',
-    shortBadge: 'Artwork Upload Slots',
-    tagline: 'Dynamic front/back upload requirements',
-    description: 'Specify how many artwork files the customer must upload (e.g. 1 slot for Single-Sided vs. 2 slots for Front/Back), DPI requirements, and format rules.',
-    category: 'ARTWORK',
-    color: 'indigo',
-    icon: RiUploadCloud2Line,
-    needsTargetGroup: false,
-    needsTargetOption: false,
-  },
 ];
 
 export const CONDITION_OPERATORS = [
@@ -861,40 +849,53 @@ export function StudioTabRules({
     );
   }, [optionGroups, testRulesList, sandboxSelections]);
 
-  // Filtered Rules for Display
+  // Filtered Option Rules for Display (Artwork matrix rules are managed separately in Stage 4)
   const filteredRules = useMemo(() => {
-    return rules.filter((r) => {
-      if (filterAction !== 'ALL') {
-        const preset = ACTION_PRESETS.find((p) => p.id === r.actionType);
-        if (preset?.category !== filterAction && r.actionType !== filterAction) {
-          return false;
+    return rules
+      .filter(
+        (r) =>
+          r.actionType !== 'ARTWORK_CONDITIONS' &&
+          r.actionType !== 'REQUIRE_ARTWORK_FILES' &&
+          r.actionType !== 'CONFIGURE_ARTWORK'
+      )
+      .filter((r) => {
+        if (filterAction !== 'ALL') {
+          const preset = ACTION_PRESETS.find((p) => p.id === r.actionType);
+          if (preset?.category !== filterAction && r.actionType !== filterAction) {
+            return false;
+          }
         }
-      }
-      if (!searchQuery.trim()) return true;
-      const q = searchQuery.toLowerCase();
-      const trig = optionGroups.find((g) => g.code === r.conditionGroupCode)?.name.toLowerCase() || '';
-      const targ = optionGroups.find((g) => g.code === r.targetGroupCode)?.name.toLowerCase() || '';
-      const summary = generateRuleSummary(r, optionGroups).toLowerCase();
-      return (
-        r.name.toLowerCase().includes(q) ||
-        r.conditionGroupCode.toLowerCase().includes(q) ||
-        (r.targetGroupCode && r.targetGroupCode.toLowerCase().includes(q)) ||
-        trig.includes(q) ||
-        targ.includes(q) ||
-        summary.includes(q)
-      );
-    });
+        if (!searchQuery.trim()) return true;
+        const q = searchQuery.toLowerCase();
+        const trig = optionGroups.find((g) => g.code === r.conditionGroupCode)?.name.toLowerCase() || '';
+        const targ = optionGroups.find((g) => g.code === r.targetGroupCode)?.name.toLowerCase() || '';
+        const summary = generateRuleSummary(r, optionGroups).toLowerCase();
+        return (
+          r.name.toLowerCase().includes(q) ||
+          r.conditionGroupCode.toLowerCase().includes(q) ||
+          (r.targetGroupCode && r.targetGroupCode.toLowerCase().includes(q)) ||
+          trig.includes(q) ||
+          targ.includes(q) ||
+          summary.includes(q)
+        );
+      });
   }, [rules, searchQuery, filterAction, optionGroups]);
 
-  // Statistics
+  // Statistics (Option Rules only)
   const ruleStats = useMemo(() => {
+    const optRules = rules.filter(
+      (r) =>
+        r.actionType !== 'ARTWORK_CONDITIONS' &&
+        r.actionType !== 'REQUIRE_ARTWORK_FILES' &&
+        r.actionType !== 'CONFIGURE_ARTWORK'
+    );
     return {
-      total: rules.length,
-      active: rules.filter((r) => r.isActive !== false).length,
-      restrictions: rules.filter((r) => r.actionType === 'RESTRICT_OPTIONS').length,
-      visibility: rules.filter((r) => r.actionType === 'HIDE' || r.actionType === 'SHOW').length,
-      charges: rules.filter((r) => r.actionType === 'APPLY_CHARGE').length,
-      blocks: rules.filter((r) => r.actionType === 'INVALID_COMBINATION').length,
+      total: optRules.length,
+      active: optRules.filter((r) => r.isActive !== false).length,
+      restrictions: optRules.filter((r) => r.actionType === 'RESTRICT_OPTIONS').length,
+      visibility: optRules.filter((r) => r.actionType === 'HIDE' || r.actionType === 'SHOW').length,
+      charges: optRules.filter((r) => r.actionType === 'APPLY_CHARGE').length,
+      blocks: optRules.filter((r) => r.actionType === 'INVALID_COMBINATION').length,
     };
   }, [rules]);
 
@@ -965,7 +966,7 @@ export function StudioTabRules({
       {/* ===================================================================== */}
       {/* 2. STATS & CATEGORY FILTER TABS                                       */}
       {/* ===================================================================== */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <div
           onClick={() => setFilterAction('ALL')}
           className={`p-3 rounded-xl border text-left cursor-pointer transition ${
@@ -1024,20 +1025,6 @@ export function StudioTabRules({
         >
           <span className="text-[10px] font-bold text-rose-700 uppercase tracking-wider block">Blocked Combos</span>
           <span className="text-lg font-black text-rose-900 font-mono mt-0.5 block">{ruleStats.blocks}</span>
-        </div>
-
-        <div
-          onClick={() => setFilterAction('ARTWORK')}
-          className={`p-3 rounded-xl border text-left cursor-pointer transition ${
-            filterAction === 'ARTWORK'
-              ? 'bg-indigo-50/80 border-indigo-300 shadow-2xs'
-              : 'bg-white border-slate-200/80 hover:border-slate-300'
-          }`}
-        >
-          <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">Artwork Slots</span>
-          <span className="text-lg font-black text-indigo-900 font-mono mt-0.5 block">
-            {rules.filter((r) => r.actionType === 'CONFIGURE_ARTWORK' || r.actionType === 'REQUIRE_ARTWORK_FILES').length}
-          </span>
         </div>
       </div>
 

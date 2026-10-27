@@ -628,7 +628,7 @@ export class CreateProductDto {
   minQuantity?: number;
 
   @IsNumber()
-  @Min(1)
+  @Min(0)
   @IsOptional()
   quantityStep?: number;
 
@@ -838,7 +838,7 @@ export class UpdateProductDto {
   minQuantity?: number;
 
   @IsNumber()
-  @Min(1)
+  @Min(0)
   @IsOptional()
   quantityStep?: number;
 

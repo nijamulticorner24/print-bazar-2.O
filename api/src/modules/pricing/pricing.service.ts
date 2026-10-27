@@ -467,8 +467,15 @@ export class PricingService {
         const matchingTier = sortedMatrices.find(
           (m) => effectiveOrderQty >= m.minQty && (m.maxQty === null || m.maxQty === undefined || effectiveOrderQty <= m.maxQty),
         );
-        if (matchingTier && Number(matchingTier.unitPrice) > 0) {
-          baseUnitPrice = Number(matchingTier.unitPrice);
+        if (matchingTier) {
+          const isRangeTier = Boolean(matchingTier.maxQty && matchingTier.maxQty > matchingTier.minQty);
+          const combo = (matchingTier.attributeCombination as any) || {};
+          const comboExact = combo.totalPrice ?? combo.price;
+          if (!isRangeTier && comboExact !== undefined && comboExact !== null && Number(comboExact) > 0 && effectiveOrderQty === matchingTier.minQty) {
+            baseUnitPrice = Number(comboExact) / effectiveOrderQty;
+          } else if (Number(matchingTier.unitPrice) > 0) {
+            baseUnitPrice = Number(matchingTier.unitPrice);
+          }
         }
       }
     } else if (product.pricingMatrices && product.pricingMatrices.length > 0) {
@@ -608,9 +615,19 @@ export class PricingService {
         }
 
         const ruleUnitPrice = Number(rule.unitPrice);
+        const comboExactPrice = combo.totalPrice ?? combo.price;
 
+        const isRangeTier = Boolean(rule.maxQty && rule.maxQty > rule.minQty);
         if (discountPercent > 0) {
           baseUnitPrice = Math.round(referenceUnitPrice * (1 - discountPercent / 100) * 10000) / 10000;
+        } else if (
+          !isRangeTier &&
+          comboExactPrice !== undefined &&
+          comboExactPrice !== null &&
+          Number(comboExactPrice) > 0 &&
+          effectiveOrderQty === rule.minQty
+        ) {
+          baseUnitPrice = Number(comboExactPrice) / effectiveOrderQty;
         } else if (ruleUnitPrice > 0) {
           baseUnitPrice = ruleUnitPrice;
           if (referenceUnitPrice > ruleUnitPrice && referenceUnitPrice > 0) {

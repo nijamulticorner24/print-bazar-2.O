@@ -64,7 +64,17 @@ const productImageStorage = diskStorage({
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN_MANAGER, UserRole.SALES_OFFICE, UserRole.PRODUCTION_OPERATOR, UserRole.ACCOUNTS)
+@Roles(
+  UserRole.ADMIN_MANAGER,
+  UserRole.OPERATIONAL_MANAGER,
+  UserRole.SALES_OFFICE,
+  UserRole.PRODUCTION_OPERATOR,
+  UserRole.DESIGNER_PREPRESS,
+  UserRole.FINAL_QC_INSPECTOR,
+  UserRole.PACKING_OPERATOR,
+  UserRole.DISPATCH_LOGISTICS,
+  UserRole.ACCOUNTS,
+)
 export class AdminCatalogueController {
   constructor(private readonly catalogueService: AdminCatalogueService) {}
 
@@ -83,7 +93,7 @@ export class AdminCatalogueController {
   }
 
   @Post('catalogue/categories')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async createCategory(
     @Body() dto: CreateCategoryDto,
     @CurrentUser() user: JwtPayload,
@@ -92,7 +102,7 @@ export class AdminCatalogueController {
   }
 
   @Put('catalogue/categories/:id')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async updateCategory(
     @Param('id') id: string,
     @Body() dto: UpdateCategoryDto,
@@ -102,7 +112,7 @@ export class AdminCatalogueController {
   }
 
   @Delete('catalogue/categories/:id')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async deleteCategory(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
@@ -137,7 +147,7 @@ export class AdminCatalogueController {
   }
 
   @Post('catalogue/products')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async createProduct(
     @Body() dto: CreateProductDto,
     @CurrentUser() user: JwtPayload,
@@ -146,7 +156,7 @@ export class AdminCatalogueController {
   }
 
   @Put('catalogue/products/:id')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async updateProduct(
     @Param('id') id: string,
     @Body() dto: UpdateProductDto,
@@ -156,7 +166,7 @@ export class AdminCatalogueController {
   }
 
   @Post('catalogue/products/:id/duplicate')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async duplicateProduct(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
@@ -165,7 +175,7 @@ export class AdminCatalogueController {
   }
 
   @Patch('catalogue/products/:id/publish')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async publishProduct(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
@@ -174,7 +184,7 @@ export class AdminCatalogueController {
   }
 
   @Patch('catalogue/products/:id/archive')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async archiveProduct(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
@@ -183,7 +193,7 @@ export class AdminCatalogueController {
   }
 
   @Delete('catalogue/products/:id')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async deleteProduct(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
@@ -196,19 +206,19 @@ export class AdminCatalogueController {
   // ==========================================
 
   @Get('catalogue/reusable-groups')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async listReusableGroups() {
     return this.catalogueService.listReusableGroups();
   }
 
   @Get('catalogue/reusable-groups/:id')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async getReusableGroupById(@Param('id') id: string) {
     return this.catalogueService.getReusableGroupById(id);
   }
 
   @Post('catalogue/reusable-groups')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async createReusableGroup(
     @Body() dto: CreateReusableOptionGroupDto,
     @CurrentUser() user: JwtPayload,
@@ -217,7 +227,7 @@ export class AdminCatalogueController {
   }
 
   @Put('catalogue/reusable-groups/:id')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async updateReusableGroup(
     @Param('id') id: string,
     @Body() dto: UpdateReusableOptionGroupDto,
@@ -227,7 +237,7 @@ export class AdminCatalogueController {
   }
 
   @Delete('catalogue/reusable-groups/:id')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async deleteReusableGroup(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
@@ -240,7 +250,7 @@ export class AdminCatalogueController {
   // ==========================================
 
   @Post('catalogue/products/:productId/option-groups')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async addOptionGroup(
     @Param('productId') productId: string,
     @Body() dto: CreateProductOptionGroupDto,
@@ -250,7 +260,7 @@ export class AdminCatalogueController {
   }
 
   @Put('catalogue/products/:productId/option-groups/:groupId')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async updateOptionGroup(
     @Param('groupId') groupId: string,
     @Body() dto: UpdateProductOptionGroupDto,
@@ -260,7 +270,7 @@ export class AdminCatalogueController {
   }
 
   @Delete('catalogue/products/:productId/option-groups/:groupId')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async deleteOptionGroup(
     @Param('groupId') groupId: string,
     @CurrentUser() user: JwtPayload,
@@ -269,7 +279,7 @@ export class AdminCatalogueController {
   }
 
   @Patch('catalogue/products/:productId/option-groups/reorder')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async reorderOptionGroups(
     @Param('productId') productId: string,
     @Body('orderedGroupIds') orderedGroupIds: string[],
@@ -283,7 +293,7 @@ export class AdminCatalogueController {
   // ==========================================
 
   @Post('catalogue/option-groups/:groupId/options')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async addOption(
     @Param('groupId') groupId: string,
     @Body() dto: CreateProductOptionDto,
@@ -293,7 +303,7 @@ export class AdminCatalogueController {
   }
 
   @Put('catalogue/options/:optionId')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async updateOption(
     @Param('optionId') optionId: string,
     @Body() dto: UpdateProductOptionDto,
@@ -303,7 +313,7 @@ export class AdminCatalogueController {
   }
 
   @Delete('catalogue/options/:optionId')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async deleteOption(
     @Param('optionId') optionId: string,
     @CurrentUser() user: JwtPayload,
@@ -312,7 +322,7 @@ export class AdminCatalogueController {
   }
 
   @Post('catalogue/option-groups/:groupId/options-bulk')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async bulkSaveOptions(
     @Param('groupId') groupId: string,
     @Body() dto: BulkOptionsDto,
@@ -322,7 +332,7 @@ export class AdminCatalogueController {
   }
 
   @Patch('catalogue/option-groups/:groupId/options/reorder')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async reorderOptions(
     @Param('groupId') groupId: string,
     @Body('orderedOptionIds') orderedOptionIds: string[],
@@ -336,7 +346,7 @@ export class AdminCatalogueController {
   // ==========================================
 
   @Put('catalogue/products/:productId/configuration-rules')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async saveConfigurationRules(
     @Param('productId') productId: string,
     @Body('rules') rules: CreateProductConfigurationRuleDto[],
@@ -346,7 +356,7 @@ export class AdminCatalogueController {
   }
 
   @Delete('catalogue/products/:productId/configuration-rules/:ruleId')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async deleteConfigurationRule(
     @Param('ruleId') ruleId: string,
     @CurrentUser() user: JwtPayload,
@@ -359,7 +369,7 @@ export class AdminCatalogueController {
   // ==========================================
 
   @Put('catalogue/products/:productId/pricing-source')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async configurePricingSource(
     @Param('productId') productId: string,
     @Body() dto: ConfigurePricingSourceDto,
@@ -369,7 +379,7 @@ export class AdminCatalogueController {
   }
 
   @Post('catalogue/products/:productId/sync-pricing-sheet')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async syncPricingSheet(
     @Param('productId') productId: string,
     @Body() dto: SyncPricingSheetDto,
@@ -388,7 +398,7 @@ export class AdminCatalogueController {
   // ==========================================
 
   @Post('catalogue/products/:productId/upload-image')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: productImageStorage,
@@ -416,7 +426,7 @@ export class AdminCatalogueController {
   }
 
   @Post('catalogue/upload-media')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: productImageStorage,
@@ -440,7 +450,7 @@ export class AdminCatalogueController {
   }
 
   @Post('catalogue/products/:productId/images')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async addProductImage(
     @Param('productId') productId: string,
     @Body() dto: CreateProductImageDto,
@@ -450,7 +460,7 @@ export class AdminCatalogueController {
   }
 
   @Patch('catalogue/products/:productId/images/:imageId/primary')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async setPrimaryImage(
     @Param('productId') productId: string,
     @Param('imageId') imageId: string,
@@ -460,7 +470,7 @@ export class AdminCatalogueController {
   }
 
   @Delete('catalogue/products/:productId/images/:imageId')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async deleteProductImage(
     @Param('productId') productId: string,
     @Param('imageId') imageId: string,
@@ -470,7 +480,7 @@ export class AdminCatalogueController {
   }
 
   @Patch('catalogue/products/:productId/images/reorder')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async reorderImages(
     @Param('productId') productId: string,
     @Body('orderedImageIds') orderedImageIds: string[],
@@ -497,7 +507,7 @@ export class AdminCatalogueController {
   }
 
   @Post('inventory/items')
-  @Roles(UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_OPERATOR)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER, UserRole.PRODUCTION_OPERATOR)
   async createInventoryItem(
     @Body() dto: CreateInventoryItemDto,
     @CurrentUser() user: JwtPayload,
@@ -506,7 +516,7 @@ export class AdminCatalogueController {
   }
 
   @Put('inventory/items/:id')
-  @Roles(UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_OPERATOR)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER, UserRole.PRODUCTION_OPERATOR)
   async updateInventoryItem(
     @Param('id') id: string,
     @Body() dto: UpdateInventoryItemDto,
@@ -516,7 +526,7 @@ export class AdminCatalogueController {
   }
 
   @Post('inventory/items/:id/movement')
-  @Roles(UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_OPERATOR)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER, UserRole.PRODUCTION_OPERATOR)
   async recordStockMovement(
     @Param('id') id: string,
     @Body() dto: RecordStockMovementDto,
@@ -540,7 +550,7 @@ export class AdminCatalogueController {
   }
 
   @Post('catalogue/products/:productId/pricing-rules')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async addPricingRule(
     @Param('productId') productId: string,
     @Body() dto: CreatePricingRuleDto,
@@ -550,7 +560,7 @@ export class AdminCatalogueController {
   }
 
   @Put('catalogue/products/:productId/pricing-rules/:ruleId')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async updatePricingRule(
     @Param('ruleId') ruleId: string,
     @Body() dto: UpdatePricingRuleDto,
@@ -560,7 +570,7 @@ export class AdminCatalogueController {
   }
 
   @Delete('catalogue/products/:productId/pricing-rules/:ruleId')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async deletePricingRule(
     @Param('ruleId') ruleId: string,
     @CurrentUser() user: JwtPayload,
@@ -569,7 +579,7 @@ export class AdminCatalogueController {
   }
 
   @Put('catalogue/products/:productId/pricing-rules-batch')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async saveBatchPricingRules(
     @Param('productId') productId: string,
     @Body() dto: BatchPricingRulesDto,
@@ -588,7 +598,7 @@ export class AdminCatalogueController {
   }
 
   @Put('catalogue/products/:productId/pricing-matrix')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async savePricingMatrix(
     @Param('productId') productId: string,
     @Body() dto: { rows: any[] },
@@ -598,7 +608,7 @@ export class AdminCatalogueController {
   }
 
   @Post('catalogue/products/:productId/pricing-matrix/generate-combinations')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async generateMatrixCombinations(
     @Param('productId') productId: string,
   ) {
@@ -615,7 +625,7 @@ export class AdminCatalogueController {
   }
 
   @Put('catalogue/products/:productId/additional-pricing')
-  @Roles(UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   async saveAdditionalPricing(
     @Param('productId') productId: string,
     @Body() dto: SaveProductAdditionalPricingDto,
