@@ -47,6 +47,7 @@ export interface CartDrawerItem {
     storageKey?: string;
   } | null;
   designNotes?: string;
+  personalization?: any;
   paymentMode?: 'FULL' | 'SPLIT_50';
   advanceAmount?: number;
   balanceAmount?: number;
