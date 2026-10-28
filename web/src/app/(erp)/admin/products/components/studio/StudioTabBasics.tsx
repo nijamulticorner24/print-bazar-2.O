@@ -355,120 +355,93 @@ export function StudioTabBasics({
               Select how quantity tiers and customer pricing will operate for this product in Stage 5 (Pricing Matrix).
             </p>
           </div>
-          <span className={`text-[11px] font-bold font-mono px-3 py-1 rounded-full border self-start sm:self-auto ${
-            pricingModel === 'BULK_RANGE'
+          <span className={`text-[11px] font-bold font-mono px-3 py-1 rounded-full border self-start sm:self-auto ${pricingModel === 'BULK_RANGE'
               ? 'bg-amber-100 text-amber-900 border-amber-300'
               : 'bg-indigo-50 text-indigo-900 border-indigo-200'
-          }`}>
-            Active Mode: {pricingModel === 'BULK_RANGE' ? 'Bulk Quantity Range' : 'Single Fixed Quantity'}
+            }`}>
+            Active Mode: {pricingModel === 'BULK_RANGE' ? 'Single Fixed Quantity' : 'Bulk Quantity Range'}
           </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Card 1: Single Fixed Quantity */}
+          {/* Card 1: Bulk Quantity Range */}
           <div
             onClick={() => {
               setPricingModel?.('FIXED');
               onChange?.();
             }}
-            className={`cursor-pointer rounded-xl border-2 p-5 transition-all relative flex flex-col justify-between ${
-              pricingModel !== 'BULK_RANGE'
+            className={`cursor-pointer rounded-xl border-2 p-4 transition-all relative flex items-center justify-between ${pricingModel !== 'BULK_RANGE'
                 ? 'border-amber-500 bg-amber-50/40 shadow-xs ring-1 ring-amber-400'
                 : 'border-slate-200 hover:border-slate-300 bg-white'
-            }`}
+              }`}
           >
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm ${
-                      pricingModel !== 'BULK_RANGE'
-                        ? 'bg-[#FFED00] text-slate-900 border border-amber-400 shadow-2xs'
-                        : 'bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    <RiStackLine className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-black text-slate-900">Single Fixed Quantity</h4>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                      Standard Fixed Batches
-                    </span>
-                  </div>
-                </div>
-                {pricingModel !== 'BULK_RANGE' ? (
-                  <span className="flex items-center gap-1 bg-amber-500 text-slate-950 text-[10px] font-black uppercase px-2 py-0.5 rounded-full shadow-2xs">
-                    <RiCheckLine className="w-3.5 h-3.5" />
-                    Selected
-                  </span>
-                ) : (
-                  <span className="text-[11px] font-bold text-slate-400 hover:text-slate-600">Click to Select</span>
-                )}
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm shrink-0 ${pricingModel !== 'BULK_RANGE'
+                    ? 'bg-[#FFED00] text-slate-900 border border-amber-400 shadow-2xs'
+                    : 'bg-slate-100 text-slate-600'
+                  }`}
+              >
+                <RiPriceTag3Line className="w-5 h-5" />
               </div>
-              <p className="text-xs text-slate-600 leading-relaxed mt-2.5">
-                Customers choose from predefined batch quantities (e.g. <strong>100 pcs, 250 pcs, 500 pcs, 1000 pcs</strong>). Stage 5 Pricing Matrix configures batch total package pricing.
-              </p>
+              <div>
+                <h4 className="text-sm font-black text-slate-900">Bulk Quantity Range</h4>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  Wholesale Range Brackets
+                </span>
+              </div>
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-200/70 flex items-center justify-between text-[11px] text-slate-500 font-mono">
-              <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                Cards, Brochures, Flyers, Booklets
+
+            {pricingModel !== 'BULK_RANGE' ? (
+              <span className="flex items-center gap-1 bg-amber-500 text-slate-950 text-[10px] font-black uppercase px-2.5 py-1 rounded-full shadow-2xs shrink-0">
+                <RiCheckLine className="w-3.5 h-3.5 stroke-[3]" />
+                Selected
               </span>
-              <span className="font-semibold text-slate-700">Fixed Batch Packages</span>
-            </div>
+            ) : (
+              <span className="text-xs font-bold text-slate-400 hover:text-slate-600 shrink-0">
+                Click to Select
+              </span>
+            )}
           </div>
 
-          {/* Card 2: Bulk Quantity Range */}
+          {/* Card 2: Single Fixed Quantity */}
           <div
             onClick={() => {
               setPricingModel?.('BULK_RANGE');
               onChange?.();
             }}
-            className={`cursor-pointer rounded-xl border-2 p-5 transition-all relative flex flex-col justify-between ${
-              pricingModel === 'BULK_RANGE'
+            className={`cursor-pointer rounded-xl border-2 p-4 transition-all relative flex items-center justify-between ${pricingModel === 'BULK_RANGE'
                 ? 'border-amber-500 bg-amber-50/40 shadow-xs ring-1 ring-amber-400'
                 : 'border-slate-200 hover:border-slate-300 bg-white'
-            }`}
+              }`}
           >
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm ${
-                      pricingModel === 'BULK_RANGE'
-                        ? 'bg-[#FFED00] text-slate-900 border border-amber-400 shadow-2xs'
-                        : 'bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    <RiPriceTag3Line className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-black text-slate-900">Bulk Quantity Range</h4>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
-                      Wholesale Per-Piece Scaling
-                    </span>
-                  </div>
-                </div>
-                {pricingModel === 'BULK_RANGE' ? (
-                  <span className="flex items-center gap-1 bg-amber-500 text-slate-950 text-[10px] font-black uppercase px-2 py-0.5 rounded-full shadow-2xs">
-                    <RiCheckLine className="w-3.5 h-3.5" />
-                    Selected
-                  </span>
-                ) : (
-                  <span className="text-[11px] font-bold text-slate-400 hover:text-slate-600">Click to Select</span>
-                )}
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm shrink-0 ${pricingModel === 'BULK_RANGE'
+                    ? 'bg-[#FFED00] text-slate-900 border border-amber-400 shadow-2xs'
+                    : 'bg-slate-100 text-slate-600'
+                  }`}
+              >
+                <RiStackLine className="w-5 h-5" />
               </div>
-              <p className="text-xs text-slate-600 leading-relaxed mt-2.5">
-                Customers order any custom quantity within bracket ranges (e.g. <strong>1–10 pcs @ ₹100/pc, 11–20 pcs @ ₹90/pc</strong>). Pricing scales dynamically per unit ordered.
-              </p>
+              <div>
+                <h4 className="text-sm font-black text-slate-900">Single Fixed Quantity</h4>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                  Fixed Batch Quantities
+                </span>
+              </div>
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-200/70 flex items-center justify-between text-[11px] text-slate-500 font-mono">
-              <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                T-shirts, Apparel, Signs, Corporate Gifts
+
+            {pricingModel === 'BULK_RANGE' ? (
+              <span className="flex items-center gap-1 bg-amber-500 text-slate-950 text-[10px] font-black uppercase px-2.5 py-1 rounded-full shadow-2xs shrink-0">
+                <RiCheckLine className="w-3.5 h-3.5 stroke-[3]" />
+                Selected
               </span>
-              <span className="font-semibold text-amber-900">Dynamic Multiplier Rate</span>
-            </div>
+            ) : (
+              <span className="text-xs font-bold text-slate-400 hover:text-slate-600 shrink-0">
+                Click to Select
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -515,9 +488,8 @@ export function StudioTabBasics({
             {images.map((img, idx) => (
               <div
                 key={img.id || idx}
-                className={`relative group rounded-xl border overflow-hidden bg-slate-50 ${
-                  img.isPrimary ? 'border-amber-500 ring-2 ring-amber-400' : 'border-slate-200'
-                }`}
+                className={`relative group rounded-xl border overflow-hidden bg-slate-50 ${img.isPrimary ? 'border-amber-500 ring-2 ring-amber-400' : 'border-slate-200'
+                  }`}
               >
                 <div className="aspect-square w-full overflow-hidden bg-slate-100 flex items-center justify-center">
                   <img src={img.url} alt={img.altText || name} className="w-full h-full object-cover" />

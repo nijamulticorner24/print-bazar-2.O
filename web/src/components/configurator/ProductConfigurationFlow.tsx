@@ -22,6 +22,8 @@ import {
   RiAlertFill,
   RiCloseLine,
   RiAddLine,
+  RiSubtractLine,
+  RiArrowUpCircleLine,
   RiInformationLine,
   RiPaletteLine,
   RiShieldCheckLine,
@@ -619,11 +621,83 @@ export function ProductConfigurationFlow({
   const minQty = Math.max(1, Number(product.minQuantity) || 100);
   const maxQty = Number(product.maxQuantity) || 100000;
   const rawStep = Number((product as any).quantityStep);
-  const qtyStep = rawStep > 0 ? rawStep : minQty >= 100 ? 100 : minQty >= 50 ? 50 : 25;
+  const isIncrementalMode =
+    (product as any).quantityStep !== undefined && (product as any).quantityStep !== null
+      ? rawStep > 0
+      : false;
+  const qtyStep = isIncrementalMode ? Math.max(1, rawStep) : (minQty >= 100 ? 100 : minQty >= 50 ? 50 : 25);
+
+  // Exact quantity presets configured on Stage 5 (Pricing Matrix / Base / Additional Pricing)
+  const configuredPricingTiers = useMemo(() => {
+    const isBulk = product.pricingModel === 'BULK_RANGE';
+    const tierMap = new Map<number, { quantity: number; unitPrice: number; totalPrice: number; label?: string }>();
+
+    // 1. Base pricing matrices configured in Stage 5
+    if (product.pricingMatrices && product.pricingMatrices.length > 0) {
+      for (const m of product.pricingMatrices) {
+        const c = (m.attributeCombination as any) || {};
+        const isBase =
+          c.isBasePrice === true ||
+          c.type === 'BASE' ||
+          Object.keys(c).filter(
+            (k) =>
+              !['label', 'rangeLabel', 'discountPercent', 'isBasePrice', 'type', 'isExcluded', 'status', 'totalPrice', 'price'].includes(k)
+          ).length === 0;
+
+        if (isBase && !c.isExcluded && c.status !== 'EXCLUDED') {
+          const q = Number(m.minQty);
+          const maxQ = m.maxQty && Number(m.maxQty) >= q ? Number(m.maxQty) : q;
+          const isRange = maxQ > q;
+          if (isBulk ? !isRange : isRange) continue;
+
+          const exactTotal = c.totalPrice ?? c.price;
+          const uPrice = Number(m.unitPrice) || (exactTotal && q > 0 ? Number(exactTotal) / q : 0);
+          const tPrice =
+            exactTotal !== undefined && exactTotal !== null && Number(exactTotal) > 0
+              ? Number(exactTotal)
+              : Math.round(uPrice * q);
+
+          if (q > 0 && (!tierMap.has(q) || uPrice < (tierMap.get(q)?.unitPrice ?? Infinity))) {
+            tierMap.set(q, { quantity: q, unitPrice: uPrice, totalPrice: tPrice, label: c.label || m.label });
+          }
+        }
+      }
+    }
+
+    // 2. Additional pricing tiers configured in Stage 5
+    if (tierMap.size === 0 && product.additionalPricings && product.additionalPricings.length > 0) {
+      for (const t of product.additionalPricings) {
+        const q = Number(t.minQty);
+        const maxQ = t.maxQty && Number(t.maxQty) >= q ? Number(t.maxQty) : q;
+        const isRange = maxQ > q;
+        if (isBulk ? !isRange : isRange) continue;
+
+        if (q > 0 && !tierMap.has(q)) {
+          const startingRate = Number(product.basePrice || 330);
+          const mQty = Math.max(1, Number(product.minQuantity) || 100);
+          const uPrice = startingRate > 0 ? startingRate / mQty : 3.3;
+          tierMap.set(q, { quantity: q, unitPrice: uPrice, totalPrice: Math.round(uPrice * q) });
+        }
+      }
+    }
+
+    if (tierMap.size > 0) {
+      return Array.from(tierMap.values()).sort((a, b) => a.quantity - b.quantity);
+    }
+
+    // 3. Fallback: only minQty if zero tiers configured on Stage 5 (NO unnecessary fake multiples!)
+    const startingRate = Number(product.basePrice || 330);
+    const mQty = Math.max(1, Number(product.minQuantity) || 100);
+    const uPrice = startingRate > 0 ? startingRate / mQty : 3.3;
+    return [{ quantity: mQty, unitPrice: uPrice, totalPrice: startingRate }];
+  }, [product.pricingMatrices, product.additionalPricings, product.pricingModel, product.basePrice, product.minQuantity]);
 
   const [quantity, setQuantity] = useState<number>(() => {
     if (hasActiveCombinationTiers && validCombinationTiers.length > 0) {
       return validCombinationTiers[0].quantity;
+    }
+    if (configuredPricingTiers.length > 0) {
+      return configuredPricingTiers[0].quantity;
     }
     if (initialQuantity && initialQuantity >= minQty) return initialQuantity;
     return minQty;
@@ -634,22 +708,14 @@ export function ProductConfigurationFlow({
       if (!validCombinationTiers.some((t) => t.quantity === quantity)) {
         setQuantity(validCombinationTiers[0].quantity);
       }
+    } else if (configuredPricingTiers.length > 0) {
+      if (!configuredPricingTiers.some((t) => t.quantity === quantity)) {
+        setQuantity(configuredPricingTiers[0].quantity);
+      }
     } else if (quantity < minQty) {
       setQuantity(minQty);
     }
-  }, [hasActiveCombinationTiers, validCombinationTiers, quantity, minQty]);
-
-  // Standard quantity presets for products without specific combination matrix
-  const quickPresets = useMemo(() => {
-    const list = [
-      minQty,
-      minQty * 2,
-      minQty * 3,
-      minQty * 5,
-      minQty * 10,
-    ].filter((v, i, arr) => v <= maxQty && arr.indexOf(v) === i);
-    return list.slice(0, 5);
-  }, [minQty, maxQty]);
+  }, [hasActiveCombinationTiers, validCombinationTiers, configuredPricingTiers, quantity, minQty]);
 
   // Reference Unit Price Calculation
   const referenceUnitPrice = useMemo(() => {
@@ -1363,7 +1429,7 @@ export function ProductConfigurationFlow({
 
               {/* Production Run Quantity Tiers */}
               <div className="pt-4 border-t border-slate-100 space-y-3">
-                <div className="flex items-baseline justify-between">
+                <div className="flex items-baseline justify-between flex-wrap gap-2">
                   <div>
                     <label className="text-xs sm:text-[13px] font-bold text-slate-900 uppercase">
                       Quantity
@@ -1372,12 +1438,102 @@ export function ProductConfigurationFlow({
                       More quantity, better price per unit.
                     </p>
                   </div>
-                  <span className="text-xs font-mono font-bold text-slate-600">
-                    Selected: <strong className="text-slate-950 font-black">{quantity.toLocaleString()} pcs</strong>
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {isIncrementalMode ? (
+                      <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md inline-flex items-center gap-1 font-mono">
+                        <RiArrowUpCircleLine className="w-3 h-3 text-amber-600" />
+                        Step: +{qtyStep} pcs
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-slate-700 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-md inline-flex items-center gap-1 font-mono">
+                        <RiLockLine className="w-3 h-3 text-slate-500" />
+                        Fixed Quantities
+                      </span>
+                    )}
+                    <span className="text-xs font-mono font-bold text-slate-600">
+                      Selected: <strong className="text-slate-950 font-black">{quantity.toLocaleString()} pcs</strong>
+                    </span>
+                  </div>
                 </div>
 
-                {hasActiveCombinationTiers ? (
+                {isIncrementalMode ? (
+                  /* Incremental Stepper & Quick Add */
+                  <div className="p-3.5 bg-slate-50/90 border border-slate-200 rounded-xl space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <span className="text-xs font-bold text-slate-900 block font-mono">
+                          Adjust Quantity
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Step increment of {qtyStep} pcs (Min: {minQty} • Max: {maxQty.toLocaleString()})
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setQuantity((prev) => Math.max(minQty, prev - qtyStep))}
+                          disabled={quantity <= minQty}
+                          className="w-9 h-9 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-slate-800 font-bold transition shadow-2xs cursor-pointer active:scale-95"
+                          title={`Decrease by ${qtyStep}`}
+                        >
+                          <RiSubtractLine className="w-4 h-4" />
+                        </button>
+
+                        <div className="relative flex items-center">
+                          <input
+                            type="number"
+                            min={minQty}
+                            max={maxQty}
+                            step={qtyStep}
+                            value={quantity}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value);
+                              if (!isNaN(val)) {
+                                setQuantity(Math.max(minQty, Math.min(maxQty, val)));
+                              }
+                            }}
+                            className="w-24 h-9 px-2 text-center text-xs font-bold font-mono bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setQuantity((prev) => Math.min(maxQty, prev + qtyStep))}
+                          disabled={quantity >= maxQty}
+                          className="w-9 h-9 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-slate-800 font-bold transition shadow-2xs cursor-pointer active:scale-95"
+                          title={`Increase by ${qtyStep}`}
+                        >
+                          <RiAddLine className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Quick Add Chips */}
+                    <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-slate-200">
+                      <span className="text-[11px] font-semibold text-slate-500">Quick add:</span>
+                      {[qtyStep, qtyStep * 2, qtyStep * 5]
+                        .filter((s) => quantity + s <= maxQty)
+                        .map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => setQuantity((prev) => Math.min(maxQty, prev + s))}
+                            className="px-2 py-0.5 text-[11px] font-mono font-medium rounded-md bg-white border border-slate-200 text-slate-700 hover:bg-amber-50 hover:border-amber-300 transition cursor-pointer"
+                          >
+                            +{s} pcs
+                          </button>
+                        ))}
+                      <button
+                        type="button"
+                        onClick={() => setQuantity(minQty)}
+                        className="px-2 py-0.5 text-[11px] font-mono font-medium rounded-md bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition cursor-pointer ml-auto"
+                      >
+                        Reset ({minQty})
+                      </button>
+                    </div>
+                  </div>
+                ) : hasActiveCombinationTiers ? (
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
                     {validCombinationTiers.map((tier, idx) => {
                       const isSel = quantity === tier.quantity;
@@ -1429,16 +1585,16 @@ export function ProductConfigurationFlow({
                     })}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-                    {quickPresets.map((preset, idx) => {
-                      const isSel = quantity === preset;
-                      const unitRate = referenceUnitPrice;
-                      const totalAmt = unitRate * preset;
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5">
+                    {configuredPricingTiers.map((tier, idx) => {
+                      const isSel = quantity === tier.quantity;
+                      const unitRate = tier.unitPrice;
+                      const totalAmt = tier.totalPrice;
                       return (
                         <button
-                          key={preset}
+                          key={tier.quantity}
                           type="button"
-                          onClick={() => setQuantity(preset)}
+                          onClick={() => setQuantity(tier.quantity)}
                           className={`p-3 rounded-xl text-left border transition-all cursor-pointer ${
                             isSel
                               ? 'border-[#FFED00] bg-[#FFFEF0] ring-2 ring-[#FFED00] shadow-xs'
@@ -1447,7 +1603,7 @@ export function ProductConfigurationFlow({
                         >
                           <div className="flex items-center justify-between">
                             <span className="font-mono font-black text-sm text-slate-950">
-                              {preset.toLocaleString()}
+                              {tier.quantity.toLocaleString()} pcs
                             </span>
                             {isSel && (
                               <div className="h-4 w-4 rounded-md bg-[#FFED00] text-slate-950 flex items-center justify-center font-bold text-[10px]">

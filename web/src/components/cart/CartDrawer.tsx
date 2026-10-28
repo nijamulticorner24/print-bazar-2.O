@@ -18,6 +18,8 @@ import {
   RiShieldCheckLine,
   RiAddLine,
   RiSubtractLine,
+  RiPaletteLine,
+  RiSparklingFill,
 } from 'react-icons/ri';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -41,6 +43,9 @@ export interface CartDrawerArtworkConfig {
   showDesignBrief?: boolean;
   requireReferenceImage?: boolean;
   matchedRuleName?: string;
+  designServiceRequirement?: 'REQUIRED' | 'OPTIONAL' | 'DISABLED' | string;
+  designServiceFee?: number;
+  artworkPrice?: number;
 }
 
 export interface CartDrawerArtworkFile {
@@ -64,6 +69,9 @@ export interface CartDrawerItem {
   subtotal: number;
   taxAmount?: number;
   grandTotal?: number;
+  hasDesignService?: boolean;
+  designServiceFee?: number;
+  artworkFee?: number;
   specificationsSnapshot: Record<string, any>;
   selectedOptionsSummary?: Array<{
     fieldLabel?: string;
@@ -133,16 +141,87 @@ export function CartDrawer({
     };
   }, [isOpen, onClose]);
 
-  const item = activeItem;
+  // Fallback to locally stored active cart item if activeItem is not directly supplied
+  const [storedItem, setStoredItem] = useState<CartDrawerItem | null>(null);
+
+  useEffect(() => {
+    if (!activeItem && isOpen) {
+      try {
+        const raw = sessionStorage.getItem('pb2_active_cart') || localStorage.getItem('pb2_cart');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setStoredItem(parsed[parsed.length - 1]);
+          } else if (parsed && typeof parsed === 'object') {
+            setStoredItem(parsed);
+          }
+        }
+      } catch (e) {
+        console.warn('Storage read warning', e);
+      }
+    }
+  }, [activeItem, isOpen]);
+
+  const item = activeItem || storedItem;
   const specs = item?.specificationsSnapshot || {};
-  const qty = item?.quantity || 50;
-  const unitPrice = item?.unitPrice || 65;
-  const subtotal = item?.subtotal || unitPrice * qty;
-  const tax = item?.taxAmount || Math.round(subtotal * 0.18 * 100) / 100;
-  const grandTotal = item?.grandTotal || subtotal + tax;
+  const qty = Number(item?.quantity) || 1;
+  const baseSubtotal = Number(item?.totalPrice ?? item?.subtotal ?? 0);
+  const unitPrice =
+    item?.unitPrice !== undefined && item?.unitPrice !== null && Number(item.unitPrice) > 0
+      ? Number(item.unitPrice)
+      : qty > 0 && baseSubtotal > 0
+      ? Math.round((baseSubtotal / qty) * 10000) / 10000
+      : 0;
 
   const artworkConfig = item?.artworkConfig;
   const artworkStatus = artworkConfig?.status || 'REQUIRED';
+  const designServiceRequirement = artworkConfig?.designServiceRequirement || 'DISABLED';
+  const designFeeUnit = Number(item?.designServiceFee ?? artworkConfig?.designServiceFee ?? 0);
+
+  const [wantsDesignService, setWantsDesignService] = useState<boolean>(() => {
+    return Boolean(item?.hasDesignService || designServiceRequirement === 'REQUIRED');
+  });
+
+  // Sync state if item changes
+  useEffect(() => {
+    if (item?.hasDesignService !== undefined) {
+      setWantsDesignService(Boolean(item.hasDesignService));
+    } else if (designServiceRequirement === 'REQUIRED') {
+      setWantsDesignService(true);
+    }
+  }, [item?.hasDesignService, designServiceRequirement]);
+
+  const activeDesignFee = wantsDesignService ? designFeeUnit : 0;
+  const artworkFee = Number(item?.artworkFee ?? artworkConfig?.artworkPrice ?? 0);
+
+  const subtotal = Math.round((baseSubtotal + activeDesignFee + artworkFee) * 100) / 100;
+  const tax = Math.round(subtotal * 0.18 * 100) / 100;
+  const grandTotal = Math.round((subtotal + tax) * 100) / 100;
+
+  const handleToggleDesignService = (selected: boolean) => {
+    setWantsDesignService(selected);
+    if (!item) return;
+
+    const newDesignFee = selected ? designFeeUnit : 0;
+    const newSubtotal = Math.round((baseSubtotal + newDesignFee + artworkFee) * 100) / 100;
+    const newTax = Math.round(newSubtotal * 0.18 * 100) / 100;
+    const newGrandTotal = Math.round((newSubtotal + newTax) * 100) / 100;
+
+    const updatedItem: CartDrawerItem = {
+      ...item,
+      hasDesignService: selected,
+      designServiceFee: designFeeUnit,
+      subtotal: newSubtotal,
+      taxAmount: newTax,
+      grandTotal: newGrandTotal,
+    };
+
+    if (onUpdateItem) {
+      onUpdateItem(updatedItem);
+    }
+    updateCartStorage(updatedItem);
+  };
+
   const maxFileSizeMb = Number(artworkConfig?.maxFileSizeMb) || 50;
   const allowedFormats =
     artworkConfig?.allowedFormats && artworkConfig.allowedFormats.length > 0
@@ -412,10 +491,13 @@ export function CartDrawer({
                   </div>
                   <div className="text-right">
                     <span className="text-xs text-slate-500 block font-mono">
-                      {formatCurrency(unitPrice)} / unit
+                      ₹{unitPrice.toFixed(2)} / unit
                     </span>
-                    <span className="text-sm font-black text-slate-950 font-mono">
+                    <span className="text-base font-black text-slate-950 font-mono">
                       {formatCurrency(subtotal)}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block font-mono">
+                      (Excl. GST)
                     </span>
                   </div>
                 </div>
@@ -471,35 +553,48 @@ export function CartDrawer({
                     </>
                   )}
 
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-slate-500 font-medium">Quantity:</span>
-                    <span className="font-mono font-bold text-slate-950">
-                      {qty} units
-                    </span>
-                  </div>
+                  {(!item.selectedOptionsSummary || !item.selectedOptionsSummary.some((s) => s.fieldLabel?.toLowerCase().includes('quantity'))) && (
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-slate-500 font-medium">Quantity:</span>
+                      <span className="font-mono font-bold text-slate-950">
+                        {qty.toLocaleString()} units
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* ======================================================== */}
-              {/* C. ARTWORK STATUS WORKFLOW (DYNAMIC MULTI-SLOT MATRIX)   */}
+              {/* C. ARTWORK UPLOAD & DESIGN MATRIX                        */}
               {/* ======================================================== */}
-              {artworkStatus === 'DISABLED' ? (
+              {artworkStatus === 'DISABLED' && designServiceRequirement === 'DISABLED' ? (
                 <div className="pt-3">
                   <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl flex items-center gap-2.5 text-xs text-emerald-900">
                     <RiShieldCheckLine className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                    <span>No artwork upload required for this product. Ready for production.</span>
+                    <span>No artwork upload or design assistance required for this product. Ready for production.</span>
                   </div>
                 </div>
               ) : (
-                <div className="space-y-3.5 pt-5">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                      <RiFileTextLine className="w-4 h-4 text-[#E3A008]" />
-                      <span>
-                        Artwork Files ({uploadedCount}/{effectiveSlots.length} Attached)
+                <div className="space-y-3.5 pt-5 border-t border-slate-100">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5 font-mono">
+                        <RiFileTextLine className="w-4 h-4 text-[#E3A008]" />
+                        <span>Artwork Upload & Design Matrix</span>
+                      </h4>
+                      {artworkConfig?.matchedRuleName && (
+                        <span className="text-[10px] font-mono font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                          {artworkConfig.matchedRuleName}
+                        </span>
+                      )}
+                    </div>
+
+                    {wantsDesignService && activeDesignFee > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full font-mono">
+                        <RiSparklingFill className="w-3.5 h-3.5 text-amber-600" />
+                        Design Assistance (+₹{activeDesignFee.toFixed(2)})
                       </span>
-                    </h4>
-                    {allRequiredUploaded && uploadedCount > 0 ? (
+                    ) : allRequiredUploaded && uploadedCount > 0 ? (
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
                         <RiCheckLine className="w-3.5 h-3.5" />
                         {uploadedCount === effectiveSlots.length
@@ -520,6 +615,91 @@ export function CartDrawer({
                       </span>
                     )}
                   </div>
+
+                  {/* Design Assistance Matrix Selector (With Direct Amount Setting) */}
+                  {designServiceRequirement !== 'DISABLED' && designFeeUnit > 0 && (
+                    <div className="p-3.5 bg-amber-50/70 border border-amber-200/90 rounded-2xl space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <RiPaletteLine className="w-4 h-4 text-amber-600" />
+                          <span className="text-xs font-bold text-slate-900 uppercase font-mono">
+                            Design Service Selection
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-mono font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                          Fee: +₹{designFeeUnit.toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleDesignService(false)}
+                          className={`p-3 rounded-xl border text-left transition cursor-pointer relative ${
+                            !wantsDesignService
+                              ? 'bg-white border-2 border-slate-950 shadow-xs'
+                              : 'bg-white/70 border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-slate-900">
+                              Upload My Own Files
+                            </span>
+                            {!wantsDesignService && (
+                              <div className="w-4 h-4 rounded-full bg-slate-950 text-white flex items-center justify-center">
+                                <RiCheckLine className="w-3 h-3 stroke-[3]" />
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
+                            Customer supplied print files
+                          </span>
+                          <span className="inline-block mt-1 text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                            Free (₹0.00)
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleDesignService(true)}
+                          className={`p-3 rounded-xl border text-left transition cursor-pointer relative ${
+                            wantsDesignService
+                              ? 'bg-amber-100/90 border-2 border-amber-500 shadow-xs ring-1 ring-amber-400'
+                              : 'bg-white/70 border-slate-200 hover:border-amber-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-slate-900">
+                              Hire Design Assistance
+                            </span>
+                            {wantsDesignService && (
+                              <div className="w-4 h-4 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center">
+                                <RiCheckLine className="w-3 h-3 stroke-[3]" />
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-amber-900 font-medium block mt-0.5">
+                            Prepress layout & expert design
+                          </span>
+                          <span className="inline-block mt-1 text-[10px] font-mono font-bold text-amber-950 bg-amber-200/90 px-1.5 py-0.2 rounded border border-amber-400">
+                            +₹{designFeeUnit.toFixed(2)}
+                          </span>
+                        </button>
+                      </div>
+
+                      {wantsDesignService && (
+                        <div className="p-2.5 bg-white/90 rounded-xl border border-amber-200 text-xs text-amber-950 space-y-1">
+                          <div className="flex items-center gap-1.5 font-bold">
+                            <RiSparklingFill className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>Design Service Fee (+₹{designFeeUnit.toFixed(2)}) is added to your order</span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 leading-relaxed">
+                            Upload any reference assets, logos, or copy in the slots below. Our designers will prepare high-resolution prepress artwork and share a proof for approval.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Format & Size Specs */}
                   <div className="flex items-center justify-between text-[11px] text-slate-500 bg-slate-50 border border-slate-200/80 px-3 py-1.5 rounded-lg font-mono">
@@ -704,37 +884,74 @@ export function CartDrawer({
               {/* ======================================================== */}
               {/* E. PRICING BREAKDOWN                                     */}
               {/* ======================================================== */}
-              <div className="space-y-2.5 pt-5 text-xs">
-                <div className="flex items-center justify-between text-slate-600">
-                  <span>
-                    Subtotal ({qty} units × {formatCurrency(unitPrice)})
+              <div className="space-y-3 pt-5 border-t border-slate-100">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-900 font-mono">
+                    Price Breakdown
                   </span>
-                  <span className="font-mono font-semibold text-slate-900">
-                    {formatCurrency(subtotal)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between text-slate-600">
-                  <span>GST (18% Commercial Printing)</span>
-                  <span className="font-mono font-semibold text-slate-900">
-                    {formatCurrency(tax)}
+                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-mono">
+                    Stage 5 Verified
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between text-slate-600">
-                  <span>Shipping & Logistics</span>
-                  <span className="text-emerald-700 font-semibold">
-                    Standard Free Delivery
-                  </span>
-                </div>
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between text-slate-600">
+                    <span>
+                      Production ({qty.toLocaleString()} units × ₹{unitPrice.toFixed(2)}/unit)
+                    </span>
+                    <span className="font-mono font-semibold text-slate-900">
+                      {formatCurrency(baseSubtotal)}
+                    </span>
+                  </div>
 
-                <div className="pt-2.5 border-t border-slate-200 flex items-center justify-between text-sm">
-                  <span className="font-black text-slate-900 font-display">
-                    Estimated Total
-                  </span>
-                  <span className="text-base font-black text-slate-950 font-mono">
-                    {formatCurrency(grandTotal)}
-                  </span>
+                  {wantsDesignService && activeDesignFee > 0 && (
+                    <div className="flex items-center justify-between text-amber-950 font-medium bg-amber-50/80 px-2.5 py-1.5 rounded-lg border border-amber-200">
+                      <span className="flex items-center gap-1.5 font-bold">
+                        <RiPaletteLine className="w-3.5 h-3.5 text-amber-600" />
+                        Design Service Assistance Fee
+                      </span>
+                      <span className="font-mono font-black text-amber-900">
+                        +{formatCurrency(activeDesignFee)}
+                      </span>
+                    </div>
+                  )}
+
+                  {artworkFee > 0 && (
+                    <div className="flex items-center justify-between text-slate-700 font-medium">
+                      <span>Prepress Artwork Processing Fee</span>
+                      <span className="font-mono font-semibold text-slate-900">
+                        +{formatCurrency(artworkFee)}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-slate-600">
+                    <span>GST (18% Commercial Print)</span>
+                    <span className="font-mono font-semibold text-slate-900">
+                      +{formatCurrency(tax)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-slate-600">
+                    <span>Shipping & Logistics</span>
+                    <span className="text-emerald-700 font-bold font-mono">
+                      FREE Standard Delivery
+                    </span>
+                  </div>
+
+                  <div className="pt-2.5 border-t border-slate-200 flex items-center justify-between text-sm">
+                    <div>
+                      <span className="font-black text-slate-950 font-display block">
+                        Total Amount
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        Inclusive of all taxes & shipping
+                      </span>
+                    </div>
+                    <span className="text-lg font-black text-slate-950 font-mono">
+                      {formatCurrency(grandTotal)}
+                    </span>
+                  </div>
                 </div>
               </div>
             </>
@@ -750,7 +967,28 @@ export function CartDrawer({
         {/* ======================================================== */}
         {/* F. DRAWER ACTIONS (STICKY FOOTER)                        */}
         {/* ======================================================== */}
-        <div className="p-6 border-t border-slate-200 bg-white space-y-2.5 flex-shrink-0 shadow-lg">
+        <div className="p-5 border-t border-slate-200 bg-white space-y-3 flex-shrink-0 shadow-lg">
+          {item && (
+            <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+              <div>
+                <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 block font-mono">
+                  Order Total (Incl. GST)
+                </span>
+                <span className="text-lg font-black text-slate-950 font-mono">
+                  {formatCurrency(grandTotal)}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-xs font-mono font-bold text-slate-800 block">
+                  {qty.toLocaleString()} units
+                </span>
+                <span className="text-[10px] text-emerald-700 font-medium">
+                  {wantsDesignService && activeDesignFee > 0 ? '+ Design Fee Incl.' : 'Free Delivery'}
+                </span>
+              </div>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={handleCheckoutClick}
