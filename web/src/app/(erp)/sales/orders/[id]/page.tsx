@@ -27,7 +27,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
-import { api } from '@/lib/api';
+import { api, downloadFile } from '@/lib/api';
 import { Button, Badge, StatusBadge, Input } from '@/components/ui';
 
 const MASTER_STAGES = [
@@ -272,14 +272,18 @@ export default function OrderDetailPage() {
                             <span>BLEED: {art.bleedMm || 2} mm</span>
                           </div>
                           {art.fileUrl && (
-                            <a
-                              href={art.fileUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-purple-700 hover:text-purple-950 font-bold text-[11px] underline"
+                            <button
+                              type="button"
+                              onClick={() =>
+                                downloadFile(
+                                  art.fileUrl,
+                                  `${order.orderNumber}_v${art.versionNumber}_Artwork`,
+                                )
+                              }
+                              className="text-purple-700 hover:text-purple-950 font-bold text-[11px] underline cursor-pointer text-left"
                             >
                               Download Artwork
-                            </a>
+                            </button>
                           )}
                         </div>
                       </div>

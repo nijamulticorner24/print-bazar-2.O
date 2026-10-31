@@ -303,6 +303,34 @@ export class AdminCatalogueService {
     return product;
   }
 
+  async getNextProductSku(): Promise<{ sku: string }> {
+    const existingProducts = await this.prisma.product.findMany({
+      select: { sku: true },
+      where: { sku: { startsWith: 'PB-' } },
+    });
+    let maxNum = 99;
+    for (const p of existingProducts) {
+      const match = p.sku?.match(/^PB-(\d+)$/i);
+      if (match) {
+        const val = parseInt(match[1], 10);
+        if (!isNaN(val) && val > maxNum) {
+          maxNum = val;
+        }
+      }
+    }
+    let candidate = `PB-${maxNum + 1}`;
+    let attempts = 0;
+    while (
+      (await this.prisma.product.findUnique({ where: { sku: candidate } })) &&
+      attempts < 100
+    ) {
+      maxNum++;
+      candidate = `PB-${maxNum + 1}`;
+      attempts++;
+    }
+    return { sku: candidate };
+  }
+
   async createProduct(dto: CreateProductDto, actorId?: string) {
     // 1. Verify Category exists
     const category = await this.prisma.productCategory.findUnique({
@@ -318,9 +346,28 @@ export class AdminCatalogueService {
       throw new ConflictException(`Product slug '${dto.slug}' already in use`);
     }
 
-    const existingSku = await this.prisma.product.findUnique({ where: { sku: dto.sku } });
-    if (existingSku) {
-      throw new ConflictException(`Product SKU '${dto.sku}' already in use`);
+    let finalSku = dto.sku ? dto.sku.trim().toUpperCase() : '';
+    if (!finalSku) {
+      const { sku: autoSku } = await this.getNextProductSku();
+      finalSku = autoSku;
+    } else {
+      const existingSku = await this.prisma.product.findUnique({ where: { sku: finalSku } });
+      if (existingSku) {
+        // If an auto-generated numeric PB-xxx collided, automatically resolve to next guaranteed unique SKU
+        if (/^PB-\d+$/i.test(finalSku)) {
+          const { sku: autoSku } = await this.getNextProductSku();
+          finalSku = autoSku;
+        } else {
+          throw new ConflictException(`Product SKU '${finalSku}' already in use`);
+        }
+      }
+    }
+
+    // Double check uniqueness
+    const existingFinalSku = await this.prisma.product.findUnique({ where: { sku: finalSku } });
+    if (existingFinalSku) {
+      const { sku: autoSku } = await this.getNextProductSku();
+      finalSku = autoSku;
     }
 
     // 3. Create Product with initial Images, Option Groups, Rules, and Pricing Source
@@ -330,13 +377,13 @@ export class AdminCatalogueService {
           categoryId: dto.categoryId,
           name: dto.name,
           slug: dto.slug,
-          sku: dto.sku,
+          sku: finalSku,
           description: dto.description,
           status: (dto.status as any) || ProductStatusDto.DRAFT,
-          pricingModel: dto.pricingModel || 'MATRIX',
+          pricingModel: dto.pricingModel || 'SINGLE_FIXED_QUANTITY',
           basePrice: dto.basePrice,
           minQuantity: dto.minQuantity || 1,
-          quantityStep: dto.quantityStep !== undefined ? dto.quantityStep : 100,
+          quantityStep: dto.quantityStep !== undefined ? dto.quantityStep : (dto.pricingModel === 'BULK_RANGE' ? 0 : 100),
           maxQuantity: dto.maxQuantity || 100000,
           productionDays: dto.productionDays || 2,
           sortOrder: dto.sortOrder || 0,
@@ -357,15 +404,18 @@ export class AdminCatalogueService {
           artworkFileFormats: dto.artworkFileFormats || ['PDF', 'AI', 'PSD', 'TIFF', 'PNG', 'JPG'],
           maxArtworkFileSizeMb: dto.maxArtworkFileSizeMb || 50,
           referenceImageRequirement: (dto.referenceImageRequirement as any) || 'DISABLED',
-          designServiceRequirement: (dto.designServiceRequirement as any) || 'DISABLED',
-          designServicePrice: dto.designServicePrice !== undefined ? dto.designServicePrice : 0,
-          designServiceFee: dto.designServiceFee !== undefined ? dto.designServiceFee : (dto.designServicePrice || 0),
+          designServiceRequirement: (dto.designServiceRequirement as any) || 'OPTIONAL',
+          designServicePrice: dto.designServicePrice !== undefined ? dto.designServicePrice : 150,
+          designServiceFee: dto.designServiceFee !== undefined ? dto.designServiceFee : (dto.designServicePrice !== undefined ? dto.designServicePrice : 150),
           allowMultipleVariants: dto.allowMultipleVariants ?? false,
           variantDimensions: dto.variantDimensions || [],
           personalizationTemplateId: dto.personalizationTemplateId || null,
           personalizationConfig: (dto.personalizationConfig as any) || null,
           shippingChargeType: dto.shippingChargeType || 'DEFAULT',
           unitWeightGrams: dto.unitWeightGrams !== undefined ? dto.unitWeightGrams : 0,
+          bulkTierWeights: dto.bulkTierWeights !== undefined ? (dto.bulkTierWeights as any) : [],
+          packagingProfileId: dto.packagingProfileId || null,
+          isShippable: dto.isShippable !== undefined ? dto.isShippable : true,
           courierCharge: dto.courierCharge !== undefined ? dto.courierCharge : 100,
           perAdditionalQtyRate: dto.perAdditionalQtyRate !== undefined ? dto.perAdditionalQtyRate : 0,
           freeShippingThreshold: dto.freeShippingThreshold !== undefined ? dto.freeShippingThreshold : 1000,
@@ -543,6 +593,9 @@ export class AdminCatalogueService {
         designServicePrice: dto.designServicePrice,
         shippingChargeType: dto.shippingChargeType,
         unitWeightGrams: dto.unitWeightGrams,
+        bulkTierWeights: dto.bulkTierWeights !== undefined ? (dto.bulkTierWeights as any) : undefined,
+        packagingProfileId: dto.packagingProfileId !== undefined ? (dto.packagingProfileId || null) : undefined,
+        isShippable: dto.isShippable !== undefined ? dto.isShippable : undefined,
         courierCharge: dto.courierCharge,
         perAdditionalQtyRate: dto.perAdditionalQtyRate,
         freeShippingThreshold: dto.freeShippingThreshold,

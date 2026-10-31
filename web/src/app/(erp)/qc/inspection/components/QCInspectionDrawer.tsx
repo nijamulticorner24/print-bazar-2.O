@@ -9,13 +9,14 @@ import {
   RiAlertLine,
   RiFileCheckLine,
   RiExternalLinkLine,
+  RiDownload2Line,
   RiUser3Line,
   RiMailLine,
   RiPhoneLine,
   RiSparklingLine,
   RiBox3Line,
 } from 'react-icons/ri';
-import { resolveImageUrl } from '@/lib/api';
+import { resolveImageUrl, downloadFile } from '@/lib/api';
 import { QCJobCardDto } from './QCJobCard';
 
 const DEFAULT_PRE_PROD_CHECKS = [
@@ -214,15 +215,25 @@ export function QCInspectionDrawer({
               </div>
 
               {artworkUrl && (
-                <a
-                  href={resolveImageUrl(artworkUrl)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:text-blue-900 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200"
-                >
-                  <RiExternalLinkLine className="h-3 w-3" />
-                  <span>Open Raw File</span>
-                </a>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={resolveImageUrl(artworkUrl)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:text-blue-900 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200"
+                  >
+                    <RiExternalLinkLine className="h-3 w-3" />
+                    <span>Open Raw File</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => downloadFile(artworkUrl, `${card.orderNumber}_Artwork`)}
+                    className="flex items-center gap-1 text-[11px] font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 px-2.5 py-1 rounded-md border border-slate-300 cursor-pointer shadow-2xs"
+                  >
+                    <RiDownload2Line className="h-3 w-3" />
+                    <span>Download</span>
+                  </button>
+                </div>
               )}
             </div>
 

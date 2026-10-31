@@ -141,6 +141,11 @@ export class AdminCatalogueController {
     });
   }
 
+  @Get('catalogue/products/next-sku')
+  async getNextProductSku() {
+    return this.catalogueService.getNextProductSku();
+  }
+
   @Get('catalogue/products/:id')
   async getProductById(@Param('id') id: string) {
     return this.catalogueService.getProductById(id);

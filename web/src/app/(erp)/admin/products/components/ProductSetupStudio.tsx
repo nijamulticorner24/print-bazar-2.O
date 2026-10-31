@@ -26,10 +26,12 @@ import { StudioTabArtworkConditions } from './studio/StudioTabArtworkConditions'
 import { StudioTabRules } from './studio/StudioTabRules';
 import { StudioTabPricing, MatrixRowItem } from './studio/StudioTabPricing';
 import { StudioTabReview, StudioTab } from './studio/StudioTabReview';
+import { generateProductSku, getNextAvailableProductSku } from '@/lib/utils';
 
 export interface ProductSetupStudioProps {
   initialProduct?: DynamicProduct | null;
   categories: ProductCategoryItem[];
+  existingProducts?: DynamicProduct[];
   isNew?: boolean;
   onSaved?: (product: DynamicProduct) => void;
   onCancel?: () => void;
@@ -38,6 +40,7 @@ export interface ProductSetupStudioProps {
 export function ProductSetupStudio({
   initialProduct,
   categories,
+  existingProducts,
   isNew = false,
   onSaved,
   onCancel,
@@ -60,7 +63,22 @@ export function ProductSetupStudio({
   const [productId, setProductId] = useState<string>(initialProduct?.id || '');
   const [name, setName] = useState(initialProduct?.name || '');
   const [slug, setSlug] = useState(initialProduct?.slug || '');
-  const [sku, setSku] = useState(initialProduct?.sku || '');
+  const [sku, setSku] = useState(
+    initialProduct?.sku || (isNew ? getNextAvailableProductSku(existingProducts) : '')
+  );
+
+  // Auto-fetch verified unique SKU from database on mount for new products
+  useEffect(() => {
+    if (isNew && !initialProduct?.sku) {
+      api.adminGetNextProductSku()
+        .then((res) => {
+          if (res?.sku) setSku(res.sku);
+        })
+        .catch(() => {
+          // fallback already computed
+        });
+    }
+  }, [isNew, initialProduct?.sku]);
   const [categoryId, setCategoryId] = useState(
     initialProduct?.categoryId || categories[0]?.id || ''
   );
@@ -68,20 +86,33 @@ export function ProductSetupStudio({
     initialProduct?.status || 'DRAFT'
   );
   const [basePrice, setBasePrice] = useState<number | string>(initialProduct?.basePrice || 0);
-  const [pricingModel, setPricingModel] = useState(initialProduct?.pricingModel || 'MATRIX');
+  const [pricingModel, setPricingModel] = useState(initialProduct?.pricingModel || 'SINGLE_FIXED_QUANTITY');
   const [minQuantity, setMinQuantity] = useState<number>(initialProduct?.minQuantity || 100);
-  const [quantityStep, setQuantityStep] = useState<number>(
-    initialProduct?.quantityStep !== undefined && initialProduct?.quantityStep !== null
-      ? Number(initialProduct.quantityStep)
-      : 100
-  );
+  const [quantityStep, setQuantityStep] = useState<number>(() => {
+    if (initialProduct?.quantityStep !== undefined && initialProduct?.quantityStep !== null) {
+      return Number(initialProduct.quantityStep);
+    }
+    return (initialProduct?.pricingModel || 'SINGLE_FIXED_QUANTITY') === 'BULK_RANGE' ? 0 : 100;
+  });
   const [maxQuantity, setMaxQuantity] = useState<number>(initialProduct?.maxQuantity || 100000);
   const [productionDays, setProductionDays] = useState<number>(initialProduct?.productionDays || 2);
   const [description, setDescription] = useState(initialProduct?.description || '');
   const [defaultSize, setDefaultSize] = useState(initialProduct?.defaultSize || '');
   const [isFeatured, setIsFeatured] = useState(initialProduct?.isFeatured || false);
 
-  // Logistics
+  // Logistics & Enterprise Shipping Weights (Configured natively in Stage 5)
+  const [unitWeightGrams, setUnitWeightGrams] = useState<number | string>(
+    initialProduct?.unitWeightGrams ?? 2
+  );
+  const [packagingProfileId, setPackagingProfileId] = useState<string>(
+    (initialProduct as any)?.packagingProfileId || ''
+  );
+  const [isShippable, setIsShippable] = useState<boolean>(
+    (initialProduct as any)?.isShippable ?? true
+  );
+  const [bulkTierWeights, setBulkTierWeights] = useState<Array<{ minQty: number; maxQty?: number; unitWeightGrams: number }>>(
+    (initialProduct as any)?.bulkTierWeights || []
+  );
   const [shippingChargeType, setShippingChargeType] = useState(
     initialProduct?.shippingChargeType || 'DEFAULT'
   );
@@ -241,10 +272,10 @@ export function ProductSetupStudio({
       setSaveError('Product title is required.');
       return;
     }
-    if (!sku.trim()) {
-      setActiveTab('BASICS');
-      setSaveError('Product SKU identifier is required.');
-      return;
+    let finalSku = sku.trim();
+    if (!finalSku) {
+      finalSku = getNextAvailableProductSku(existingProducts);
+      setSku(finalSku);
     }
     if (!slug.trim()) {
       setActiveTab('BASICS');
@@ -259,13 +290,13 @@ export function ProductSetupStudio({
     const payload = {
       name: name.trim(),
       slug: slug.trim(),
-      sku: sku.trim(),
+      sku: finalSku,
       categoryId,
       status: intendedStatus,
       basePrice: Number(basePrice) || 0,
       pricingModel,
       minQuantity: Number(minQuantity) || 1,
-      quantityStep: typeof quantityStep === 'number' ? quantityStep : (Number(quantityStep) >= 0 ? Number(quantityStep) : 100),
+      quantityStep: typeof quantityStep === 'number' ? quantityStep : (Number(quantityStep) >= 0 ? Number(quantityStep) : (pricingModel === 'BULK_RANGE' ? 0 : 100)),
       maxQuantity: Number(maxQuantity) || 100000,
       productionDays: Number(productionDays) || 2,
       description: description.trim(),
@@ -339,6 +370,12 @@ export function ProductSetupStudio({
       minimumArtworkMegapixels,
       designServiceRequirement,
       designServiceFee: Number(designServiceFee) || 0,
+
+      // Enterprise Shipping Weight Configuration
+      unitWeightGrams: Number(unitWeightGrams) || 0,
+      packagingProfileId: packagingProfileId || null,
+      isShippable,
+      bulkTierWeights: bulkTierWeights || [],
 
       // Personalization Template
       personalizationTemplateId: personalizationTemplateId || null,
@@ -546,6 +583,7 @@ export function ProductSetupStudio({
             categoryId={categoryId}
             setCategoryId={setCategoryId}
             categories={categories}
+            existingProducts={existingProducts}
             status={status}
             setStatus={setStatus}
             basePrice={basePrice}
@@ -558,6 +596,8 @@ export function ProductSetupStudio({
             setQuantityStep={setQuantityStep}
             maxQuantity={maxQuantity}
             setMaxQuantity={setMaxQuantity}
+            matrixRows={matrixRows}
+            setMatrixRows={setMatrixRows}
             productionDays={productionDays}
             setProductionDays={setProductionDays}
             description={description}
@@ -592,6 +632,7 @@ export function ProductSetupStudio({
             setDesignServiceRequirement={setDesignServiceRequirement}
             designServiceFee={designServiceFee}
             setDesignServiceFee={setDesignServiceFee}
+            onNavigateToTab={setActiveTab}
             onChange={markDirty}
           />
         )}
@@ -632,6 +673,7 @@ export function ProductSetupStudio({
             rules={rules}
             setRules={setRules}
             optionGroups={optionGroups}
+            onNavigateToTab={setActiveTab}
             onChange={markDirty}
           />
         )}
@@ -653,6 +695,7 @@ export function ProductSetupStudio({
             setDesignServiceRequirement={setDesignServiceRequirement}
             designServiceFee={designServiceFee}
             setDesignServiceFee={setDesignServiceFee}
+            onNavigateToTab={setActiveTab}
             onChange={markDirty}
           />
         )}
@@ -681,6 +724,15 @@ export function ProductSetupStudio({
             artworkRequirement={artworkRequirement}
             artworkFileFormats={artworkFileFormats}
             defaultSize={defaultSize}
+            unitWeightGrams={unitWeightGrams}
+            setUnitWeightGrams={setUnitWeightGrams}
+            packagingProfileId={packagingProfileId}
+            setPackagingProfileId={setPackagingProfileId}
+            isShippable={isShippable}
+            setIsShippable={setIsShippable}
+            bulkTierWeights={bulkTierWeights}
+            setBulkTierWeights={setBulkTierWeights}
+            onNavigateToTab={setActiveTab}
             onChange={markDirty}
           />
         )}

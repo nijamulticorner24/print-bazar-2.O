@@ -169,20 +169,61 @@ export function ProductionJobCard({
         </span>
       </div>
 
-      {/* Specifications Snapshot */}
-      <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-[11px] text-slate-600 space-y-0.5">
-        <div className="flex items-center gap-1.5 truncate">
-          <span className="font-semibold text-slate-700">Substrate:</span>
-          <span className="truncate">{card.specifications.paperGsm}</span>
+      {/* Customer Selected Specifications Snapshot */}
+      <div className="bg-slate-50 border border-slate-200/80 rounded-lg p-2.5 space-y-1.5 shadow-2xs">
+        <div className="flex items-center justify-between">
+          <span className="text-[9.5px] font-mono font-bold uppercase text-slate-500 tracking-wider">
+            Customer Specifications
+          </span>
+          <span className="text-[9px] font-mono font-bold text-amber-800 bg-amber-100/80 px-1.5 py-0.2 rounded border border-amber-300">
+            Job Setup Info
+          </span>
         </div>
-        <div className="flex items-center gap-1.5 truncate">
-          <span className="font-semibold text-slate-700">Finishing:</span>
-          <span className="truncate">{card.specifications.finish}</span>
-        </div>
-        <div className="flex items-center gap-1.5 truncate">
-          <span className="font-semibold text-slate-700">Print:</span>
-          <span className="truncate">{card.specifications.printMode}</span>
-        </div>
+
+        {card.specifications.selectedOptions && card.specifications.selectedOptions.length > 0 ? (
+          <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+            {card.specifications.selectedOptions.slice(0, 4).map((spec, idx) => (
+              <div key={idx} className="bg-white p-1.5 rounded border border-slate-200 shadow-2xs truncate">
+                <span className="text-[9px] font-mono uppercase text-slate-400 block truncate font-bold leading-tight">
+                  {spec.label}
+                </span>
+                <span className="font-bold text-slate-900 text-[11px] block truncate leading-tight mt-0.5">
+                  {spec.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-[11px] text-slate-600 space-y-0.5">
+            {card.specifications.paperGsm && (
+              <div className="flex items-center gap-1.5 truncate">
+                <span className="font-semibold text-slate-700">Substrate:</span>
+                <span className="truncate">{card.specifications.paperGsm}</span>
+              </div>
+            )}
+            {card.specifications.finish && (
+              <div className="flex items-center gap-1.5 truncate">
+                <span className="font-semibold text-slate-700">Finishing:</span>
+                <span className="truncate">{card.specifications.finish}</span>
+              </div>
+            )}
+            {card.specifications.printMode && (
+              <div className="flex items-center gap-1.5 truncate">
+                <span className="font-semibold text-slate-700">Print:</span>
+                <span className="truncate">{card.specifications.printMode}</span>
+              </div>
+            )}
+            {!card.specifications.paperGsm && !card.specifications.finish && !card.specifications.printMode && (
+              <span className="italic text-slate-400 text-[10.5px]">Standard shop specs configured</span>
+            )}
+          </div>
+        )}
+
+        {card.specifications.customerNotes && (
+          <div className="pt-1 border-t border-slate-200/60 text-[10px] text-slate-600 line-clamp-1">
+            <span className="font-bold text-slate-700">Notes:</span> {card.specifications.customerNotes}
+          </div>
+        )}
       </div>
 
       {/* Approved Job Artwork Download Box */}

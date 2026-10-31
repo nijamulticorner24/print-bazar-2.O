@@ -23,6 +23,12 @@ export class JobCardsController {
     return this.jobCardEngine.listJobCards({ status, station, user });
   }
 
+  @Get(':id')
+  @ApiOperation({ summary: 'Get single job card details by ID or Job Number' })
+  async getJobCard(@Param('id') id: string) {
+    return this.jobCardEngine.getJobCardById(id);
+  }
+
   @Post('auto-generate/:orderItemId')
   @ApiOperation({ summary: 'Trigger automatic Job Card generation for an approved Order Item' })
   async generateJobCard(

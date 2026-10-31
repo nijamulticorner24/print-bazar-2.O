@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, use } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -202,6 +202,56 @@ export default function OperationalOrderDetailPage({
     }
   };
 
+  const primaryItem = order?.items?.[0];
+  const specs = primaryItem?.specifications || {};
+  const customerSpecs = useMemo(() => {
+    if (!specs || typeof specs !== 'object') return [];
+    const list: Array<{ label: string; value: string }> = [];
+    const seen = new Set<string>();
+
+    const add = (label: string, val: any) => {
+      if (!val || typeof val === 'object') return;
+      const str = String(val).trim();
+      if (!str) return;
+      const cleanLabel = label.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+      const norm = cleanLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (seen.has(norm)) return;
+      const blocked = [
+        'price', 'cost', 'fee', 'tax', 'gst', 'subtotal', 'total', 'grandtotal',
+        'artworkrequirement', 'designservicerequirement', 'referenceimagerequirement',
+        'workflowroute', 'artworksource', 'artworkurl', 'artworkstoragekey',
+        'referenceimage', 'referenceimageurl', 'designnotes', 'customernotes',
+        'ismultivariant', 'variantlines', 'specificationssnapshot', 'fieldvalues', 'raw'
+      ];
+      if (blocked.some((b) => norm.includes(b))) return;
+      seen.add(norm);
+      list.push({
+        label: cleanLabel.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+        value: str,
+      });
+    };
+
+    if (Array.isArray(specs.options)) {
+      for (const opt of specs.options) {
+        add(opt.fieldLabel || opt.optionName || opt.optionCode, opt.value || opt.valueName || opt.optionLabel);
+      }
+    }
+    if (Array.isArray(specs.selectedOptionsSummary)) {
+      for (const opt of specs.selectedOptionsSummary) {
+        add(opt.fieldLabel || opt.optionName, opt.value || opt.valueName);
+      }
+    }
+    const snap = typeof specs.specificationsSnapshot === 'object' && specs.specificationsSnapshot ? specs.specificationsSnapshot : {};
+    for (const [k, v] of Object.entries(snap)) {
+      add(k, v);
+    }
+    for (const [k, v] of Object.entries(specs)) {
+      add(k, v);
+    }
+
+    return list;
+  }, [specs]);
+
   if (isLoading) {
     return (
       <div className="mx-auto max-w-7xl py-24 text-center">
@@ -226,8 +276,6 @@ export default function OperationalOrderDetailPage({
     );
   }
 
-  const primaryItem = order.items?.[0];
-  const specs = primaryItem?.specifications || {};
   const jobCard = order.jobCards?.[0];
   const hasBlockers = order.blockers && order.blockers.length > 0;
   const nextAction = order.operationalNextAction;
@@ -583,24 +631,35 @@ export default function OperationalOrderDetailPage({
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 text-xs">
-                <div className="bg-white p-2 rounded border border-slate-200">
-                  <span className="text-[10px] font-mono text-slate-400 block">PAPER / SUBSTRATE</span>
-                  <span className="font-bold text-slate-800 mt-0.5 block">{specs.paperGsm || specs.substrate || 'Standard 300 GSM'}</span>
+              {customerSpecs.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 text-xs">
+                  {customerSpecs.map((spec, i) => (
+                    <div key={i} className="bg-white p-2.5 rounded-lg border border-slate-200">
+                      <span className="text-[10px] font-mono text-slate-400 block uppercase font-bold">{spec.label}</span>
+                      <span className="font-bold text-slate-900 mt-0.5 block truncate leading-snug">{spec.value}</span>
+                    </div>
+                  ))}
                 </div>
-                <div className="bg-white p-2 rounded border border-slate-200">
-                  <span className="text-[10px] font-mono text-slate-400 block">FINISH / LAMINATION</span>
-                  <span className="font-bold text-slate-800 mt-0.5 block">{specs.finish || specs.lamination || 'None / Matte'}</span>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 text-xs">
+                  <div className="bg-white p-2 rounded border border-slate-200">
+                    <span className="text-[10px] font-mono text-slate-400 block">PAPER / SUBSTRATE</span>
+                    <span className="font-bold text-slate-800 mt-0.5 block">{specs.paperGsm || specs.substrate || 'Standard 300 GSM'}</span>
+                  </div>
+                  <div className="bg-white p-2 rounded border border-slate-200">
+                    <span className="text-[10px] font-mono text-slate-400 block">FINISH / LAMINATION</span>
+                    <span className="font-bold text-slate-800 mt-0.5 block">{specs.finish || specs.lamination || 'None / Matte'}</span>
+                  </div>
+                  <div className="bg-white p-2 rounded border border-slate-200">
+                    <span className="text-[10px] font-mono text-slate-400 block">DIMENSIONS</span>
+                    <span className="font-bold text-slate-800 mt-0.5 block">{specs.dimensions || specs.size || 'Standard Cut'}</span>
+                  </div>
+                  <div className="bg-white p-2 rounded border border-slate-200">
+                    <span className="text-[10px] font-mono text-slate-400 block">PRINT MODE</span>
+                    <span className="font-bold text-slate-800 mt-0.5 block">{specs.printMode || specs.sides || 'Double Sided (4+4)'}</span>
+                  </div>
                 </div>
-                <div className="bg-white p-2 rounded border border-slate-200">
-                  <span className="text-[10px] font-mono text-slate-400 block">DIMENSIONS</span>
-                  <span className="font-bold text-slate-800 mt-0.5 block">{specs.dimensions || specs.size || 'Standard Cut'}</span>
-                </div>
-                <div className="bg-white p-2 rounded border border-slate-200">
-                  <span className="text-[10px] font-mono text-slate-400 block">PRINT MODE</span>
-                  <span className="font-bold text-slate-800 mt-0.5 block">{specs.printMode || specs.sides || 'Double Sided (4+4)'}</span>
-                </div>
-              </div>
+              )}
 
               {specs.customerNotes && (
                 <div className="pt-2 text-[11px] text-slate-600">
@@ -611,7 +670,7 @@ export default function OperationalOrderDetailPage({
           </div>
 
           {/* Personalization Details & Production CSV Export Card */}
-          {order.items?.some((it: any) => it.personalizationData) && (
+          {order.items?.some((it: any) => it.personalizationData || it.specifications?.personalization) && (
             <div className="bg-white border-2 border-purple-900/40 rounded-xl p-5 shadow-xs space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-purple-100 pb-3">
                 <div className="flex items-center gap-2">
@@ -633,9 +692,9 @@ export default function OperationalOrderDetailPage({
               </div>
 
               {order.items
-                .filter((it: any) => it.personalizationData)
+                .filter((it: any) => it.personalizationData || it.specifications?.personalization)
                 .map((it: any, itIdx: number) => {
-                  const pData = it.personalizationData;
+                  const pData = it.personalizationData || it.specifications?.personalization || {};
                   const shared = pData.sharedValues || {};
                   const perItem = pData.perItemEntries || [];
 
@@ -1051,6 +1110,24 @@ export default function OperationalOrderDetailPage({
           maxWidth="md"
         >
           <form onSubmit={handleExecuteAssignment} className="space-y-4 text-xs">
+            {/* Customer Selected Specifications Preview */}
+            {customerSpecs.length > 0 && (
+              <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-lg space-y-1.5">
+                <div className="flex items-center justify-between text-[10px] font-mono font-bold text-amber-900 uppercase">
+                  <span>Customer Selected Specifications to Hand Off:</span>
+                  <span>{customerSpecs.length} Verified Specs</span>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {customerSpecs.map((spec, i) => (
+                    <div key={i} className="bg-white p-1.5 rounded border border-amber-200 text-[11px] truncate">
+                      <span className="text-[9px] font-mono uppercase text-slate-400 block font-bold truncate">{spec.label}</span>
+                      <span className="font-bold text-slate-900 block truncate leading-tight">{spec.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-slate-700 font-bold mb-1.5">
                 {assignmentModalType === 'DESIGN' ? 'Select Prepress Designer' : 'Select Production Operator'} *

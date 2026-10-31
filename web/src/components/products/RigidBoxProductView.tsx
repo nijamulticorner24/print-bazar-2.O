@@ -1229,9 +1229,11 @@ export function RigidBoxProductView({ product }: RigidBoxProductViewProps) {
         onClose={() => setIsCartDrawerOpen(false)}
         activeItem={activeCartItem}
         onUpdateItem={(updated) => setActiveCartItem(updated)}
-        onProceedToCheckout={() => {
-          if (activeCartItem) {
-            sessionStorage.setItem('pb2_active_cart', JSON.stringify(activeCartItem));
+        onProceedToCheckout={(finalItem?: CartDrawerItem) => {
+          const itemToPersist = finalItem || activeCartItem;
+          if (itemToPersist) {
+            setActiveCartItem(itemToPersist);
+            sessionStorage.setItem('pb2_active_cart', JSON.stringify(itemToPersist));
           }
           if (user) {
             router.push('/checkout');
@@ -1247,13 +1249,15 @@ export function RigidBoxProductView({ product }: RigidBoxProductViewProps) {
         onClose={() => setIsAuthModalOpen(false)}
         onSuccess={() => {
           setIsAuthModalOpen(false);
+          setIsCartDrawerOpen(false);
           router.push('/checkout');
         }}
+        zIndex="z-[200]"
       />
 
       {/* 3D View Modal */}
       {is3DModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-2xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-2xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">

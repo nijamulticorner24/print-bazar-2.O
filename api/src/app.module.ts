@@ -20,6 +20,7 @@ import { NotificationModule } from './modules/notifications/notification.module'
 import { OperationsModule } from './modules/operations/operations.module';
 import { EventsModule } from './modules/events/events.module';
 import { ShippingGstModule } from './modules/shipping-gst/shipping-gst.module';
+import { ShippingModule } from './modules/shipping/shipping.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { ShippingGstModule } from './modules/shipping-gst/shipping-gst.module';
     NotificationModule,
     OperationsModule,
     ShippingGstModule,
+    ShippingModule,
   ],
 })
 export class AppModule {}

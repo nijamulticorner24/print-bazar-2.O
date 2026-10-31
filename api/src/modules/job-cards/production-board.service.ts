@@ -76,6 +76,8 @@ export interface KanbanCard {
     printMode?: string;
     dimensions?: string;
     sides?: string;
+    selectedOptions?: Array<{ label: string; value: string }>;
+    customerNotes?: string;
     raw?: Record<string, unknown>;
   };
   machine?: {
@@ -318,6 +320,63 @@ export class ProductionBoardService {
           }
         : null;
 
+      // Extract clean customer-selected specifications
+      const selectedOptions: Array<{ label: string; value: string }> = [];
+      const seenLabels = new Set<string>();
+
+      const addOption = (label: string, value: any) => {
+        if (value === null || value === undefined || typeof value === 'object') return;
+        const strVal = String(value).trim();
+        if (!strVal) return;
+        const cleanLabel = String(label)
+          .replace(/_/g, ' ')
+          .replace(/([a-z])([A-Z])/g, '$1 $2')
+          .trim();
+        const norm = cleanLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (seenLabels.has(norm)) return;
+        // Exclude financial and internal system keys
+        const blocked = [
+          'price', 'cost', 'fee', 'tax', 'gst', 'subtotal', 'total', 'grandtotal',
+          'artworkrequirement', 'designservicerequirement', 'referenceimagerequirement',
+          'workflowroute', 'artworksource', 'artworkurl', 'artworkstoragekey',
+          'referenceimage', 'referenceimageurl', 'designnotes', 'customernotes',
+          'ismultivariant', 'variantlines', 'specificationssnapshot', 'fieldvalues', 'raw'
+        ];
+        if (blocked.some((b) => norm.includes(b))) return;
+        seenLabels.add(norm);
+        selectedOptions.push({
+          label: cleanLabel.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+          value: strVal,
+        });
+      };
+
+      const itemSpecs = (job.orderItem?.specifications as Record<string, unknown>) || rawSpecs;
+      if (Array.isArray(itemSpecs.options)) {
+        for (const opt of itemSpecs.options as any[]) {
+          const l = opt?.fieldLabel || opt?.optionName || opt?.optionCode;
+          const v = opt?.value || opt?.valueName || opt?.optionLabel;
+          if (l && v) addOption(l, v);
+        }
+      }
+      if (Array.isArray(itemSpecs.selectedOptionsSummary)) {
+        for (const opt of itemSpecs.selectedOptionsSummary as any[]) {
+          const l = opt?.fieldLabel || opt?.optionName;
+          const v = opt?.value || opt?.valueName;
+          if (l && v) addOption(l, v);
+        }
+      }
+      const snap = (itemSpecs.specificationsSnapshot as Record<string, unknown>) || {};
+      for (const [k, v] of Object.entries(snap)) {
+        if (typeof v === 'string' || typeof v === 'number') {
+          addOption(k, v);
+        }
+      }
+      for (const [k, v] of Object.entries(itemSpecs)) {
+        if (typeof v === 'string' || typeof v === 'number') {
+          addOption(k, v);
+        }
+      }
+
       mappedCards.push({
         id: job.id,
         jobNumber: job.jobNumber,
@@ -328,11 +387,13 @@ export class ProductionBoardService {
         productName: (specs.productName as string) || job.orderItem?.productName || 'Print Product',
         quantity: (specs.quantity as number) || job.orderItem?.quantity || 1,
         specifications: {
-          paperGsm: (rawSpecs['paper_gsm'] as string) || (rawSpecs['gsm'] as string) || '350 GSM Art Card',
-          finish: (rawSpecs['lamination'] as string) || (rawSpecs['finish'] as string) || 'Thermal Matt Lamination',
-          printMode: (rawSpecs['print_sides'] as string) || (rawSpecs['color_mode'] as string) || '4+4 CMYK Digital',
-          dimensions: (rawSpecs['dimensions'] as string) || (rawSpecs['size'] as string) || undefined,
+          paperGsm: (rawSpecs['paper_gsm'] as string) || (rawSpecs['gsm'] as string) || (selectedOptions.find(o => o.label.toLowerCase().includes('paper') || o.label.toLowerCase().includes('substrate'))?.value) || undefined,
+          finish: (rawSpecs['lamination'] as string) || (rawSpecs['finish'] as string) || (selectedOptions.find(o => o.label.toLowerCase().includes('finish') || o.label.toLowerCase().includes('lamination'))?.value) || undefined,
+          printMode: (rawSpecs['print_sides'] as string) || (rawSpecs['color_mode'] as string) || (selectedOptions.find(o => o.label.toLowerCase().includes('print') || o.label.toLowerCase().includes('side'))?.value) || undefined,
+          dimensions: (rawSpecs['dimensions'] as string) || (rawSpecs['size'] as string) || (selectedOptions.find(o => o.label.toLowerCase().includes('dimension') || o.label.toLowerCase().includes('size'))?.value) || undefined,
           sides: (rawSpecs['sides'] as string) || undefined,
+          selectedOptions,
+          customerNotes: (itemSpecs.customerNotes as string) || (itemSpecs.designNotes as string) || (job.order as any)?.customerNotes || undefined,
           raw: rawSpecs,
         },
         machine: job.machine

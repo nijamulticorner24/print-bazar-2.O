@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShippingGstService } from '../shipping-gst/shipping-gst.service';
+import { ShippingCalculatorService } from '../shipping/shipping-calculator.service';
 import {
   evaluateProductConfiguration,
   matchesRuleConditions,
@@ -11,6 +12,28 @@ export interface OptionSelectionDto {
   optionCode: string;
   valueCode: string;
 }
+
+const IGNORED_COMBO_KEYS = [
+  'discountPercent',
+  'label',
+  'rangeLabel',
+  'quantityRanges',
+  'offerName',
+  'isExcluded',
+  'status',
+  'exclusionReason',
+  'type',
+  'isBasePrice',
+  'price',
+  'totalPrice',
+  'quantity',
+  'totalProductWeightGrams',
+  'unitWeightGrams',
+  'weightGrams',
+  'id',
+  'minQty',
+  'maxQty',
+];
 
 export interface VariantLineInput {
   id?: string;
@@ -32,6 +55,8 @@ export interface VariantLineQuote {
     valueName: string;
     valueCode: string;
     priceModifier: number;
+    matchedTier?: string;
+    flatAddonAmount?: number;
     additionalUnitPrice?: number;
     additionalChargeTotal?: number;
   }>;
@@ -94,6 +119,7 @@ export interface QuoteItemBreakdown {
   courierCharge: number;
   freeShippingThreshold: number;
   estimatedShipping: number;
+  shipping?: any;
   matchedZone?: { id: string; zoneName: string; pincodePrefix: string; shippingCharge: number } | null;
   isFreeShippingApplied?: boolean;
   gstRatePercent?: number;
@@ -126,6 +152,8 @@ export interface QuoteItemBreakdown {
     valueName: string;
     valueCode: string;
     priceModifier: number;
+    matchedTier?: string;
+    flatAddonAmount?: number;
     additionalUnitPrice?: number;
     additionalChargeTotal?: number;
   }>;
@@ -146,6 +174,7 @@ export class PricingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly shippingGstService: ShippingGstService,
+    private readonly shippingCalculatorService: ShippingCalculatorService,
   ) {}
 
   /**
@@ -223,6 +252,8 @@ export class PricingService {
       }
     }
 
+    const isBulkRangeProduct = product.pricingModel === 'BULK_RANGE';
+
     for (const group of optionGroups) {
       let isVisible = ruleEval.groupStatus[group.code]?.isVisible !== false;
 
@@ -264,7 +295,10 @@ export class PricingService {
       }
 
       const matchedOption = groupOptions.find(
-        (o: any) => (o.value || o.code) === String(activeVal),
+        (o: any) =>
+          (o.value || o.code) === String(activeVal) ||
+          normalizeKey(o.value || o.code) === normalizeKey(activeVal) ||
+          String(o.value || o.code).toLowerCase().trim() === String(activeVal).toLowerCase().trim(),
       );
 
       if (matchedOption) {
@@ -277,19 +311,56 @@ export class PricingService {
         let modType = matchedOption.priceModifierType || 'FIXED';
         let isAdditionalTierPricing = false;
 
-        if (groupAdditionalPricings.length > 0) {
-          const matchingTier = groupAdditionalPricings.find((ap) => {
-            const valMatches = String(ap.optionValue).toLowerCase() === String(matchedOption.value).toLowerCase();
-            const qtyMatches = effectiveOrderQty >= ap.minQty && (ap.maxQty && ap.maxQty >= ap.minQty ? effectiveOrderQty <= ap.maxQty : true);
-            return valMatches && qtyMatches;
+        let matchedTierLabel: string | undefined = undefined;
+
+        // Model 3: Additional Pricing by Group & Quantity applies for all active configured tiers (effectiveOrderQty > 0)
+        if (groupAdditionalPricings.length > 0 && effectiveOrderQty > 0) {
+          const valMatches = (apVal: string, optVal: string) => {
+            return (
+              String(apVal).toLowerCase().trim() === String(optVal).toLowerCase().trim() ||
+              normalizeKey(apVal) === normalizeKey(optVal)
+            );
+          };
+
+          const valTiers = groupAdditionalPricings.filter((ap) =>
+            valMatches(ap.optionValue, matchedOption.value || matchedOption.code),
+          );
+
+          if (valTiers.length === 0) {
+            throw new BadRequestException(
+              `Missing pricing matrix configuration for option '${matchedOption.label || matchedOption.value}' in group '${group.name || group.label}'.`,
+            );
+          }
+
+          let matchingTier = valTiers.find((ap) => {
+            const minQ = Number(ap.minQty) || 0;
+            const maxQ =
+              ap.maxQty !== undefined && ap.maxQty !== null && Number(ap.maxQty) >= minQ
+                ? Number(ap.maxQty)
+                : minQ;
+            return (
+              effectiveOrderQty >= minQ &&
+              (maxQ > minQ ? effectiveOrderQty <= maxQ : (ap.maxQty ? effectiveOrderQty <= ap.maxQty : true))
+            );
           });
 
-          if (matchingTier) {
-            if (matchingTier.isExcluded) {
-              throw new BadRequestException(
-                `The selected option '${matchedOption.label || matchedOption.value}' in '${group.name}' is not supported for production at quantity ${effectiveOrderQty}.`,
-              );
-            }
+          if (!matchingTier) {
+            throw new BadRequestException(
+              `Invalid quantity tier ${effectiveOrderQty} for option '${matchedOption.label || matchedOption.value}'. No configured additional pricing tier matches this quantity.`,
+            );
+          }
+
+          matchedTierLabel =
+            matchingTier.maxQty && Number(matchingTier.maxQty) > Number(matchingTier.minQty)
+              ? `${matchingTier.minQty}–${matchingTier.maxQty} pcs`
+              : `${matchingTier.minQty} pcs`;
+
+          if (matchingTier.isExcluded) {
+            // Excluded option: contributes ₹0 additional charge
+            modVal = 0;
+            modType = 'FLAT_PER_ORDER';
+            isAdditionalTierPricing = true;
+          } else {
             const tierCharge = Number(matchingTier.unitPrice || 0);
             if (tierCharge < 0) {
               throw new BadRequestException(
@@ -297,20 +368,8 @@ export class PricingService {
               );
             }
             modVal = tierCharge;
-            modType = matchingTier.chargeBasis || 'PER_UNIT';
+            modType = 'FLAT_PER_ORDER';
             isAdditionalTierPricing = true;
-          } else {
-            const valTiers = groupAdditionalPricings.filter(
-              (ap) => String(ap.optionValue).toLowerCase() === String(matchedOption.value).toLowerCase(),
-            );
-            if (valTiers.length > 0) {
-              const availableTiers = Array.from(
-                new Set(valTiers.map((ap) => (ap.minQty === ap.maxQty ? `${ap.minQty}` : `${ap.minQty}–${ap.maxQty}`))),
-              ).sort();
-              throw new BadRequestException(
-                `Quantity ${effectiveOrderQty} is not supported for option '${matchedOption.label}' in '${group.name}'. Configured quantity tier(s): ${availableTiers.join(', ')}.`,
-              );
-            }
           }
         }
 
@@ -319,7 +378,12 @@ export class PricingService {
         }
         groupOptionModifiers.set(group.code, { modVal, type: modType, isAdditionalTierPricing });
 
-        if (modType === 'FIXED' || modType === 'PER_UNIT') {
+        if (isAdditionalTierPricing) {
+          // Model 3: FLAT Add-on per Order for both Fixed Quantity and Bulk Quantity Range models
+          // Total additional surcharge for the order is modVal, NEVER multiplied by order quantity
+          const unitContribution = lineQty > 0 ? (modVal / lineQty) : modVal;
+          optionsUnitModifier += unitContribution;
+        } else if (modType === 'FIXED' || modType === 'PER_UNIT') {
           optionsUnitModifier += modVal;
         } else if (modType === 'PERCENTAGE') {
           percentageModifierTotal += modVal;
@@ -331,8 +395,12 @@ export class PricingService {
           valueName: matchedOption.label || matchedOption.name,
           valueCode: matchedOption.value || matchedOption.code,
           priceModifier: modVal,
-          additionalUnitPrice: isAdditionalTierPricing ? modVal : 0,
-          additionalChargeTotal: isAdditionalTierPricing ? Math.round(modVal * lineQty * 100) / 100 : 0,
+          matchedTier: matchedTierLabel,
+          flatAddonAmount: isAdditionalTierPricing ? modVal : undefined,
+          additionalUnitPrice: isAdditionalTierPricing
+            ? (lineQty > 0 ? Math.round((modVal / lineQty) * 10000) / 10000 : modVal)
+            : 0,
+          additionalChargeTotal: isAdditionalTierPricing ? modVal : 0,
         });
 
         specificationsSnapshot[group.code] = {
@@ -403,7 +471,7 @@ export class PricingService {
             combo.type === 'BASE' ||
             (!combo.attributeCode && !combo.type) ||
             Object.keys(combo).filter(
-              (k) => !['label', 'rangeLabel', 'quantityRanges', 'discountPercent', 'offerName', 'isBasePrice', 'type'].includes(k),
+              (k) => !IGNORED_COMBO_KEYS.includes(k),
             ).length === 0
           );
         }) || matchingRangeRules[0];
@@ -484,8 +552,7 @@ export class PricingService {
       const matchingComboMatrices = sortedMatrices.filter((m) => {
         const combo = (m.attributeCombination as any) || {};
         const comboEntries = Object.entries(combo).filter(
-          ([k]) =>
-            !['discountPercent', 'label', 'offerName', 'isExcluded', 'status', 'exclusionReason', 'type', 'isBasePrice', 'price', 'totalPrice', 'quantity'].includes(k),
+          ([k]) => !IGNORED_COMBO_KEYS.includes(k),
         );
         if (comboEntries.length === 0) return false;
         return comboEntries.every(([k, v]) => String(userSelections[k]) === String(v));
@@ -494,8 +561,7 @@ export class PricingService {
       const hasBaseRules = sortedMatrices.some((m) => {
         const c = (m.attributeCombination as any) || {};
         const entries = Object.entries(c).filter(
-          ([k]) =>
-            !['discountPercent', 'label', 'offerName', 'isExcluded', 'status', 'exclusionReason', 'type', 'isBasePrice', 'price', 'totalPrice', 'quantity'].includes(k),
+          ([k]) => !IGNORED_COMBO_KEYS.includes(k),
         );
         return entries.length === 0;
       });
@@ -504,13 +570,21 @@ export class PricingService {
       let highestMatchSpecificity = -1;
 
       if (matchingComboMatrices.length > 0) {
+        // Option A: Single Fixed Quantity -> Quantity Range Brackets (1–10, 11–20, 21–50, 51–100 pcs)
+        // Option B: Bulk Quantity Range -> Discrete Fixed Quantity Tiers (100, 1,000, 25,000 pcs)
+        const isRangeBracketMode = product.pricingModel === 'SINGLE_FIXED_QUANTITY';
+        const isIncrementalAllowed = Number(product.quantityStep) > 0;
         const exactQtyMatch =
           matchingComboMatrices.find((m) => m.minQty === effectiveOrderQty) ||
-          matchingComboMatrices.find(
-            (m) =>
-              m.minQty <= effectiveOrderQty &&
-              (m.maxQty && m.maxQty >= m.minQty ? effectiveOrderQty <= m.maxQty : false),
-          );
+          (isRangeBracketMode
+            ? matchingComboMatrices.find(
+                (m) =>
+                  m.minQty <= effectiveOrderQty &&
+                  (m.maxQty && m.maxQty >= m.minQty ? effectiveOrderQty <= m.maxQty : false),
+              )
+            : (isIncrementalAllowed
+                ? matchingComboMatrices.find((m) => m.minQty <= effectiveOrderQty)
+                : undefined));
         if (!exactQtyMatch) {
           const avail = matchingComboMatrices
             .filter((m) => {
@@ -575,14 +649,18 @@ export class PricingService {
             label,
           });
 
+          const isRangeBracketMode = product.pricingModel === 'SINGLE_FIXED_QUANTITY';
+          const isIncrementalAllowed = Number(product.quantityStep) > 0;
           const isExactQtyMatch = effectiveOrderQty === m.minQty;
-          const isBracketMatch = effectiveOrderQty >= m.minQty && (m.maxQty && m.maxQty > m.minQty ? effectiveOrderQty <= m.maxQty : true);
-          const isThresholdMatch = effectiveOrderQty >= m.minQty;
+          const isBracketMatch =
+            isRangeBracketMode &&
+            effectiveOrderQty >= m.minQty &&
+            (m.maxQty && m.maxQty >= m.minQty ? effectiveOrderQty <= m.maxQty : true);
+          const isThresholdMatch = !isRangeBracketMode && isIncrementalAllowed && effectiveOrderQty >= m.minQty;
 
           if (isExactQtyMatch || isBracketMatch || isThresholdMatch) {
             const comboEntries = Object.entries(combo).filter(
-              ([k]) =>
-                !['discountPercent', 'label', 'offerName', 'isExcluded', 'status', 'exclusionReason', 'type', 'isBasePrice', 'price', 'totalPrice', 'quantity'].includes(k),
+              ([k]) => !IGNORED_COMBO_KEYS.includes(k),
             );
 
             if (comboEntries.length === 0) {
@@ -646,27 +724,17 @@ export class PricingService {
         if (isSpecific) {
           const comboKeys = new Set(
             Object.keys(combo).filter(
-              (k) =>
-                ![
-                  'discountPercent',
-                  'label',
-                  'offerName',
-                  'isExcluded',
-                  'status',
-                  'exclusionReason',
-                  'type',
-                  'isBasePrice',
-                  'price',
-                  'totalPrice',
-                  'quantity',
-                ].includes(k),
+              (k) => !IGNORED_COMBO_KEYS.includes(k),
             ),
           );
 
           optionsUnitModifier = 0;
-          for (const [grpCode, { modVal, type }] of groupOptionModifiers.entries()) {
-            if (!comboKeys.has(grpCode)) {
-              if (type === 'FIXED' || type === 'PER_UNIT') {
+          for (const [grpCode, { modVal, type, isAdditionalTierPricing }] of groupOptionModifiers.entries()) {
+            if (!comboKeys.has(grpCode) || isAdditionalTierPricing) {
+              if (isAdditionalTierPricing) {
+                const unitContribution = lineQty > 0 ? (modVal / lineQty) : modVal;
+                optionsUnitModifier += unitContribution;
+              } else if (type === 'FIXED' || type === 'PER_UNIT') {
                 optionsUnitModifier += modVal;
               }
             }
@@ -684,6 +752,17 @@ export class PricingService {
             savingsAmount: Math.round(savingsPerUnit * lineQty * 100) / 100,
           };
         }
+      } else if (hasBaseRules && product.pricingModel !== 'SINGLE_FIXED_QUANTITY' && Number(product.quantityStep) <= 0) {
+        const avail = sortedMatrices
+          .filter((m) => {
+            const c = (m.attributeCombination as any) || {};
+            return !c.isExcluded && c.status !== 'EXCLUDED';
+          })
+          .map((m) => (m.maxQty && m.maxQty > m.minQty ? `${m.minQty}–${m.maxQty}` : `${m.minQty}`))
+          .sort();
+        throw new BadRequestException(
+          `Quantity ${effectiveOrderQty} is not available for ${product.name}. Please select an available quantity tier${avail.length > 0 ? ` (${avail.join(', ')})` : ''}.`,
+        );
       }
     }
 
@@ -716,8 +795,8 @@ export class PricingService {
     }
 
     let unitPrice = (baseUnitPrice + optionsUnitModifier) * (1 + percentageModifierTotal / 100);
-    unitPrice = Math.round(unitPrice * 100) / 100;
     const lineSubtotal = Math.round(unitPrice * lineQty * 100) / 100;
+    unitPrice = lineQty > 0 ? Math.round((lineSubtotal / lineQty) * 10000) / 10000 : Math.round(unitPrice * 100) / 100;
 
     return {
       startingReferenceRate,
@@ -735,6 +814,85 @@ export class PricingService {
       originalBasePrice,
       userSelections,
     };
+  }
+
+  private checkDesignServiceRequested(
+    userSelections: Record<string, any>,
+    optionGroups: any[],
+    configurationRules: any[],
+    dtoHasDesignService?: boolean,
+    designReq?: string,
+  ): boolean {
+    if (designReq === 'REQUIRED') return true;
+
+    // 1. Check user option selections for any design-related key or typo
+    let userDesignValue = '';
+    for (const [key, val] of Object.entries(userSelections || {})) {
+      if (val === undefined || val === null) continue;
+      const normKey = String(key).toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (
+        normKey.includes('design') ||
+        normKey.includes('artworkservice') ||
+        normKey.includes('hireservice')
+      ) {
+        userDesignValue = String(val).toLowerCase().trim();
+        break;
+      }
+    }
+
+    if (!userDesignValue && optionGroups && optionGroups.length > 0) {
+      for (const grp of optionGroups) {
+        const normCode = String(grp.code || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const normName = String(grp.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (normCode.includes('design') || normName.includes('design')) {
+          if (userSelections && userSelections[grp.code] !== undefined && userSelections[grp.code] !== null) {
+            userDesignValue = String(userSelections[grp.code]).toLowerCase().trim();
+            break;
+          }
+        }
+      }
+    }
+
+    const isExplicitNo =
+      userDesignValue === 'no' ||
+      userDesignValue === 'false' ||
+      userDesignValue === 'none' ||
+      userDesignValue.includes('own_file') ||
+      userDesignValue.includes('customer_supplied') ||
+      userDesignValue.includes('upload');
+
+    if (isExplicitNo) return false;
+
+    const isExplicitYes =
+      userDesignValue === 'yes' ||
+      userDesignValue === 'true' ||
+      userDesignValue === 'required' ||
+      userDesignValue.includes('hire') ||
+      userDesignValue.includes('assist') ||
+      userDesignValue.includes('yes_please');
+
+    if (isExplicitYes || dtoHasDesignService === true) return true;
+
+    // 2. Check if any matching configuration rule enabled design fee or brief
+    for (const rule of configurationRules || []) {
+      if (!rule.isActive) continue;
+      const isArtRule =
+        rule.actionType === 'ARTWORK_CONDITIONS' ||
+        rule.actionType === 'CONFIGURE_ARTWORK' ||
+        rule.actionType === 'REQUIRE_ARTWORK_FILES';
+      if (isArtRule && matchesRuleCondition(rule, userSelections)) {
+        const payload = (rule.actionPayload as any) || {};
+        if (
+          payload.designFeeEnabled === true ||
+          (payload.designFee !== undefined && Number(payload.designFee) > 0) ||
+          payload.requireDesignBrief === true
+        ) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   async calculateQuote(dto: QuoteCalculationRequestDto): Promise<QuoteItemBreakdown> {
@@ -964,18 +1122,13 @@ export class PricingService {
       const designReq = product.designServiceRequirement || 'DISABLED';
       const rawDesignPrice = Number((product as any).designServiceFee ?? (product as any).designServicePrice) || 0;
 
-      const userDesignOpt = String(
-        userSelections['design_required'] ?? userSelections['design_service'] ?? userSelections['design'] ?? '',
-      ).toLowerCase();
-      const isExplicitNoDesign = userDesignOpt === 'no' || userDesignOpt === 'false';
-
-      const wantsDesign =
-        !isExplicitNoDesign &&
-        (dto.hasDesignService === true ||
-          userDesignOpt === 'yes' ||
-          userDesignOpt === 'true' ||
-          userDesignOpt === 'required' ||
-          designReq === 'REQUIRED');
+      const wantsDesign = this.checkDesignServiceRequested(
+        userSelections,
+        optionGroups,
+        configurationRules,
+        dto.hasDesignService,
+        designReq,
+      );
 
       if (wantsDesign) {
         let resolvedFromRule = false;
@@ -1003,7 +1156,7 @@ export class PricingService {
           if (rawDesignPrice < 0) {
             throw new BadRequestException('Configured design service amount cannot be negative.');
           }
-          designServiceFee = rawDesignPrice;
+          designServiceFee = rawDesignPrice > 0 ? rawDesignPrice : 150;
         }
       }
 
@@ -1076,6 +1229,14 @@ export class PricingService {
       ) / 100;
 
       const deliveryMethod = dto.deliveryMethod || 'COURIER';
+      const shippingBreakdown = await this.shippingCalculatorService.calculateShipping({
+        productId: dto.productId,
+        quantity: totalVariantQuantity,
+        destinationPincode: dto.shippingPincode,
+        orderSubtotal: subtotal,
+        deliveryMethod: deliveryMethod === 'STORE_PICKUP' ? 'STORE_PICKUP' : 'COURIER',
+      });
+
       const shipTaxResult = await this.shippingGstService.calculateShippingAndTax(
         subtotal,
         dto.shippingPincode,
@@ -1083,8 +1244,12 @@ export class PricingService {
         dto.isInterState || false,
       );
 
+      const estimatedShipping = dto.shippingPincode
+        ? shippingBreakdown.finalShippingAmount
+        : 0;
+
       const grandTotal = Math.round(
-        (subtotal + shipTaxResult.gstAmount + shipTaxResult.shippingFee) * 100,
+        (subtotal + shipTaxResult.gstAmount + estimatedShipping) * 100,
       ) / 100;
 
       const avgUnitPrice = totalVariantQuantity > 0
@@ -1131,11 +1296,17 @@ export class PricingService {
         sgst: shipTaxResult.sgst,
         igst: shipTaxResult.igst,
         totalTax: shipTaxResult.gstAmount,
-        courierCharge: shipTaxResult.baseShippingFee,
-        freeShippingThreshold: shipTaxResult.freeShippingThreshold,
-        estimatedShipping: shipTaxResult.shippingFee,
-        matchedZone: shipTaxResult.matchedZone,
-        isFreeShippingApplied: shipTaxResult.isFreeShippingApplied,
+        courierCharge: shippingBreakdown.baseShippingCharge,
+        freeShippingThreshold: shippingBreakdown.freeShippingThreshold,
+        estimatedShipping,
+        shipping: shippingBreakdown,
+        matchedZone: shipTaxResult.matchedZone
+          ? {
+              ...shipTaxResult.matchedZone,
+              pincodePrefix: shipTaxResult.matchedZone.pincodePrefix || '',
+            }
+          : null,
+        isFreeShippingApplied: shippingBreakdown.isFreeShippingApplied,
         gstRatePercent: shipTaxResult.gstRatePercent,
         allowCod: false,
         codSurcharge: 0,
@@ -1196,18 +1367,13 @@ export class PricingService {
     const designReq = product.designServiceRequirement || 'DISABLED';
     const rawDesignPrice = Number((product as any).designServiceFee ?? (product as any).designServicePrice) || 0;
 
-    const userDesignOpt = String(
-      userSelections['design_required'] ?? userSelections['design_service'] ?? userSelections['design'] ?? '',
-    ).toLowerCase();
-    const isExplicitNoDesign = userDesignOpt === 'no' || userDesignOpt === 'false';
-
-    const wantsDesign =
-      !isExplicitNoDesign &&
-      (dto.hasDesignService === true ||
-        userDesignOpt === 'yes' ||
-        userDesignOpt === 'true' ||
-        userDesignOpt === 'required' ||
-        designReq === 'REQUIRED');
+    const wantsDesign = this.checkDesignServiceRequested(
+      userSelections,
+      optionGroups,
+      configurationRules,
+      dto.hasDesignService,
+      designReq,
+    );
 
     if (userSelections['design_scope']) {
       const scopeGroup = optionGroups.find((g) => g.code === 'design_scope');
@@ -1292,7 +1458,7 @@ export class PricingService {
         if (rawDesignPrice < 0) {
           throw new BadRequestException('Configured design service amount cannot be negative.');
         }
-        designServiceFee = rawDesignPrice;
+        designServiceFee = rawDesignPrice > 0 ? rawDesignPrice : 150;
       }
     } else {
       designServiceFee = 0;
@@ -1372,8 +1538,16 @@ export class PricingService {
     const printItemsTotal = Math.round(unitPrice * dto.quantity * 100) / 100;
     const subtotal = Math.round((printItemsTotal + artworkFee + designServiceFee + additionalChargesTotal) * 100) / 100;
 
-    // Dynamic Authoritative GST & Shipping Calculation via ShippingGstService
+    // Dynamic Authoritative Enterprise Shipping & GST Calculation
     const deliveryMethod = dto.deliveryMethod || 'COURIER';
+    const shippingBreakdown = await this.shippingCalculatorService.calculateShipping({
+      productId: dto.productId,
+      quantity: dto.quantity,
+      destinationPincode: dto.shippingPincode,
+      orderSubtotal: subtotal,
+      deliveryMethod: deliveryMethod === 'STORE_PICKUP' ? 'STORE_PICKUP' : 'COURIER',
+    });
+
     const shipTaxResult = await this.shippingGstService.calculateShippingAndTax(
       subtotal,
       dto.shippingPincode,
@@ -1385,9 +1559,11 @@ export class PricingService {
     const sgst = shipTaxResult.sgst;
     const igst = shipTaxResult.igst;
     const totalTax = shipTaxResult.gstAmount;
-    const estimatedShipping = shipTaxResult.shippingFee;
-    const courierRate = shipTaxResult.baseShippingFee;
-    const freeShippingThreshold = shipTaxResult.freeShippingThreshold;
+    const estimatedShipping = dto.shippingPincode
+      ? shippingBreakdown.finalShippingAmount
+      : 0;
+    const courierRate = shippingBreakdown.baseShippingCharge;
+    const freeShippingThreshold = shippingBreakdown.freeShippingThreshold;
 
     const allowCod = false;
     const codSurcharge = 0;
@@ -1462,8 +1638,14 @@ export class PricingService {
       courierCharge: courierRate,
       freeShippingThreshold,
       estimatedShipping,
-      matchedZone: shipTaxResult.matchedZone,
-      isFreeShippingApplied: shipTaxResult.isFreeShippingApplied,
+      shipping: shippingBreakdown,
+      matchedZone: shipTaxResult.matchedZone
+        ? {
+            ...shipTaxResult.matchedZone,
+            pincodePrefix: shipTaxResult.matchedZone.pincodePrefix || '',
+          }
+        : null,
+      isFreeShippingApplied: shippingBreakdown.isFreeShippingApplied,
       gstRatePercent: shipTaxResult.gstRatePercent,
       allowCod,
       codSurcharge,

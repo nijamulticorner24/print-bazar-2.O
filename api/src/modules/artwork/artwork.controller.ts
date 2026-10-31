@@ -146,9 +146,22 @@ export class ArtworkController {
   @ApiOperation({ summary: 'Get personal design queue for authenticated designer, or full queue for OE/Admin' })
   async getDesignQueue(
     @Query('search') search?: string,
+    @Query('tab') tab?: 'active' | 'passed' | 'all',
+    @Query('scope') scope?: 'mine' | 'all',
     @CurrentUser() user?: JwtPayload,
   ) {
-    return this.artworkService.getDesignQueue(search, user);
+    return this.artworkService.getDesignQueue(search, user, tab, scope);
+  }
+
+  @Get('passed-queue')
+  @Roles(UserRole.DESIGNER_PREPRESS, UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER)
+  @ApiOperation({ summary: 'Get designs passed to production / QC' })
+  async getPassedDesignQueue(
+    @Query('search') search?: string,
+    @Query('scope') scope?: 'mine' | 'all',
+    @CurrentUser() user?: JwtPayload,
+  ) {
+    return this.artworkService.getDesignQueue(search, user, 'passed', scope);
   }
 
   @Post('design/:orderId/claim')
@@ -163,7 +176,7 @@ export class ArtworkController {
 
   @Post('design/:orderId/complete')
   @Roles(UserRole.DESIGNER_PREPRESS, UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER)
-  @ApiOperation({ summary: 'Designer submits completed design, creating approved artwork and releasing order to Pre-Production QC' })
+  @ApiOperation({ summary: 'Designer submits completed design, creating approved artwork and routing order to OE for Production Assignment' })
   async completeDesignJob(
     @Param('orderId') orderId: string,
     @Body()

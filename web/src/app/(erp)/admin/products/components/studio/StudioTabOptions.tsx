@@ -1430,7 +1430,6 @@ export function StudioTabOptions({
                           <th className="p-3">Label</th>
                           <th className="p-3">Value Code</th>
                           <th className="p-3 text-center">Default</th>
-                          <th className="p-3 text-center">Art Slots</th>
                           <th className="p-3 text-right">Actions</th>
                         </tr>
                       </thead>
@@ -1516,24 +1515,7 @@ export function StudioTabOptions({
                                 />
                               </td>
 
-                              {/* 6. Art Slots */}
-                              <td className="p-2.5 text-center">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={10}
-                                  value={opt.fileCount || 0}
-                                  onChange={(e) =>
-                                    updateOption(optIdx, {
-                                      fileCount: parseInt(e.target.value, 10) || 0,
-                                    })
-                                  }
-                                  className="w-12 bg-white border border-slate-200 rounded px-1.5 py-1 text-xs font-mono text-center"
-                                  title="Number of dedicated artwork file slots required for this option"
-                                />
-                              </td>
-
-                              {/* 7. Actions */}
+                              {/* 5. Actions */}
                               <td className="p-2.5 text-right">
                                 <div className="flex items-center justify-end gap-1">
                                   <button
@@ -1586,13 +1568,13 @@ export function StudioTabOptions({
               onClick={() => onNavigateToTab('BASICS')}
               className="px-3.5 py-2 border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-50 transition cursor-pointer"
             >
-              ← Back to Basic Details
+              ← Back to Step 1: Basic Details
             </button>
           )}
         </div>
 
         <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
-          <span className="font-semibold text-slate-900">Stage 2 Summary:</span>
+          <span className="font-semibold text-slate-900">Step 2 Summary:</span>
           <span className="bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-mono text-[11px]">
             {optionGroups.length} Groups
           </span>
@@ -1610,7 +1592,7 @@ export function StudioTabOptions({
             onClick={handleProceedToNextStage}
             className="flex items-center gap-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-[#0F172A] font-bold text-xs px-4 py-2.5 rounded-lg border border-[#E3A008]/40 shadow-xs transition active:scale-95 cursor-pointer"
           >
-            <span>Proceed to Step 3: Artwork Conditions</span>
+            <span>Next: 3. Option Dependencies & Rules</span>
             <RiArrowRightLine className="w-4 h-4" />
           </button>
         </div>

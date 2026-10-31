@@ -478,30 +478,147 @@ export class ArtworkService {
   }
 
   /**
-   * Design Queue: Fetch orders waiting in DESIGN_REQUIRED or needing design preparation.
-   * If called by a DESIGNER_PREPRESS, returns ONLY tasks assigned to the authenticated designer's user ID.
-   * If called by OPERATIONAL_MANAGER or ADMIN_MANAGER, returns broad operational view.
+   * Design Queue: Fetch orders waiting in DESIGN_REQUIRED or needing design preparation,
+   * OR orders that have completed design and have been passed to production.
+   * If called by a DESIGNER_PREPRESS and scope === 'mine', filters to tasks assigned to or completed by the designer.
+   * If scope === 'all', returns operational studio view across all orders.
    */
-  async getDesignQueue(search?: string, user?: JwtPayload) {
-    const where: any = {
-      OR: [
-        { status: OrderStatus.DESIGN_REQUIRED },
-        { status: OrderStatus.ARTWORK_REVIEW },
-        { status: OrderStatus.ORDER_REVIEW },
-        { status: OrderStatus.CUSTOMER_APPROVAL_REQUIRED },
-      ],
-    };
+  async getDesignQueue(
+    search?: string,
+    user?: JwtPayload,
+    tab: 'active' | 'passed' | 'all' = 'all',
+    scope: 'mine' | 'all' = 'mine',
+  ) {
+    // Strict individual ownership:
+    // A DESIGNER_PREPRESS MUST ONLY see tasks assigned to them and designs that THEY completed/passed!
+    const isDesignerRole = user?.role === UserRole.DESIGNER_PREPRESS;
+    const isDesignerOnly = isDesignerRole || scope === 'mine';
 
-    // Strict individual ownership: Designer ONLY sees tasks actively assigned to their user ID
-    if (user?.role === UserRole.DESIGNER_PREPRESS) {
-      where.assignments = {
-        some: {
-          assignedUserId: user.sub,
-          taskType: AssignmentTaskType.DESIGN,
-          status: AssignmentStatus.ACTIVE,
+    let statusCondition: any;
+    if (tab === 'active') {
+      statusCondition = {
+        status: {
+          in: [
+            OrderStatus.DESIGN_REQUIRED,
+            OrderStatus.ARTWORK_REVIEW,
+            OrderStatus.ORDER_REVIEW,
+            OrderStatus.CUSTOMER_APPROVAL_REQUIRED,
+          ],
         },
+        ...(isDesignerOnly && user?.sub
+          ? {
+              assignments: {
+                some: {
+                  assignedUserId: user.sub,
+                  taskType: AssignmentTaskType.DESIGN,
+                  status: AssignmentStatus.ACTIVE,
+                },
+              },
+            }
+          : {}),
+      };
+    } else if (tab === 'passed') {
+      statusCondition = {
+        OR: [
+          {
+            assignments: {
+              some: {
+                taskType: AssignmentTaskType.DESIGN,
+                status: AssignmentStatus.COMPLETED,
+                ...(isDesignerOnly && user?.sub ? { assignedUserId: user.sub } : {}),
+              },
+            },
+          },
+          {
+            status: {
+              in: [
+                OrderStatus.ARTWORK_APPROVED,
+                OrderStatus.PRE_PRODUCTION_QC,
+                OrderStatus.PRODUCTION_QUEUE,
+                OrderStatus.PRINTING,
+                OrderStatus.FINISHING,
+                OrderStatus.QUALITY_CHECK,
+                OrderStatus.PACKING,
+                OrderStatus.READY_FOR_DISPATCH,
+                OrderStatus.OUT_FOR_DELIVERY,
+                OrderStatus.DELIVERED,
+              ],
+            },
+            assignments: {
+              some: {
+                taskType: AssignmentTaskType.DESIGN,
+                status: AssignmentStatus.COMPLETED,
+                ...(isDesignerOnly && user?.sub ? { assignedUserId: user.sub } : {}),
+              },
+            },
+          },
+        ],
+      };
+    } else {
+      // tab === 'all'
+      statusCondition = {
+        OR: [
+          // 1. Active design jobs
+          {
+            status: {
+              in: [
+                OrderStatus.DESIGN_REQUIRED,
+                OrderStatus.ARTWORK_REVIEW,
+                OrderStatus.ORDER_REVIEW,
+                OrderStatus.CUSTOMER_APPROVAL_REQUIRED,
+              ],
+            },
+            ...(isDesignerOnly && user?.sub
+              ? {
+                  assignments: {
+                    some: {
+                      assignedUserId: user.sub,
+                      taskType: AssignmentTaskType.DESIGN,
+                      status: AssignmentStatus.ACTIVE,
+                    },
+                  },
+                }
+              : {}),
+          },
+          // 2. Completed design assignments
+          {
+            assignments: {
+              some: {
+                taskType: AssignmentTaskType.DESIGN,
+                status: AssignmentStatus.COMPLETED,
+                ...(isDesignerOnly && user?.sub ? { assignedUserId: user.sub } : {}),
+              },
+            },
+          },
+          // 3. Orders in production pipeline that originated from design
+          {
+            status: {
+              in: [
+                OrderStatus.ARTWORK_APPROVED,
+                OrderStatus.PRE_PRODUCTION_QC,
+                OrderStatus.PRODUCTION_QUEUE,
+                OrderStatus.PRINTING,
+                OrderStatus.FINISHING,
+                OrderStatus.QUALITY_CHECK,
+                OrderStatus.PACKING,
+                OrderStatus.READY_FOR_DISPATCH,
+                OrderStatus.OUT_FOR_DELIVERY,
+                OrderStatus.DELIVERED,
+              ],
+            },
+            assignments: {
+              some: {
+                taskType: AssignmentTaskType.DESIGN,
+                status: AssignmentStatus.COMPLETED,
+                ...(isDesignerOnly && user?.sub ? { assignedUserId: user.sub } : {}),
+              },
+            },
+          },
+        ],
       };
     }
+
+    const where: any = statusCondition;
 
     if (search) {
       const searchCondition = {
@@ -525,12 +642,23 @@ export class ArtworkService {
         shippingAddress: true,
         billingAddress: true,
         assignments: {
-          where: { taskType: AssignmentTaskType.DESIGN, status: AssignmentStatus.ACTIVE },
-          include: { assignedUser: { select: { id: true, fullName: true, email: true, role: true } } },
+          include: {
+            assignedUser: { select: { id: true, fullName: true, email: true, role: true } },
+            assignedByUser: { select: { id: true, fullName: true, email: true, role: true } },
+          },
+          orderBy: { createdAt: 'desc' },
         },
         items: {
           include: {
             artworkVersions: { orderBy: { versionNumber: 'desc' } },
+            personalizationRecords: true,
+          },
+        },
+        statusHistory: {
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+          include: {
+            changedBy: { select: { id: true, fullName: true, role: true } },
           },
         },
       },
@@ -549,8 +677,121 @@ export class ArtworkService {
         specs.contactPhone ||
         null;
 
-      const activeAssignment = o.assignments[0];
-      const assignedDesigner = activeAssignment?.assignedUser || null;
+      const activeDesignAssignment = o.assignments.find(
+        (a) => a.taskType === AssignmentTaskType.DESIGN && a.status === AssignmentStatus.ACTIVE,
+      );
+      const completedDesignAssignment =
+        o.assignments.find(
+          (a) => a.taskType === AssignmentTaskType.DESIGN && a.status === AssignmentStatus.COMPLETED,
+        ) ||
+        o.assignments.find((a) => a.taskType === AssignmentTaskType.DESIGN);
+
+      const activeProdAssignment = o.assignments.find(
+        (a) => a.taskType === AssignmentTaskType.PRODUCTION && a.status === AssignmentStatus.ACTIVE,
+      );
+      const anyProdAssignment = o.assignments.find(
+        (a) => a.taskType === AssignmentTaskType.PRODUCTION,
+      );
+
+      const assignedDesigner = activeDesignAssignment?.assignedUser || completedDesignAssignment?.assignedUser || null;
+      const assignedOperator = activeProdAssignment?.assignedUser || anyProdAssignment?.assignedUser || null;
+
+      // Check if design is completed & passed to production
+      const allItemVersions = o.items.flatMap((it) => it.artworkVersions || []);
+      const approvedArtworkVersion =
+        allItemVersions.find((v) => v.isApproved || v.status === ArtworkStatus.PROOF_APPROVED) ||
+        allItemVersions[0] ||
+        null;
+
+      const isPassedToProduction =
+        Boolean(completedDesignAssignment && completedDesignAssignment.status === AssignmentStatus.COMPLETED) ||
+        (approvedArtworkVersion?.status === ArtworkStatus.PROOF_APPROVED && o.status !== OrderStatus.DESIGN_REQUIRED) ||
+        [
+          OrderStatus.ARTWORK_APPROVED,
+          OrderStatus.PRE_PRODUCTION_QC,
+          OrderStatus.PRODUCTION_QUEUE,
+          OrderStatus.PRINTING,
+          OrderStatus.FINISHING,
+          OrderStatus.QUALITY_CHECK,
+          OrderStatus.PACKING,
+          OrderStatus.READY_FOR_DISPATCH,
+          OrderStatus.OUT_FOR_DELIVERY,
+          OrderStatus.DELIVERED,
+        ].includes(o.status as any);
+
+      // Station / Stage handoff details
+      let passedToStation = 'Design Studio';
+      let passedToStageBadge = 'In Design';
+      if (isPassedToProduction) {
+        switch (o.status) {
+          case OrderStatus.ARTWORK_APPROVED:
+          case OrderStatus.ORDER_REVIEW:
+            passedToStation = assignedOperator
+              ? `Production (Assigned: ${assignedOperator.fullName})`
+              : 'OE Operations Command (Ready for Production Assignment)';
+            passedToStageBadge = assignedOperator ? 'Production Assigned' : 'OE Assignment';
+            break;
+          case OrderStatus.CUSTOMER_APPROVAL_REQUIRED:
+            passedToStation = 'Customer Proof Approval';
+            passedToStageBadge = 'Customer Approval';
+            break;
+          case OrderStatus.PRE_PRODUCTION_QC:
+            passedToStation = assignedOperator
+              ? `Production (Assigned: ${assignedOperator.fullName})`
+              : 'OE Operations Command (Ready for Production Assignment)';
+            passedToStageBadge = 'OE Assignment';
+            break;
+          case OrderStatus.PRODUCTION_QUEUE:
+            passedToStation = assignedOperator
+              ? `Production Queue (Assigned: ${assignedOperator.fullName})`
+              : 'Production Queue (Awaiting Machine Slot)';
+            passedToStageBadge = 'Production Queue';
+            break;
+          case OrderStatus.PRINTING:
+            passedToStation = assignedOperator
+              ? `Press Station: Printing (${assignedOperator.fullName})`
+              : 'Press Station: Printing';
+            passedToStageBadge = 'Printing';
+            break;
+          case OrderStatus.FINISHING:
+            passedToStation = assignedOperator
+              ? `Post-Press: Finishing & Binding (${assignedOperator.fullName})`
+              : 'Post-Press: Finishing & Binding';
+            passedToStageBadge = 'Finishing';
+            break;
+          case OrderStatus.QUALITY_CHECK:
+            passedToStation = 'Post-Production Final QC Gate';
+            passedToStageBadge = 'Quality Check';
+            break;
+          case OrderStatus.PACKING:
+            passedToStation = 'Packaging & Shipping Dispatch';
+            passedToStageBadge = 'Packing';
+            break;
+          case OrderStatus.READY_FOR_DISPATCH:
+          case OrderStatus.OUT_FOR_DELIVERY:
+          case OrderStatus.DELIVERED:
+            passedToStation = 'Dispatch & Logistics';
+            passedToStageBadge = 'Dispatched';
+            break;
+          default:
+            passedToStation = assignedOperator ? `Production (${assignedOperator.fullName})` : 'Production Pipeline';
+            passedToStageBadge = 'Production';
+        }
+      }
+
+      const passedAt =
+        completedDesignAssignment?.completedAt ||
+        approvedArtworkVersion?.approvedAt ||
+        (isPassedToProduction ? o.updatedAt : null);
+
+      const passedByDesigner =
+        completedDesignAssignment?.assignedUser?.fullName ||
+        (approvedArtworkVersion ? 'In-House Studio Designer' : null);
+
+      const passedPrepressNotes =
+        completedDesignAssignment?.reason ||
+        approvedArtworkVersion?.prepressNotes ||
+        null;
 
       return {
         id: o.id,
@@ -564,18 +805,26 @@ export class ArtworkService {
         },
         items: o.items.map((it) => {
           const itSpecs = (it.specifications as any) || {};
+          const itApprovedVersion =
+            it.artworkVersions?.find((v) => v.isApproved || v.status === ArtworkStatus.PROOF_APPROVED) ||
+            it.artworkVersions?.[0] ||
+            null;
           return {
             id: it.id,
             productName: it.productName,
             quantity: it.quantity,
             artworkUrl: itSpecs.artworkUrl || itSpecs.artworkFile?.fileUrl || null,
             artworkFile: itSpecs.artworkFile || null,
+            artworkFiles: itSpecs.artworkFiles || (itSpecs.artworkFile ? { [itSpecs.artworkFile.slotKey || 'artwork']: itSpecs.artworkFile } : null),
             referenceImageUrl: itSpecs.referenceImage?.fileUrl || itSpecs.referenceImageUrl || null,
             referenceImage: itSpecs.referenceImage || null,
             artworkSource: itSpecs.artworkSource || 'DESIGN_TEAM',
             specifications: it.specifications,
+            personalizationData: it.personalizationData || itSpecs.personalization || null,
+            personalizationRecords: it.personalizationRecords || null,
             designNotes: it.designNotes || itSpecs.designNotes || itSpecs.customerNotes || o.customerNotes || null,
-            approvedArtworkVersion: it.artworkVersions?.[0] || null,
+            approvedArtworkVersion: itApprovedVersion,
+            latestArtworkVersion: it.artworkVersions?.[0] || null,
           };
         }),
         customerName: o.customer?.fullName,
@@ -593,11 +842,29 @@ export class ArtworkService {
         customerNotes: o.customerNotes || item?.designNotes || specs.designNotes || null,
         designServiceFee: specs.designServiceFee || 0,
         createdAt: o.createdAt,
+        updatedAt: o.updatedAt,
         dueAt: o.dueAt,
-        latestArtworkVersion: item?.artworkVersions?.[0] || null,
+        latestArtworkVersion: approvedArtworkVersion || item?.artworkVersions?.[0] || null,
+        approvedArtworkVersion,
         assignedDesignerId: assignedDesigner?.id || null,
         assignedDesignerName: assignedDesigner?.fullName || null,
         assignedDesigner,
+        assignedOperator,
+        isPassedToProduction,
+        passedToStation,
+        passedToStageBadge,
+        passedAt,
+        passedByDesigner,
+        passedPrepressNotes,
+        statusHistory: o.statusHistory?.map((h) => ({
+          id: h.id,
+          fromStatus: h.fromStatus,
+          toStatus: h.toStatus,
+          reason: h.reason,
+          notes: h.notes,
+          createdAt: h.createdAt,
+          changedBy: h.changedBy?.fullName || null,
+        })) || [],
       };
     });
   }
@@ -747,7 +1014,7 @@ export class ArtworkService {
           fromStatus: order.status,
           toStatus: OrderStatus.ARTWORK_APPROVED,
           changedById: userId,
-          reason: `Design completed by studio team (v${nextVersion}). Ready for OE Operational Review.`,
+          reason: `Design completed by studio team (v${nextVersion}). Ready for OE Production Assignment.`,
           notes: dto.prepressNotes,
         },
       });
@@ -762,7 +1029,7 @@ export class ArtworkService {
       entityId: order.id,
       orderId: order.id,
       newState: { status: OrderStatus.ARTWORK_APPROVED, artworkVersionId: result.artwork.id },
-      reason: `Design completed and ready for OE Operational Review`,
+      reason: `Design completed and routed to OE for Production Assignment`,
     });
 
     this.eventEmitter.emit('design.completed', {

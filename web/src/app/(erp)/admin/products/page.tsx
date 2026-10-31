@@ -236,6 +236,7 @@ export default function AdminProductsPage() {
         <div className="mb-8">
           <ProductSetupStudio
             categories={categories}
+            existingProducts={products}
             isNew={true}
             onSaved={(newProd) => {
               setProducts((prev) => [newProd, ...prev]);

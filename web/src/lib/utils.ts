@@ -116,3 +116,49 @@ export function resolveArtworkUrl(rawUrl?: string | null): string | null {
   // Default fallback for storage keys / filenames
   return `${apiBase}/uploads/artwork/${str}`;
 }
+
+/**
+ * Auto-generates a standardized Print Bazaar Product SKU.
+ * Format: PB-{NUMBER}
+ * e.g., "PB-100", "PB-101"
+ * No product name words or abbreviations.
+ */
+export function generateProductSku(
+  _productName?: string,
+  _categoryName?: string,
+  suffix?: string | number
+): string {
+  const prefix = 'PB';
+  if (suffix !== undefined && suffix !== null && String(suffix).trim() !== '') {
+    const s = String(suffix).trim();
+    if (s.toUpperCase().startsWith('PB-')) {
+      return s.toUpperCase();
+    }
+    const digits = s.replace(/\D/g, '');
+    if (digits) {
+      return `${prefix}-${digits}`;
+    }
+  }
+  return `${prefix}-100`;
+}
+
+/**
+ * Computes the next sequential PB-{NUMBER} SKU based on existing products.
+ * Default starting SKU is PB-100.
+ */
+export function getNextAvailableProductSku(existingProducts?: Array<{ sku?: string }>): string {
+  let maxNum = 99;
+  if (Array.isArray(existingProducts)) {
+    for (const p of existingProducts) {
+      if (!p.sku) continue;
+      const match = p.sku.match(/^PB-(\d+)$/i);
+      if (match) {
+        const val = parseInt(match[1], 10);
+        if (!isNaN(val) && val > maxNum) {
+          maxNum = val;
+        }
+      }
+    }
+  }
+  return `PB-${maxNum + 1}`;
+}

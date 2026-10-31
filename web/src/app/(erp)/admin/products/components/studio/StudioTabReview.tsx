@@ -948,9 +948,13 @@ export function StudioTabReview({
               <span className="text-slate-500">Active Rules:</span>
               <span className="text-slate-800">{rules.filter((r) => r.isActive).length} rules</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <span className="text-slate-500">Pricing Model:</span>
-              <span className="font-mono font-bold text-slate-800">{pricingModel}</span>
+              <span className="font-mono font-bold text-slate-800 text-[11px] bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                {pricingModel === 'SINGLE_FIXED_QUANTITY'
+                  ? 'Single Fixed Quantity (Range Brackets: 1–10, 11–20, 21–50, 51–100 pcs)'
+                  : 'Bulk Quantity Range (Discrete Fixed Tiers: 100, 1,000, 25,000 pcs)'}
+              </span>
             </div>
           </div>
         </div>
@@ -980,6 +984,50 @@ export function StudioTabReview({
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Step 6 Bottom Navigation & Publishing Action Bar */}
+      <div className="bg-white border border-slate-200/90 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-6">
+        <div className="flex items-center gap-2">
+          {onNavigateToTab && (
+            <button
+              type="button"
+              onClick={() => {
+                onNavigateToTab('PRICING');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-50 transition cursor-pointer"
+            >
+              ← Back to Step 5: Pricing
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onSaveDraft}
+            disabled={isSaving}
+            className="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs px-4 py-2.5 rounded-lg border border-slate-300 shadow-2xs transition disabled:opacity-50 cursor-pointer"
+          >
+            <RiSaveLine className="w-4 h-4 text-slate-600" />
+            <span>Save Draft</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onPublish}
+            disabled={!isValidToPublish || isSaving}
+            className={`flex items-center gap-1.5 font-bold text-xs px-5 py-2.5 rounded-lg border shadow-xs transition active:scale-95 cursor-pointer ${
+              isValidToPublish
+                ? 'bg-[#FFED00] hover:bg-[#F2E100] text-[#0F172A] border-[#E3A008]/40'
+                : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
+            }`}
+          >
+            <RiSparklingFill className="w-4 h-4 text-amber-700" />
+            <span>Publish Product Now</span>
+          </button>
         </div>
       </div>
     </div>

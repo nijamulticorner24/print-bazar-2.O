@@ -728,21 +728,48 @@ export function ProductConfigurationFlow({
   const fallbackOptionModifiers = useMemo(() => {
     let perUnit = 0;
     let fixed = 0;
+    const effQty = isMultiVariantEnabled ? Math.max(1, totalVariantQuantity) : (Number(quantity) || minQty);
+
     for (const group of visibleGroups) {
       const selectedVal = selectedOptions[group.code];
       if (selectedVal === undefined || selectedVal === null) continue;
-      const opt = group.options?.find((o) => String(o.value) === String(selectedVal));
-      if (!opt) continue;
-      const mod = Number(opt.priceModifier || 0);
-      if (mod <= 0) continue;
-      if (opt.priceModifierType === 'PERCENTAGE') {
-        perUnit += (referenceUnitPrice * mod) / 100;
+
+      let matchedAddonTier: any = null;
+      if (product.additionalPricings && product.additionalPricings.length > 0) {
+        const valStr = String(selectedVal).toLowerCase().trim();
+        const groupRows = product.additionalPricings.filter(
+          (ap) =>
+            ap.groupCode === group.code &&
+            String(ap.optionValue).toLowerCase().trim() === valStr &&
+            !ap.isExcluded
+        );
+        matchedAddonTier = groupRows.find((ap) => {
+          const minQ = Number(ap.minQty) || 0;
+          const maxQ = ap.maxQty !== undefined && ap.maxQty !== null && Number(ap.maxQty) >= minQ ? Number(ap.maxQty) : minQ;
+          return effQty >= minQ && (maxQ > minQ ? effQty <= maxQ : (ap.maxQty ? effQty <= ap.maxQty : true));
+        });
+        if (!matchedAddonTier && groupRows.length > 0) {
+          const sorted = [...groupRows].sort((a, b) => Number(a.minQty) - Number(b.minQty));
+          matchedAddonTier = effQty >= Number(sorted[sorted.length - 1].minQty) ? sorted[sorted.length - 1] : sorted[0];
+        }
+      }
+
+      if (matchedAddonTier && Number(matchedAddonTier.unitPrice) > 0) {
+        perUnit += Number(matchedAddonTier.unitPrice);
       } else {
-        perUnit += mod;
+        const opt = group.options?.find((o) => String(o.value) === String(selectedVal));
+        if (!opt) continue;
+        const mod = Number(opt.priceModifier || 0);
+        if (mod <= 0) continue;
+        if (opt.priceModifierType === 'PERCENTAGE') {
+          perUnit += (referenceUnitPrice * mod) / 100;
+        } else {
+          perUnit += mod;
+        }
       }
     }
     return { perUnit, fixed };
-  }, [visibleGroups, selectedOptions, referenceUnitPrice]);
+  }, [visibleGroups, selectedOptions, referenceUnitPrice, product.additionalPricings, quantity, isMultiVariantEnabled, totalVariantQuantity, minQty]);
 
   // ---------------------------------------------------------------------------
   // 6. LIVE AUTHORITATIVE QUOTE ENGINE

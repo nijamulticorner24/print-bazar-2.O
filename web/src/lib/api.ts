@@ -39,6 +39,8 @@ export interface KanbanCardDto {
     printMode?: string;
     dimensions?: string;
     sides?: string;
+    selectedOptions?: Array<{ label: string; value: string }>;
+    customerNotes?: string;
     raw?: Record<string, unknown>;
   };
   machine?: {
@@ -428,6 +430,10 @@ export interface DynamicProduct {
   // Fulfillment & Courier Surcharges (Admin-Controlled alongside Product Configuration)
   shippingChargeType?: 'DEFAULT' | 'FIXED' | 'FREE' | 'QUANTITY_BASED' | 'WEIGHT_BASED';
   unitWeightGrams?: number | string | null;
+  packagingProfileId?: string | null;
+  packagingProfile?: any;
+  isShippable?: boolean;
+  bulkTierWeights?: Array<{ minQty: number; maxQty?: number; unitWeightGrams: number }>;
   courierCharge?: number | string | null;
   perAdditionalQtyRate?: number | string | null;
   freeShippingThreshold?: number | string | null;
@@ -487,7 +493,64 @@ export function resolveImageUrl(url?: string | null): string {
     return url;
   }
   const apiHost = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1').replace('/api/v1', '');
-  return `${apiHost}${url.startsWith('/') ? '' : '/'}${url}`;
+  let cleanUrl = url.trim();
+  if (!cleanUrl.startsWith('/')) {
+    cleanUrl = `/${cleanUrl}`;
+  }
+  if (!cleanUrl.startsWith('/uploads/')) {
+    if (cleanUrl.startsWith('/artwork/') || cleanUrl.startsWith('/references/') || cleanUrl.startsWith('/products/')) {
+      cleanUrl = `/uploads${cleanUrl}`;
+    }
+  }
+  return `${apiHost}${cleanUrl}`;
+}
+
+export async function downloadFile(url?: string | null, suggestedFilename?: string): Promise<void> {
+  if (!url) return;
+  try {
+    const fullUrl = resolveImageUrl(url);
+    const response = await fetch(fullUrl);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    const blob = await response.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+
+    let fileName = suggestedFilename;
+    if (!fileName) {
+      const parts = url.split('/');
+      const lastPart = parts.pop() || '';
+      fileName = lastPart.split('?')[0] || 'artwork_file';
+    }
+
+    if (!fileName.includes('.')) {
+      const type = blob.type;
+      if (type.includes('pdf')) fileName += '.pdf';
+      else if (type.includes('png')) fileName += '.png';
+      else if (type.includes('jpeg') || type.includes('jpg')) fileName += '.jpg';
+      else if (type.includes('svg')) fileName += '.svg';
+      else fileName += '.png';
+    }
+
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(blobUrl);
+  } catch (err) {
+    console.warn('Direct blob download failed, falling back to anchor download:', err);
+    const fallbackLink = document.createElement('a');
+    fallbackLink.href = resolveImageUrl(url);
+    fallbackLink.target = '_blank';
+    if (suggestedFilename) {
+      fallbackLink.download = suggestedFilename;
+    }
+    document.body.appendChild(fallbackLink);
+    fallbackLink.click();
+    document.body.removeChild(fallbackLink);
+  }
 }
 
 export async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -659,6 +722,8 @@ export const api = {
     );
   },
   adminGetProductById: (id: string) => fetchApi<DynamicProduct>(`/admin/catalogue/products/${id}`),
+  adminGetNextProductSku: () =>
+    fetchApi<{ sku: string }>('/admin/catalogue/products/next-sku'),
   adminCreateProduct: (data: any) =>
     fetchApi<DynamicProduct>('/admin/catalogue/products', { method: 'POST', body: JSON.stringify(data) }),
   adminUpdateProduct: (id: string, data: any) =>
@@ -847,6 +912,7 @@ export const api = {
     if (query?.columnKey) params.append('columnKey', query.columnKey);
     return fetchApi<ProductionBoardResponseDto>(`/production/board?${params.toString()}`);
   },
+  getJobCard: (id: string) => fetchApi<any>(`/job-cards/${id}`),
   transitionProductionJob: (
     jobId: string,
     data: {
@@ -921,6 +987,10 @@ export const api = {
     fetchApi('/dispatch/courier-handover', { method: 'POST', body: JSON.stringify(data) }),
   confirmStorePickup: (data: unknown) =>
     fetchApi('/dispatch/store-pickup-handover', { method: 'POST', body: JSON.stringify(data) }),
+  getOrderDispatchDetails: (orderId: string) =>
+    fetchApi<any>(`/dispatch/${orderId}/weight-details`),
+  adjustDispatchWeight: (orderId: string, data: { measuredWeightGrams: number; reason?: string }) =>
+    fetchApi<any>(`/dispatch/${orderId}/adjust-weight`, { method: 'POST', body: JSON.stringify(data) }),
 
   // Payments & Finance Board
   getFinanceBoard: (query?: {
@@ -967,10 +1037,18 @@ export const api = {
   getSlaOverview: () => fetchApi('/sla/overview'),
 
   // Design Team & Artwork Studio Workflow
-  getDesignQueue: (search?: string) => {
+  getDesignQueue: (search?: string, tab?: 'active' | 'passed' | 'all', scope?: 'mine' | 'all') => {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
+    if (tab) params.append('tab', tab);
+    if (scope) params.append('scope', scope);
     return fetchApi<any[]>(`/artwork/design-queue?${params.toString()}`);
+  },
+  getPassedDesignQueue: (search?: string, scope?: 'mine' | 'all') => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (scope) params.append('scope', scope);
+    return fetchApi<any[]>(`/artwork/passed-queue?${params.toString()}`);
   },
   claimDesignJob: (orderId: string) =>
     fetchApi<any>(`/artwork/design/${orderId}/claim`, { method: 'POST' }),
@@ -1065,8 +1143,186 @@ export const api = {
     }),
 
   // ==========================================
-  // SHIPPING & GST API METHODS
+  // SHIPPING & GST API METHODS (LEGACY & ENTERPRISE)
   // ==========================================
+  getShippingOverview: () =>
+    fetchApi<any>('/shipping/overview'),
+  getShippingConfiguration: () =>
+    fetchApi<any>('/shipping/configuration'),
+  getShippingConfig: () =>
+    fetchApi<any>('/shipping/configuration'),
+  updateShippingConfiguration: (data: any) =>
+    fetchApi<any>('/shipping/configuration', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  updateShippingConfig: (data: any) =>
+    fetchApi<any>('/shipping/configuration', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  listEnterpriseShippingZones: (search?: string, isActive?: boolean) => {
+    const q = new URLSearchParams();
+    if (search) q.set('search', search);
+    if (isActive !== undefined) q.set('isActive', String(isActive));
+    return fetchApi<any[]>(`/shipping/zones?${q.toString()}`);
+  },
+  getEnterpriseShippingZone: (id: string) =>
+    fetchApi<any>(`/shipping/zones/${id}`),
+  createEnterpriseShippingZone: (data: any) =>
+    fetchApi<any>('/shipping/zones', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateEnterpriseShippingZone: (id: string, data: any) =>
+    fetchApi<any>(`/shipping/zones/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deleteEnterpriseShippingZone: (id: string) =>
+    fetchApi<{ success: boolean; message: string }>(`/shipping/zones/${id}`, {
+      method: 'DELETE',
+    }),
+  listShippingPincodes: (params?: {
+    search?: string;
+    pincode?: string;
+    city?: string;
+    state?: string;
+    zoneId?: string;
+    isServiceable?: boolean;
+    page?: number;
+    limit?: number;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.search) q.set('search', params.search);
+    if (params?.pincode) q.set('pincode', params.pincode);
+    if (params?.city) q.set('city', params.city);
+    if (params?.state) q.set('state', params.state);
+    if (params?.zoneId) q.set('zoneId', params.zoneId);
+    if (params?.isServiceable !== undefined) q.set('isServiceable', String(params.isServiceable));
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.limit) q.set('limit', String(params.limit));
+    return fetchApi<{ pincodes: any[]; pagination: any }>(`/shipping/pincodes?${q.toString()}`);
+  },
+  getShippingPincode: (pin: string) =>
+    fetchApi<any>(`/shipping/pincodes/${pin}`),
+  createShippingPincode: (data: any) =>
+    fetchApi<any>('/shipping/pincodes', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateShippingPincode: (id: string, data: any) =>
+    fetchApi<any>(`/shipping/pincodes/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deleteShippingPincode: (id: string) =>
+    fetchApi<{ success: boolean; message: string }>(`/shipping/pincodes/${id}`, {
+      method: 'DELETE',
+    }),
+  bulkImportShippingPincodes: (data: any[] | { pincodes: any[] }) =>
+    fetchApi<any>('/shipping/pincodes/import', {
+      method: 'POST',
+      body: JSON.stringify(Array.isArray(data) ? { pincodes: data } : data),
+    }),
+  exportShippingPincodes: () =>
+    fetchApi<any[]>('/shipping/pincodes/export'),
+  listShippingRateCards: (zoneId?: string, isActive?: boolean) => {
+    const q = new URLSearchParams();
+    if (zoneId) q.set('zoneId', zoneId);
+    if (isActive !== undefined) q.set('isActive', String(isActive));
+    return fetchApi<any[]>(`/shipping/rates?${q.toString()}`);
+  },
+  getShippingRateCard: (id: string) =>
+    fetchApi<any>(`/shipping/rates/${id}`),
+  createShippingRateCard: (data: any) =>
+    fetchApi<any>('/shipping/rates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateShippingRateCard: (id: string, data: any) =>
+    fetchApi<any>(`/shipping/rates/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deleteShippingRateCard: (id: string) =>
+    fetchApi<{ success: boolean; message: string }>(`/shipping/rates/${id}`, {
+      method: 'DELETE',
+    }),
+  listPackagingProfiles: (isActive?: boolean) => {
+    const q = new URLSearchParams();
+    if (isActive !== undefined) q.set('isActive', String(isActive));
+    return fetchApi<any[]>(`/shipping/packaging?${q.toString()}`);
+  },
+  createPackagingProfile: (data: any) =>
+    fetchApi<any>('/shipping/packaging', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updatePackagingProfile: (id: string, data: any) =>
+    fetchApi<any>(`/shipping/packaging/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deletePackagingProfile: (id: string) =>
+    fetchApi<{ success: boolean; message: string }>(`/shipping/packaging/${id}`, {
+      method: 'DELETE',
+    }),
+  calculateShipping: (data: any) =>
+    fetchApi<any>('/shipping/calculate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  calculateEnterpriseShipping: (data: {
+    productId?: string;
+    quantity: number;
+    destinationPincode?: string;
+    packagingProfileId?: string;
+    customUnitWeightGrams?: number;
+    orderSubtotal?: number;
+    deliveryMethod?: 'COURIER' | 'STORE_PICKUP';
+    items?: any[];
+  }) =>
+    fetchApi<any>('/shipping/calculate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  checkPincodeServiceability: (pincode: string) =>
+    fetchApi<any>('/shipping/check-serviceability', {
+      method: 'POST',
+      body: JSON.stringify({ pincode }),
+    }),
+  listShippingOrders: (params?: any) => {
+    const q = new URLSearchParams();
+    if (params?.search) q.set('search', params.search);
+    if (params?.pincode) q.set('pincode', params.pincode);
+    if (params?.status) q.set('status', params.status);
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.limit) q.set('limit', String(params.limit));
+    return fetchApi<any>(`/shipping/orders?${q.toString()}`);
+  },
+  getShippingOrders: (params?: {
+    search?: string;
+    pincode?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.search) q.set('search', params.search);
+    if (params?.pincode) q.set('pincode', params.pincode);
+    if (params?.status) q.set('status', params.status);
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.limit) q.set('limit', String(params.limit));
+    return fetchApi<any>(`/shipping/orders?${q.toString()}`);
+  },
+  updateShippingOrderStatus: (id: string, data: any) =>
+    fetchApi<any>(`/shipping/orders/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  getShippingReports: () =>
+    fetchApi<any>('/shipping/reports'),
   getShippingGstSettings: () =>
     fetchApi<ShippingGstSettings>('/shipping-gst/settings'),
   updateShippingGstSettings: (data: Partial<ShippingGstSettings>) =>
@@ -1075,19 +1331,19 @@ export const api = {
       body: JSON.stringify(data),
     }),
   listShippingZones: () =>
-    fetchApi<ShippingZone[]>('/shipping-gst/zones'),
-  createShippingZone: (data: { zoneName: string; pincodePrefix: string; shippingCharge: number; isActive?: boolean }) =>
-    fetchApi<ShippingZone>('/shipping-gst/zones', {
+    fetchApi<any[]>('/shipping/zones'),
+  createShippingZone: (data: any) =>
+    fetchApi<any>('/shipping/zones', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  updateShippingZone: (id: string, data: Partial<ShippingZone>) =>
-    fetchApi<ShippingZone>(`/shipping-gst/zones/${id}`, {
-      method: 'PUT',
+  updateShippingZone: (id: string, data: any) =>
+    fetchApi<any>(`/shipping/zones/${id}`, {
+      method: 'PATCH',
       body: JSON.stringify(data),
     }),
   deleteShippingZone: (id: string) =>
-    fetchApi<{ success: boolean; message: string }>(`/shipping-gst/zones/${id}`, {
+    fetchApi<{ success: boolean; message: string }>(`/shipping/zones/${id}`, {
       method: 'DELETE',
     }),
   calculateShippingAndTax: (data: {

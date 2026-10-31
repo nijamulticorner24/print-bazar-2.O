@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   Sparkles,
+  Lock,
 } from 'lucide-react';
 import { formatCurrency, getEstimatedDeliveryText } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
@@ -125,8 +126,113 @@ export default function CartPage() {
     }
   };
 
+  const isItemMissingArtwork = (item: any): boolean => {
+    if (!item) return false;
+
+    // 1. If the customer hired a designer or design assistance is required, customer file uploads are NOT required
+    if (
+      item.hasDesignService ||
+      item.selectedDesignService ||
+      item.designServiceRequirement === 'REQUIRED' ||
+      item.artworkConfig?.designServiceRequirement === 'REQUIRED'
+    ) {
+      return false;
+    }
+
+    // 2. If artwork config explicitly disables artwork upload
+    const status = item.artworkConfig?.status || item.artworkStatus || 'REQUIRED';
+    if (status === 'DISABLED') {
+      return false;
+    }
+
+    const filesMap = item.artworkFiles || {};
+    const hasLegacySingleFile = Boolean(
+      item.artworkFile?.fileUrl ||
+      item.artworkFile?.storageKey ||
+      item.artworkUrl ||
+      item.artworkStorageKey ||
+      (typeof item.artworkFile === 'string' && item.artworkFile.trim().length > 0)
+    );
+
+    // 3. Check slot-based artwork
+    const rawSlots: any[] = item.artworkConfig?.slots && Array.isArray(item.artworkConfig.slots)
+      ? item.artworkConfig.slots
+      : [];
+
+    if (rawSlots.length > 0) {
+      const requiredSlots = rawSlots.filter((s: any) => {
+        if (s.isRequired !== undefined) return Boolean(s.isRequired);
+        if (s.required !== undefined) return Boolean(s.required);
+        return status === 'REQUIRED';
+      });
+
+      if (requiredSlots.length > 0) {
+        const allRequiredPresent = requiredSlots.every((slot: any, idx: number) => {
+          const candidateKeys = [
+            slot.slotKey,
+            slot.id,
+            slot.key,
+            slot.label,
+            String(idx),
+            String(idx + 1),
+          ].filter(Boolean);
+
+          for (const k of candidateKeys) {
+            const f = filesMap[k];
+            if (f) {
+              const hasUrl = Boolean(
+                f.fileUrl ||
+                f.storageKey ||
+                (typeof f === 'string' && f.trim().length > 0)
+              );
+              if (hasUrl) return true;
+            }
+          }
+          return false;
+        });
+
+        if (!allRequiredPresent) {
+          if (requiredSlots.length === 1 && hasLegacySingleFile) {
+            return false;
+          }
+          return true;
+        }
+        return false;
+      }
+
+      // Slots exist but none are explicitly marked isRequired
+      if (status === 'REQUIRED') {
+        const hasAnySlotFile = Object.values(filesMap).some((f: any) =>
+          Boolean(f?.fileUrl || f?.storageKey || (typeof f === 'string' && f.trim().length > 0))
+        );
+        return !hasAnySlotFile && !hasLegacySingleFile;
+      }
+
+      return false;
+    }
+
+    // 4. Single artwork requirement (no slots configured)
+    if (status === 'REQUIRED' || item.artworkRequired) {
+      const hasAnySlotFile = Object.values(filesMap).some((f: any) =>
+        Boolean(f?.fileUrl || f?.storageKey || (typeof f === 'string' && f.trim().length > 0))
+      );
+      return !hasLegacySingleFile && !hasAnySlotFile;
+    }
+
+    return false;
+  };
+
+  const hasMissingArtwork = useMemo(() => {
+    return cartItems.some(isItemMissingArtwork);
+  }, [cartItems]);
+
   const handleProceedToCheckout = () => {
     if (cartItems.length === 0) return;
+
+    if (hasMissingArtwork) {
+      alert('One or more items in your cart require artwork upload. Please upload the required artwork files before proceeding to checkout.');
+      return;
+    }
 
     // Preserve the complete cart with all configured items and financial breakdown
     const checkoutSession = {
@@ -278,9 +384,14 @@ export default function CartPage() {
                             {item.artworkFile.actualMegapixels ? `${item.artworkFile.actualMegapixels} MP Resolution` : 'File Ready'}
                           </span>
                         </div>
+                      ) : isItemMissingArtwork(item) ? (
+                        <div className="p-1.5 bg-amber-50 rounded border border-amber-300 text-amber-900 text-[11px] font-bold flex items-center gap-1.5">
+                          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                          <span>Artwork upload required before checkout</span>
+                        </div>
                       ) : (
                         <span className="text-slate-500 text-[11px] block">
-                          No artwork attached (Design studio or submit later)
+                          No artwork required for this item
                         </span>
                       )}
 
@@ -502,19 +613,44 @@ export default function CartPage() {
                   )}
                 </div>
 
+                {/* Missing Artwork Alert Banner */}
+                {hasMissingArtwork && (
+                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-300 text-xs text-amber-950 font-medium flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold block">Artwork Upload Required</span>
+                      <span className="text-[11px] text-amber-800">
+                        Please upload your required artwork files for items in your cart before proceeding to checkout.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Checkout Button */}
                 <Button
                   variant="primary"
                   size="lg"
-                  className="w-full shadow-brand"
+                  className={`w-full ${
+                    hasMissingArtwork
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed border-slate-300 opacity-60'
+                      : 'shadow-brand'
+                  }`}
+                  disabled={hasMissingArtwork}
                   onClick={handleProceedToCheckout}
                 >
-                  <span>
-                    {isSplit
-                      ? `Proceed to Checkout (${formatCurrency(advanceAmountDue)} Due Today)`
-                      : `Proceed to Checkout (${formatCurrency(totalAmount)})`}
-                  </span>
-                  <ArrowRight className="h-4 w-4 ml-1.5" />
+                  {hasMissingArtwork ? (
+                    <span className="flex items-center gap-1.5 font-bold">
+                      <Lock className="h-4 w-4" />
+                      <span>Upload Artwork to Proceed</span>
+                    </span>
+                  ) : (
+                    <span>
+                      {isSplit
+                        ? `Proceed to Checkout (${formatCurrency(advanceAmountDue)} Due Today)`
+                        : `Proceed to Checkout (${formatCurrency(totalAmount)})`}
+                    </span>
+                  )}
+                  {!hasMissingArtwork && <ArrowRight className="h-4 w-4 ml-1.5" />}
                 </Button>
 
                 {/* Trust Badges */}

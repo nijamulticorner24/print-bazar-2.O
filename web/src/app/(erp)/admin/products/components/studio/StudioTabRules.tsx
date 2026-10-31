@@ -33,11 +33,13 @@ import {
 import { ProductConfigurationRule, ProductOptionGroup } from '@/lib/api';
 import { Modal } from '@/components/ui';
 import { evaluateProductConfiguration } from '@/lib/product-rules-engine';
+import { StudioTab } from './StudioTabReview';
 
 export interface StudioTabRulesProps {
   rules: ProductConfigurationRule[];
   setRules: React.Dispatch<React.SetStateAction<ProductConfigurationRule[]>>;
   optionGroups: ProductOptionGroup[];
+  onNavigateToTab?: (tab: StudioTab) => void;
   onChange?: () => void;
 }
 
@@ -333,6 +335,7 @@ export function StudioTabRules({
   rules,
   setRules,
   optionGroups,
+  onNavigateToTab,
   onChange,
 }: StudioTabRulesProps) {
   // Navigation & Search State
@@ -1328,6 +1331,50 @@ export function StudioTabRules({
             })}
           </div>
         )}
+      </div>
+
+      {/* Step 3 Bottom Navigation Bar */}
+      <div className="bg-white border border-slate-200/90 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          {onNavigateToTab && (
+            <button
+              type="button"
+              onClick={() => {
+                onNavigateToTab('OPTIONS');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="px-3.5 py-2 border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-50 transition cursor-pointer"
+            >
+              ← Back to Step 2: Groups & Choices
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+          <span className="font-semibold text-slate-900">Step 3 Summary:</span>
+          <span className="bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-mono text-[11px]">
+            {rules.length} Rules Configured
+          </span>
+          <span className="bg-purple-50 text-purple-800 border border-purple-200 px-2 py-0.5 rounded font-mono font-bold text-[11px]">
+            {rules.filter((r) => r.isActive !== false).length} Active on Storefront
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {onNavigateToTab && (
+            <button
+              type="button"
+              onClick={() => {
+                onNavigateToTab('ARTWORK');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="flex items-center gap-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-[#0F172A] font-bold text-xs px-4 py-2.5 rounded-lg border border-[#E3A008]/40 shadow-xs transition active:scale-95 cursor-pointer"
+            >
+              <span>Next: 4. Artwork Upload & Design Matrix</span>
+              <RiArrowRightLine className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ===================================================================== */}

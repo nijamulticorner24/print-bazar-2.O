@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { OrderStatus, ShipmentStatus } from '@prisma/client';
+import { ShippingCalculatorService } from '../shipping/shipping-calculator.service';
 
 export interface CourierHandoverDto {
   orderId: string;
@@ -33,6 +34,7 @@ export class DispatchService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly shippingCalculatorService: ShippingCalculatorService,
   ) {}
 
   /**
@@ -227,5 +229,148 @@ export class DispatchService {
 
       return updated;
     });
+  }
+
+  /**
+   * Get detailed shipment weight and courier calculation for dispatch inspection
+   */
+  async getOrderDispatchDetails(orderId: string) {
+    const order = await this.prisma.order.findFirst({
+      where: {
+        OR: [{ id: orderId }, { orderNumber: orderId }],
+      },
+      include: {
+        customer: true,
+        shippingAddress: true,
+        items: {
+          include: {
+            product: {
+              include: { packagingProfile: true },
+            },
+          },
+        },
+        packages: {
+          include: { shipment: true },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order '${orderId}' not found`);
+    }
+
+    const firstItem = order.items[0];
+    const product = firstItem?.product;
+    const qty = firstItem?.quantity || 1;
+    const destinationPincode = order.shippingAddress?.postalCode || (order as any).shippingPincode || '600001';
+
+    // 1. Authoritative calculated weight & shipping estimate
+    const calc = await this.shippingCalculatorService.calculateShipping({
+      productId: product?.id,
+      quantity: qty,
+      destinationPincode,
+      orderSubtotal: Number(order.subtotal || 0),
+      deliveryMethod: order.deliveryMethod === 'STORE_PICKUP' ? 'STORE_PICKUP' : 'COURIER',
+    });
+
+    // 2. Physical measured weight from packed packages (if any)
+    const measuredGrossWeightGrams = order.packages.reduce((sum, p) => sum + (Number(p.grossWeightGrams) || 0), 0);
+    const hasMeasured = measuredGrossWeightGrams > 0;
+
+    // 3. Recalculate courier if measured differs
+    let recalculatedCourier: any = null;
+    let weightVarianceGrams = 0;
+    if (hasMeasured) {
+      weightVarianceGrams = measuredGrossWeightGrams - calc.actualWeightGrams;
+      recalculatedCourier = await this.shippingCalculatorService.calculateShipping({
+        productId: product?.id,
+        quantity: 1,
+        customUnitWeightGrams: Math.max(1, measuredGrossWeightGrams - (calc.packaging.weightGrams || 0)),
+        destinationPincode,
+        orderSubtotal: Number(order.subtotal || 0),
+        deliveryMethod: order.deliveryMethod === 'STORE_PICKUP' ? 'STORE_PICKUP' : 'COURIER',
+      });
+    }
+
+    return {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      destinationPincode,
+      productQuantity: qty,
+      productName: product?.name || 'Printed Item',
+      configuredProductWeightGrams: calc.productWeightGrams,
+      packagingWeightGrams: calc.packaging.weightGrams,
+      actualShipmentWeightGrams: calc.actualWeightGrams,
+      volumetricWeightGrams: calc.volumetricWeightGrams,
+      billableWeightGrams: calc.billableWeightGrams,
+      expectedCourierShippingAmount: calc.finalShippingAmount,
+      zoneCode: calc.zone?.code || 'STANDARD',
+      measuredGrossWeightGrams: hasMeasured ? measuredGrossWeightGrams : null,
+      weightVarianceGrams: hasMeasured ? weightVarianceGrams : 0,
+      recalculatedShippingAmount: recalculatedCourier ? recalculatedCourier.finalShippingAmount : calc.finalShippingAmount,
+      isVarianceDetected: hasMeasured && Math.abs(weightVarianceGrams) > 10,
+    };
+  }
+
+  /**
+   * Enter actual measured shipment weight and record audit-logged variance
+   */
+  async adjustDispatchWeight(
+    orderId: string,
+    dto: { measuredWeightGrams: number; reason?: string },
+    staffId: string,
+  ) {
+    const details = await this.getOrderDispatchDetails(orderId);
+
+    const measuredWeight = Math.max(1, Number(dto.measuredWeightGrams));
+    const varianceGrams = measuredWeight - details.actualShipmentWeightGrams;
+
+    // Recalculate courier charge on measured weight
+    const recalculated = await this.shippingCalculatorService.calculateShipping({
+      quantity: 1,
+      customUnitWeightGrams: Math.max(1, measuredWeight - details.packagingWeightGrams),
+      destinationPincode: details.destinationPincode,
+      orderSubtotal: 0,
+      deliveryMethod: 'COURIER',
+    });
+
+    // Update package gross weights if package exists
+    await this.prisma.package.updateMany({
+      where: { orderId: details.orderId },
+      data: { grossWeightGrams: measuredWeight },
+    });
+
+    // Audit log the dispatch weight adjustment
+    await this.auditService.log({
+      actorId: staffId,
+      action: 'DISPATCH_WEIGHT_ADJUSTED',
+      entity: 'Order',
+      entityId: details.orderId,
+      orderId: details.orderId,
+      previousState: {
+        estimatedWeightGrams: details.actualShipmentWeightGrams,
+        estimatedCourierCharge: details.expectedCourierShippingAmount,
+      },
+      newState: {
+        measuredWeightGrams: measuredWeight,
+        varianceGrams,
+        recalculatedCourierCharge: recalculated.finalShippingAmount,
+        reason: dto.reason || 'Physical scale weight measured at dispatch handover',
+        adjustedAt: new Date(),
+      },
+      reason: `Dispatch weight adjustment: ${details.actualShipmentWeightGrams}g -> ${measuredWeight}g (Variance: ${varianceGrams > 0 ? '+' : ''}${varianceGrams}g). Expected: ₹${details.expectedCourierShippingAmount}, Recalculated: ₹${recalculated.finalShippingAmount}.`,
+    });
+
+    return {
+      success: true,
+      orderId: details.orderId,
+      orderNumber: details.orderNumber,
+      estimatedWeightGrams: details.actualShipmentWeightGrams,
+      measuredWeightGrams: measuredWeight,
+      varianceGrams,
+      estimatedCourierCharge: details.expectedCourierShippingAmount,
+      recalculatedCourierCharge: recalculated.finalShippingAmount,
+      reason: dto.reason || 'Physical scale measurement verified',
+    };
   }
 }

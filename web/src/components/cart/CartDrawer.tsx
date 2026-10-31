@@ -20,6 +20,8 @@ import {
   RiSubtractLine,
   RiPaletteLine,
   RiSparklingFill,
+  RiLockLine,
+  RiTruckLine,
 } from 'react-icons/ri';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -81,11 +83,15 @@ export interface CartDrawerItem {
   artworkConfig?: CartDrawerArtworkConfig;
   artworkFile?: CartDrawerArtworkFile | null;
   artworkFiles?: Record<string, CartDrawerArtworkFile>;
+  artworkUrl?: string | null;
+  artworkStorageKey?: string | null;
   designNotes?: string;
   personalization?: any;
   paymentMode?: 'FULL' | 'SPLIT_50';
   advanceAmount?: number;
   balanceAmount?: number;
+  shippingFee?: number;
+  shippingSnapshot?: any;
   quote?: any;
 }
 
@@ -94,7 +100,7 @@ interface CartDrawerProps {
   onClose: () => void;
   activeItem?: CartDrawerItem | null;
   onUpdateItem?: (updated: CartDrawerItem) => void;
-  onProceedToCheckout?: () => void;
+  onProceedToCheckout?: (item?: CartDrawerItem) => void;
 }
 
 export function CartDrawer({
@@ -165,7 +171,215 @@ export function CartDrawer({
   const item = activeItem || storedItem;
   const specs = item?.specificationsSnapshot || {};
   const qty = Number(item?.quantity) || 1;
-  const baseSubtotal = Number(item?.totalPrice ?? item?.subtotal ?? 0);
+  const rawTotalPrice = Number(item?.totalPrice ?? 0);
+  const rawSubtotal = Number(item?.subtotal ?? 0);
+
+  const artworkConfig = item?.artworkConfig;
+  const artworkStatus = artworkConfig?.status || 'DISABLED';
+  const designServiceRequirement = artworkConfig?.designServiceRequirement || 'DISABLED';
+  const artworkFee = Number(item?.artworkFee ?? artworkConfig?.artworkPrice ?? 0);
+
+  // Logically determine if customer made a specification choice regarding design service
+  const { specDesignChoice, specDesignFieldLabel, specDesignValueLabel } = useMemo(() => {
+    // 1. Check selectedOptionsSummary (has user-visible fieldLabel and option label/value)
+    const summary = item?.selectedOptionsSummary || [];
+    for (const s of summary) {
+      const normLbl = String(s.fieldLabel || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const rawVal = s.optionLabel || s.value || '';
+      const strVal = String(rawVal).toLowerCase().trim();
+      if (
+        normLbl.includes('design') ||
+        normLbl.includes('artworkservice') ||
+        normLbl.includes('hireservice') ||
+        normLbl.includes('designer') ||
+        (normLbl.includes('artwork') && (strVal.includes('hire') || strVal.includes('assist') || strVal.includes('upload') || strVal.includes('own')))
+      ) {
+        if (
+          strVal === 'yes' ||
+          strVal === 'true' ||
+          strVal === 'required' ||
+          strVal.includes('hire') ||
+          strVal.includes('assist') ||
+          strVal.includes('need') ||
+          strVal.includes('yes_please')
+        ) {
+          return {
+            specDesignChoice: 'YES' as const,
+            specDesignFieldLabel: s.fieldLabel,
+            specDesignValueLabel: String(rawVal),
+          };
+        }
+        if (
+          strVal === 'no' ||
+          strVal === 'false' ||
+          strVal === 'none' ||
+          strVal.includes('upload') ||
+          strVal.includes('own_file') ||
+          strVal.includes('self') ||
+          strVal.includes('provide_own') ||
+          strVal.includes('skip')
+        ) {
+          return {
+            specDesignChoice: 'NO' as const,
+            specDesignFieldLabel: s.fieldLabel,
+            specDesignValueLabel: String(rawVal),
+          };
+        }
+      }
+    }
+
+    // 2. Check specificationsSnapshot
+    const snap = item?.specificationsSnapshot || {};
+    for (const [k, v] of Object.entries(snap)) {
+      if (v === undefined || v === null) continue;
+      const normK = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const strV = String(v).toLowerCase().trim();
+      if (
+        normK.includes('design') ||
+        normK.includes('artworkservice') ||
+        normK.includes('hireservice') ||
+        normK.includes('designer') ||
+        (normK.includes('artwork') && (strV.includes('hire') || strV.includes('assist') || strV.includes('upload') || strV.includes('own')))
+      ) {
+        if (
+          strV === 'yes' ||
+          strV === 'true' ||
+          strV === 'required' ||
+          strV.includes('hire') ||
+          strV.includes('assist') ||
+          strV.includes('need') ||
+          strV.includes('yes_please')
+        ) {
+          return {
+            specDesignChoice: 'YES' as const,
+            specDesignFieldLabel: k,
+            specDesignValueLabel: String(v),
+          };
+        }
+        if (
+          strV === 'no' ||
+          strV === 'false' ||
+          strV === 'none' ||
+          strV.includes('upload') ||
+          strV.includes('own_file') ||
+          strV.includes('self') ||
+          strV.includes('provide_own') ||
+          strV.includes('skip')
+        ) {
+          return {
+            specDesignChoice: 'NO' as const,
+            specDesignFieldLabel: k,
+            specDesignValueLabel: String(v),
+          };
+        }
+      }
+    }
+
+    return {
+      specDesignChoice: 'NONE' as const,
+      specDesignFieldLabel: null,
+      specDesignValueLabel: null,
+    };
+  }, [item?.specificationsSnapshot, item?.selectedOptionsSummary]);
+
+  const rawDesignFeeUnit = Number(item?.designServiceFee ?? artworkConfig?.designServiceFee ?? 0);
+  const designFeeUnit =
+    rawDesignFeeUnit > 0
+      ? rawDesignFeeUnit
+      : specDesignChoice === 'YES' || item?.hasDesignService || designServiceRequirement === 'REQUIRED'
+      ? 150
+      : 0;
+
+  // Logical calculation: Is "Upload My Own Files" disabled?
+  // 1. Customer selected "YES" to design service in specifications
+  // 2. OR product/rule configuration mandates design service (designServiceRequirement === 'REQUIRED')
+  const { isUploadDisabled, uploadDisabledReason } = useMemo(() => {
+    if (specDesignChoice === 'YES') {
+      return {
+        isUploadDisabled: true,
+        uploadDisabledReason: `Locked by specifications: "${specDesignFieldLabel || 'Design required'}: ${specDesignValueLabel || 'yes'}" was selected`,
+      };
+    }
+    if (designServiceRequirement === 'REQUIRED') {
+      return {
+        isUploadDisabled: true,
+        uploadDisabledReason: 'Design assistance is required for this product configuration',
+      };
+    }
+    return {
+      isUploadDisabled: false,
+      uploadDisabledReason: null,
+    };
+  }, [specDesignChoice, specDesignFieldLabel, specDesignValueLabel, designServiceRequirement]);
+
+  // Logical calculation: Is "Hire Design Assistance" disabled?
+  // 1. Customer selected "NO" to design service in specifications
+  // 2. OR product/rule configuration disabled design service (designServiceRequirement === 'DISABLED')
+  // 3. OR no design service fee configured (designFeeUnit <= 0)
+  const { isHireDesignerDisabled, hireDesignerDisabledReason } = useMemo(() => {
+    if (specDesignChoice === 'NO') {
+      return {
+        isHireDesignerDisabled: true,
+        hireDesignerDisabledReason: `Locked by specifications: "${specDesignFieldLabel || 'Design required'}: ${specDesignValueLabel || 'no'}" was selected`,
+      };
+    }
+    if (designServiceRequirement === 'DISABLED' && specDesignChoice !== 'YES') {
+      return {
+        isHireDesignerDisabled: true,
+        hireDesignerDisabledReason: 'Design assistance is disabled by product configuration',
+      };
+    }
+    if (designFeeUnit <= 0 && specDesignChoice !== 'YES') {
+      return {
+        isHireDesignerDisabled: true,
+        hireDesignerDisabledReason: 'No design assistance fee configured for this item',
+      };
+    }
+    return {
+      isHireDesignerDisabled: false,
+      hireDesignerDisabledReason: null,
+    };
+  }, [specDesignChoice, specDesignFieldLabel, specDesignValueLabel, designServiceRequirement, designFeeUnit]);
+
+  // Derive initial wantsDesignService:
+  const detectedDesignInItem = useMemo(() => {
+    if (specDesignChoice === 'YES') return true;
+    if (specDesignChoice === 'NO') return false;
+    if (designServiceRequirement === 'REQUIRED') return true;
+    if (designServiceRequirement === 'DISABLED') return false;
+    if (item?.hasDesignService !== undefined) return Boolean(item.hasDesignService);
+    return false;
+  }, [specDesignChoice, designServiceRequirement, item?.hasDesignService]);
+
+  const [wantsDesignService, setWantsDesignService] = useState<boolean>(detectedDesignInItem);
+
+  // Sync state if item or lock conditions change
+  useEffect(() => {
+    if (specDesignChoice === 'YES' || designServiceRequirement === 'REQUIRED') {
+      setWantsDesignService(true);
+    } else if (specDesignChoice === 'NO' || designServiceRequirement === 'DISABLED' || isHireDesignerDisabled) {
+      setWantsDesignService(false);
+    } else if (item?.hasDesignService !== undefined) {
+      setWantsDesignService(Boolean(item.hasDesignService));
+    } else {
+      setWantsDesignService(detectedDesignInItem);
+    }
+  }, [specDesignChoice, designServiceRequirement, isHireDesignerDisabled, item?.hasDesignService, detectedDesignInItem]);
+
+  const activeDesignFee = wantsDesignService ? designFeeUnit : 0;
+
+  // Clean production base subtotal (clean of design fee and artwork fee)
+  const baseSubtotal = useMemo(() => {
+    if (rawTotalPrice > 0) return rawTotalPrice;
+    if (item?.hasDesignService && rawSubtotal > designFeeUnit) {
+      return Math.round((rawSubtotal - designFeeUnit - artworkFee) * 100) / 100;
+    }
+    if (rawSubtotal > 0) return rawSubtotal;
+    const uP = Number(item?.unitPrice) || 0;
+    if (uP > 0 && qty > 0) return Math.round(uP * qty * 100) / 100;
+    return 0;
+  }, [rawTotalPrice, rawSubtotal, item?.hasDesignService, designFeeUnit, artworkFee, item?.unitPrice, qty]);
+
   const unitPrice =
     item?.unitPrice !== undefined && item?.unitPrice !== null && Number(item.unitPrice) > 0
       ? Number(item.unitPrice)
@@ -173,32 +387,16 @@ export function CartDrawer({
       ? Math.round((baseSubtotal / qty) * 10000) / 10000
       : 0;
 
-  const artworkConfig = item?.artworkConfig;
-  const artworkStatus = artworkConfig?.status || 'REQUIRED';
-  const designServiceRequirement = artworkConfig?.designServiceRequirement || 'DISABLED';
-  const designFeeUnit = Number(item?.designServiceFee ?? artworkConfig?.designServiceFee ?? 0);
-
-  const [wantsDesignService, setWantsDesignService] = useState<boolean>(() => {
-    return Boolean(item?.hasDesignService || designServiceRequirement === 'REQUIRED');
-  });
-
-  // Sync state if item changes
-  useEffect(() => {
-    if (item?.hasDesignService !== undefined) {
-      setWantsDesignService(Boolean(item.hasDesignService));
-    } else if (designServiceRequirement === 'REQUIRED') {
-      setWantsDesignService(true);
-    }
-  }, [item?.hasDesignService, designServiceRequirement]);
-
-  const activeDesignFee = wantsDesignService ? designFeeUnit : 0;
-  const artworkFee = Number(item?.artworkFee ?? artworkConfig?.artworkPrice ?? 0);
-
   const subtotal = Math.round((baseSubtotal + activeDesignFee + artworkFee) * 100) / 100;
   const tax = Math.round(subtotal * 0.18 * 100) / 100;
-  const grandTotal = Math.round((subtotal + tax) * 100) / 100;
+  const shippingTotal = Number(item?.shippingFee ?? (item?.shippingSnapshot?.finalShippingAmount ?? 0)) || 0;
+  const grandTotal = Math.round((subtotal + tax + shippingTotal) * 100) / 100;
 
   const handleToggleDesignService = (selected: boolean) => {
+    // Guard against toggling to disabled states
+    if (!selected && isUploadDisabled) return;
+    if (selected && isHireDesignerDisabled) return;
+
     setWantsDesignService(selected);
     if (!item) return;
 
@@ -210,6 +408,7 @@ export function CartDrawer({
     const updatedItem: CartDrawerItem = {
       ...item,
       hasDesignService: selected,
+      totalPrice: baseSubtotal,
       designServiceFee: designFeeUnit,
       subtotal: newSubtotal,
       taxAmount: newTax,
@@ -221,6 +420,49 @@ export function CartDrawer({
     }
     updateCartStorage(updatedItem);
   };
+
+  // Ensure item data in storage & parent stays synchronized with locked specifications
+  useEffect(() => {
+    if (!item) return;
+
+    // Mutually exclusive specification locks
+    if ((specDesignChoice === 'YES' || designServiceRequirement === 'REQUIRED') && item.hasDesignService !== true) {
+      const newDesignFee = designFeeUnit > 0 ? designFeeUnit : 150;
+      const newSubtotal = Math.round((baseSubtotal + newDesignFee + artworkFee) * 100) / 100;
+      const newTax = Math.round(newSubtotal * 0.18 * 100) / 100;
+      const newGrandTotal = Math.round((newSubtotal + newTax) * 100) / 100;
+
+      const updatedItem: CartDrawerItem = {
+        ...item,
+        hasDesignService: true,
+        totalPrice: baseSubtotal,
+        designServiceFee: newDesignFee,
+        subtotal: newSubtotal,
+        taxAmount: newTax,
+        grandTotal: newGrandTotal,
+      };
+
+      if (onUpdateItem) onUpdateItem(updatedItem);
+      updateCartStorage(updatedItem);
+    } else if ((specDesignChoice === 'NO' || designServiceRequirement === 'DISABLED') && item.hasDesignService === true) {
+      const newSubtotal = Math.round((baseSubtotal + artworkFee) * 100) / 100;
+      const newTax = Math.round(newSubtotal * 0.18 * 100) / 100;
+      const newGrandTotal = Math.round((newSubtotal + newTax) * 100) / 100;
+
+      const updatedItem: CartDrawerItem = {
+        ...item,
+        hasDesignService: false,
+        totalPrice: baseSubtotal,
+        designServiceFee: 0,
+        subtotal: newSubtotal,
+        taxAmount: newTax,
+        grandTotal: newGrandTotal,
+      };
+
+      if (onUpdateItem) onUpdateItem(updatedItem);
+      updateCartStorage(updatedItem);
+    }
+  }, [specDesignChoice, designServiceRequirement, item?.hasDesignService, baseSubtotal, designFeeUnit, artworkFee]);
 
   const maxFileSizeMb = Number(artworkConfig?.maxFileSizeMb) || 50;
   const allowedFormats =
@@ -269,6 +511,67 @@ export function CartDrawer({
     }
     return requiredSlots.every((s) => Boolean(slotFilesMap[s.slotKey]?.fileUrl));
   }, [effectiveSlots, slotFilesMap, uploadedCount]);
+
+  // Strict condition to decide if the Artwork & Design section should be rendered at all:
+  const hasArtworkOrDesignSection = useMemo(() => {
+    if (artworkStatus === 'DISABLED' && designServiceRequirement === 'DISABLED') {
+      return false;
+    }
+    if (specDesignChoice === 'YES' || specDesignChoice === 'NO') return true;
+    if (item?.hasDesignService || designServiceRequirement === 'REQUIRED') return true;
+    if (artworkStatus === 'REQUIRED') return true;
+    if (
+      artworkStatus === 'OPTIONAL' &&
+      (effectiveSlots.length > 0 || item?.artworkFile?.fileUrl || Object.keys(slotFilesMap).length > 0)
+    ) {
+      return true;
+    }
+    return false;
+  }, [
+    artworkStatus,
+    designServiceRequirement,
+    specDesignChoice,
+    item?.hasDesignService,
+    effectiveSlots.length,
+    item?.artworkFile?.fileUrl,
+    slotFilesMap,
+  ]);
+
+  const isArtworkRequired = useMemo(() => {
+    if (artworkStatus === 'DISABLED' && designServiceRequirement === 'DISABLED') {
+      return false;
+    }
+    // If customer selected "Hire Design Assistance", no upload is required
+    if (wantsDesignService && activeDesignFee > 0) {
+      return false;
+    }
+    if (wantsDesignService) {
+      return false;
+    }
+    // If artwork status is REQUIRED or any slots are marked required
+    if (artworkStatus === 'REQUIRED') {
+      return true;
+    }
+    if (effectiveSlots.some((s) => s.isRequired)) {
+      return true;
+    }
+    return false;
+  }, [artworkStatus, designServiceRequirement, wantsDesignService, activeDesignFee, effectiveSlots]);
+
+  const isArtworkMissing = useMemo(() => {
+    if (!item) return false;
+    if (!isArtworkRequired) return false;
+
+    if (effectiveSlots.length > 0) {
+      const requiredSlots = effectiveSlots.filter((s) => s.isRequired);
+      if (requiredSlots.length > 0) {
+        return !requiredSlots.every((s) => Boolean(slotFilesMap[s.slotKey]?.fileUrl));
+      }
+      return uploadedCount === 0;
+    }
+
+    return !item.artworkFile?.fileUrl && Object.keys(slotFilesMap).length === 0;
+  }, [item, isArtworkRequired, effectiveSlots, slotFilesMap, uploadedCount]);
 
   // Trigger file selection for a specific upload slot
   const triggerUploadForSlot = (slotKey: string) => {
@@ -336,6 +639,8 @@ export function CartDrawer({
         ...item,
         artworkFiles: updatedArtworkFiles,
         artworkFile: primaryFile,
+        artworkUrl: primaryFile?.fileUrl || (item as any).artworkUrl,
+        artworkStorageKey: primaryFile?.storageKey || (item as any).artworkStorageKey,
       };
 
       if (onUpdateItem) {
@@ -369,6 +674,8 @@ export function CartDrawer({
       ...item,
       artworkFiles: updatedArtworkFiles,
       artworkFile: primaryFile,
+      artworkUrl: primaryFile?.fileUrl || null,
+      artworkStorageKey: primaryFile?.storageKey || null,
     };
 
     if (onUpdateItem) {
@@ -413,12 +720,20 @@ export function CartDrawer({
   };
 
   const handleCheckoutClick = () => {
+    if (!item) return;
+
+    if (isArtworkMissing) {
+      setUploadError('Please upload all required artwork files before proceeding to checkout.');
+      return;
+    }
+
+    // Always ensure latest item is stored in both sessionStorage and localStorage
+    updateCartStorage(item);
+
     if (onProceedToCheckout) {
-      onProceedToCheckout();
+      onProceedToCheckout(item);
     } else {
-      if (item) {
-        sessionStorage.setItem('pb2_active_cart', JSON.stringify(item));
-      }
+      sessionStorage.setItem('pb2_active_cart', JSON.stringify(item));
       router.push('/checkout');
     }
   };
@@ -567,14 +882,7 @@ export function CartDrawer({
               {/* ======================================================== */}
               {/* C. ARTWORK UPLOAD & DESIGN MATRIX                        */}
               {/* ======================================================== */}
-              {artworkStatus === 'DISABLED' && designServiceRequirement === 'DISABLED' ? (
-                <div className="pt-3">
-                  <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl flex items-center gap-2.5 text-xs text-emerald-900">
-                    <RiShieldCheckLine className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                    <span>No artwork upload or design assistance required for this product. Ready for production.</span>
-                  </div>
-                </div>
-              ) : (
+              {!hasArtworkOrDesignSection ? null : (
                 <div className="space-y-3.5 pt-5 border-t border-slate-100">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
@@ -582,11 +890,6 @@ export function CartDrawer({
                         <RiFileTextLine className="w-4 h-4 text-[#E3A008]" />
                         <span>Artwork Upload & Design Matrix</span>
                       </h4>
-                      {artworkConfig?.matchedRuleName && (
-                        <span className="text-[10px] font-mono font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
-                          {artworkConfig.matchedRuleName}
-                        </span>
-                      )}
                     </div>
 
                     {wantsDesignService && activeDesignFee > 0 ? (
@@ -617,7 +920,7 @@ export function CartDrawer({
                   </div>
 
                   {/* Design Assistance Matrix Selector (With Direct Amount Setting) */}
-                  {designServiceRequirement !== 'DISABLED' && designFeeUnit > 0 && (
+                  {((designServiceRequirement !== 'DISABLED' && designFeeUnit > 0) || specDesignChoice === 'YES' || item?.hasDesignService) && designFeeUnit > 0 && (
                     <div className="p-3.5 bg-amber-50/70 border border-amber-200/90 rounded-2xl space-y-2.5">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
@@ -632,62 +935,123 @@ export function CartDrawer({
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {/* Option 1: Upload My Own Files */}
                         <button
                           type="button"
                           onClick={() => handleToggleDesignService(false)}
-                          className={`p-3 rounded-xl border text-left transition cursor-pointer relative ${
-                            !wantsDesignService
-                              ? 'bg-white border-2 border-slate-950 shadow-xs'
-                              : 'bg-white/70 border-slate-200 hover:border-slate-300'
+                          disabled={isUploadDisabled}
+                          title={uploadDisabledReason || 'Customer supplied print files'}
+                          className={`p-3 rounded-xl border text-left transition relative ${
+                            isUploadDisabled
+                              ? 'opacity-40 cursor-not-allowed bg-slate-100/90 border-slate-200 select-none'
+                              : !wantsDesignService
+                              ? 'bg-white border-2 border-slate-950 shadow-xs cursor-pointer'
+                              : 'bg-white/70 border-slate-200 hover:border-slate-300 cursor-pointer'
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-black text-slate-900">
+                            <span className={`text-xs font-black ${isUploadDisabled ? 'text-slate-400' : 'text-slate-900'}`}>
                               Upload My Own Files
                             </span>
-                            {!wantsDesignService && (
+                            {!wantsDesignService && !isUploadDisabled && (
                               <div className="w-4 h-4 rounded-full bg-slate-950 text-white flex items-center justify-center">
                                 <RiCheckLine className="w-3 h-3 stroke-[3]" />
+                              </div>
+                            )}
+                            {isUploadDisabled && (
+                              <div className="w-4 h-4 rounded-full bg-slate-200 text-slate-400 flex items-center justify-center" title="Disabled">
+                                <RiLockLine className="w-2.5 h-2.5" />
                               </div>
                             )}
                           </div>
                           <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
                             Customer supplied print files
                           </span>
-                          <span className="inline-block mt-1 text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                            Free (₹0.00)
-                          </span>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="inline-block text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                              Free (₹0.00)
+                            </span>
+                            {isUploadDisabled && (
+                              <span className="inline-flex items-center gap-0.5 text-[9px] font-mono font-semibold text-slate-500 bg-slate-200/90 px-1.5 py-0.2 rounded border border-slate-300">
+                                <RiLockLine className="w-2.5 h-2.5" />
+                                {specDesignChoice === 'YES' ? 'Locked by specs' : 'Disabled'}
+                              </span>
+                            )}
+                          </div>
                         </button>
 
+                        {/* Option 2: Hire Design Assistance */}
                         <button
                           type="button"
                           onClick={() => handleToggleDesignService(true)}
-                          className={`p-3 rounded-xl border text-left transition cursor-pointer relative ${
-                            wantsDesignService
-                              ? 'bg-amber-100/90 border-2 border-amber-500 shadow-xs ring-1 ring-amber-400'
-                              : 'bg-white/70 border-slate-200 hover:border-amber-300'
+                          disabled={isHireDesignerDisabled}
+                          title={hireDesignerDisabledReason || 'Prepress layout & expert design'}
+                          className={`p-3 rounded-xl border text-left transition relative ${
+                            isHireDesignerDisabled
+                              ? 'opacity-40 cursor-not-allowed bg-slate-100/90 border-slate-200 select-none'
+                              : wantsDesignService
+                              ? 'bg-amber-100/90 border-2 border-amber-500 shadow-xs ring-1 ring-amber-400 cursor-pointer'
+                              : 'bg-white/70 border-slate-200 hover:border-amber-300 cursor-pointer'
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-black text-slate-900">
+                            <span className={`text-xs font-black ${isHireDesignerDisabled ? 'text-slate-400' : 'text-slate-900'}`}>
                               Hire Design Assistance
                             </span>
-                            {wantsDesignService && (
+                            {wantsDesignService && !isHireDesignerDisabled && (
                               <div className="w-4 h-4 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center">
                                 <RiCheckLine className="w-3 h-3 stroke-[3]" />
+                              </div>
+                            )}
+                            {isHireDesignerDisabled && (
+                              <div className="w-4 h-4 rounded-full bg-slate-200 text-slate-400 flex items-center justify-center" title="Disabled">
+                                <RiLockLine className="w-2.5 h-2.5" />
                               </div>
                             )}
                           </div>
                           <span className="text-[10px] text-amber-900 font-medium block mt-0.5">
                             Prepress layout & expert design
                           </span>
-                          <span className="inline-block mt-1 text-[10px] font-mono font-bold text-amber-950 bg-amber-200/90 px-1.5 py-0.2 rounded border border-amber-400">
-                            +₹{designFeeUnit.toFixed(2)}
-                          </span>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="inline-block text-[10px] font-mono font-bold text-amber-950 bg-amber-200/90 px-1.5 py-0.2 rounded border border-amber-400">
+                              +₹{designFeeUnit.toFixed(2)}
+                            </span>
+                            {isHireDesignerDisabled && (
+                              <span className="inline-flex items-center gap-0.5 text-[9px] font-mono font-semibold text-slate-500 bg-slate-200/90 px-1.5 py-0.2 rounded border border-slate-300">
+                                <RiLockLine className="w-2.5 h-2.5" />
+                                {specDesignChoice === 'NO' ? 'Locked by specs' : 'Disabled'}
+                              </span>
+                            )}
+                          </div>
                         </button>
                       </div>
 
-                      {wantsDesignService && (
+                      {/* Informational Guidance based on state & specification selection */}
+                      {isUploadDisabled && specDesignChoice === 'YES' && (
+                        <div className="p-2.5 bg-amber-50/90 rounded-xl border border-amber-200 text-xs text-amber-950 space-y-1">
+                          <div className="flex items-center gap-1.5 font-bold">
+                            <RiSparklingFill className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>Design Service Fee (+₹{designFeeUnit.toFixed(2)}) is included based on your specifications</span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 leading-relaxed">
+                            You selected "{specDesignFieldLabel || 'Design required'}: {specDesignValueLabel || 'yes'}". Upload option is locked because our designers will prepare your artwork. Upload any reference assets or brief below.
+                          </p>
+                        </div>
+                      )}
+
+                      {isHireDesignerDisabled && specDesignChoice === 'NO' && (
+                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-800 space-y-1">
+                          <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                            <RiInformationLine className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                            <span>Customer Artwork Supplied (No Design Fee)</span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 leading-relaxed">
+                            You selected "{specDesignFieldLabel || 'Design required'}: {specDesignValueLabel || 'no'}". Hire designer option is locked. Please upload your production-ready print files in the slots below.
+                          </p>
+                        </div>
+                      )}
+
+                      {!isUploadDisabled && !isHireDesignerDisabled && wantsDesignService && (
                         <div className="p-2.5 bg-white/90 rounded-xl border border-amber-200 text-xs text-amber-950 space-y-1">
                           <div className="flex items-center gap-1.5 font-bold">
                             <RiSparklingFill className="w-3.5 h-3.5 text-amber-600 shrink-0" />
@@ -832,11 +1196,23 @@ export function CartDrawer({
                     </div>
                   )}
 
-                  <p className="text-[11px] text-slate-500 leading-relaxed pt-0.5">
-                    {artworkStatus === 'REQUIRED'
-                      ? 'Attach print-ready files for each side now, or submit post-checkout. Production begins upon digital proof sign-off.'
-                      : 'Attach your artwork files now or proceed to checkout and coordinate with our design prepress team.'}
-                  </p>
+                  <div className="pt-1 text-[11px] leading-relaxed">
+                    {isArtworkMissing ? (
+                      <p className="text-amber-800 font-semibold flex items-center gap-1.5 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                        <RiAlertLine className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Artwork upload is required. Please upload files in all required slots above to enable checkout.</span>
+                      </p>
+                    ) : allRequiredUploaded && uploadedCount > 0 ? (
+                      <p className="text-emerald-800 font-semibold flex items-center gap-1.5 bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+                        <RiCheckLine className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>All required artwork uploaded successfully. You can now proceed to checkout.</span>
+                      </p>
+                    ) : (
+                      <p className="text-slate-500">
+                        Production begins upon digital proof sign-off.
+                      </p>
+                    )}
+                  </div>
 
                   {/* Hidden File Input */}
                   <input
@@ -934,10 +1310,77 @@ export function CartDrawer({
 
                   <div className="flex items-center justify-between text-slate-600">
                     <span>Shipping & Logistics</span>
-                    <span className="text-emerald-700 font-bold font-mono">
-                      FREE Standard Delivery
-                    </span>
+                    {shippingTotal > 0 ? (
+                      <span className="font-mono font-bold text-slate-900">
+                        +{formatCurrency(shippingTotal)}
+                      </span>
+                    ) : item?.shippingSnapshot?.isFreeShippingApplied ? (
+                      <span className="text-emerald-700 font-bold font-mono">
+                        FREE Standard Delivery
+                      </span>
+                    ) : item?.shippingSnapshot?.deliveryMethod === 'STORE_PICKUP' ? (
+                      <span className="text-slate-700 font-bold font-mono">
+                        Store Pickup (₹0)
+                      </span>
+                    ) : item?.shippingSnapshot?.status === 'CALCULATED' && item?.shippingSnapshot?.finalShippingAmount === 0 ? (
+                      <span className="text-emerald-700 font-bold font-mono">
+                        FREE Standard Delivery
+                      </span>
+                    ) : (
+                      <span className="text-amber-700 font-medium font-mono text-[11px] bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                        Calculated at checkout
+                      </span>
+                    )}
                   </div>
+
+                  {/* Authoritative Shipping & Weight Details */}
+                  {item?.shippingSnapshot && (
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-[11px] font-mono">
+                      <div className="flex items-center justify-between text-slate-600 font-sans font-bold text-xs pb-1 border-b border-slate-200">
+                        <span className="flex items-center gap-1.5 text-sky-700">
+                          <RiTruckLine className="w-3.5 h-3.5" />
+                          Logistics & Weight Breakdown
+                        </span>
+                        <span className="font-mono text-slate-900">
+                          {item.shippingSnapshot.zoneCode ? `${item.shippingSnapshot.zoneCode} Zone` : 'Standard Delivery'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span className="font-sans">Product Quantity:</span>
+                        <span className="font-bold text-slate-800">{qty} pcs</span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span className="font-sans">Product Net Weight:</span>
+                        <span className="text-slate-800">
+                          {Number(item.shippingSnapshot.productWeightGrams) >= 1000
+                            ? `${(Number(item.shippingSnapshot.productWeightGrams) / 1000).toFixed(2)} kg`
+                            : `${Number(item.shippingSnapshot.productWeightGrams || 0)} g`}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-500">
+                        <span className="font-sans">Packaging Box (Tare):</span>
+                        <span>
+                          +{Number(item.shippingSnapshot.packaging?.weightGrams ?? item.shippingSnapshot.packagingWeightGrams ?? 200)} g
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-700 font-semibold pt-1 border-t border-slate-200">
+                        <span className="font-sans">Actual Shipment Weight:</span>
+                        <span>
+                          {Number(item.shippingSnapshot.actualWeightGrams) >= 1000
+                            ? `${(Number(item.shippingSnapshot.actualWeightGrams) / 1000).toFixed(2)} kg`
+                            : `${Number(item.shippingSnapshot.actualWeightGrams || 0)} g`}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sky-900 font-bold">
+                        <span className="font-sans">Billable Weight:</span>
+                        <span>
+                          {Number(item.shippingSnapshot.billableWeightGrams) >= 1000
+                            ? `${(Number(item.shippingSnapshot.billableWeightGrams) / 1000).toFixed(2)} kg`
+                            : `${Number(item.shippingSnapshot.billableWeightGrams || 0)} g`}
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="pt-2.5 border-t border-slate-200 flex items-center justify-between text-sm">
                     <div>
@@ -989,14 +1432,34 @@ export function CartDrawer({
             </div>
           )}
 
+          {isArtworkMissing && (
+            <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-300 text-[11px] text-amber-950 font-semibold flex items-center gap-2">
+              <RiAlertLine className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Please upload required artwork above to proceed to checkout.</span>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={handleCheckoutClick}
-            disabled={!item}
-            className="w-full h-12 bg-[#FFED00] hover:bg-[#F2E100] text-black font-bold text-sm rounded-xl border border-black/10 shadow-xs flex items-center justify-center gap-2 transition-transform active:scale-[0.99] cursor-pointer disabled:opacity-50"
+            disabled={!item || isArtworkMissing}
+            className={`w-full h-12 font-bold text-sm rounded-xl border shadow-xs flex items-center justify-center gap-2 transition-all ${
+              !item || isArtworkMissing
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed border-slate-300 opacity-60'
+                : 'bg-[#FFED00] hover:bg-[#F2E100] text-black cursor-pointer border-black/10 active:scale-[0.99]'
+            }`}
           >
-            <span>Proceed to Checkout</span>
-            <RiArrowRightLine className="w-4 h-4 stroke-[2.2]" />
+            {isArtworkMissing ? (
+              <>
+                <RiLockLine className="w-4 h-4 stroke-[2]" />
+                <span>Upload Artwork to Proceed</span>
+              </>
+            ) : (
+              <>
+                <span>Proceed to Checkout</span>
+                <RiArrowRightLine className="w-4 h-4 stroke-[2.2]" />
+              </>
+            )}
           </button>
 
           <div className="flex items-center justify-between gap-2 pt-1 text-xs">

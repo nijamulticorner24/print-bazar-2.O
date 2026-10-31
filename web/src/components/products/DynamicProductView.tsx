@@ -41,6 +41,7 @@ import {
   api,
   DynamicProduct,
   ProductOptionGroup,
+  ProductAdditionalPricingTier,
   PersonalizationTemplate,
   PersonalizationPayload,
   PersonalizationItemEntry,
@@ -67,8 +68,59 @@ const DEFAULT_PRESET_DIMENSIONS: PresetDimension[] = [
   { id: 'custom', name: 'Custom Size', length: 220, width: 160, height: 60 },
 ];
 
+/**
+ * Resolves the active additional pricing tier charge for a given option group, option value, and order quantity.
+ */
+function getOptionAdditionalTierCharge(
+  additionalPricings: ProductAdditionalPricingTier[] | undefined,
+  groupCode: string,
+  optionValue: string,
+  quantity: number
+): { unitPrice: number; chargeBasis: string; isExcluded: boolean } | null {
+  if (!quantity || quantity < 1) return null;
+  if (!additionalPricings || additionalPricings.length === 0) return null;
+  const norm = (v: string | undefined | null) => String(v || '').toLowerCase().trim().replace(/[\s-]+/g, '_');
+  const target = norm(optionValue);
+
+  const groupRows = additionalPricings.filter(
+    (ap) =>
+      ap.groupCode === groupCode &&
+      (ap.optionValue === optionValue ||
+       norm(ap.optionValue) === target ||
+       String(ap.optionValue).toLowerCase().trim() === String(optionValue).toLowerCase().trim())
+  );
+  if (groupRows.length === 0) return null;
+
+  // Exact tier match where minQty <= quantity <= maxQty
+  let match = groupRows.find((ap) => {
+    const minQ = Number(ap.minQty) || 0;
+    const maxQ = ap.maxQty !== undefined && ap.maxQty !== null && Number(ap.maxQty) >= minQ ? Number(ap.maxQty) : minQ;
+    return quantity >= minQ && (maxQ > minQ ? quantity <= maxQ : (ap.maxQty ? quantity <= ap.maxQty : true));
+  });
+
+  if (!match) {
+    const sorted = [...groupRows].sort((a, b) => Number(a.minQty) - Number(b.minQty));
+    const highest = sorted[sorted.length - 1];
+    const lowest = sorted[0];
+    if (quantity >= Number(highest.minQty)) {
+      match = highest;
+    } else if (quantity <= Number(lowest.minQty)) {
+      match = lowest;
+    }
+  }
+
+  if (match) {
+    return {
+      unitPrice: Number(match.unitPrice) || 0,
+      chargeBasis: match.chargeBasis || 'PER_UNIT',
+      isExcluded: Boolean(match.isExcluded),
+    };
+  }
+  return null;
+}
+
 // Fallback options for common option groups when DB options are not yet seeded
-const FALLBACK_GROUP_OPTIONS: Record<string, Array<{ id: string; title: string; subtitle?: string }>> = {
+const FALLBACK_GROUP_OPTIONS: Record<string, Array<{ id: string; title: string; subtitle?: string; isExcluded?: boolean }>> = {
   box_style: [
     { id: 'lid_base', title: 'Lid & Base', subtitle: '(2-Piece)' },
     { id: 'neck_shoulder', title: 'Neck & Shoulder', subtitle: '(3-Piece)' },
@@ -368,18 +420,17 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
   const maxQty = Math.max(minQty, Number(product.maxQuantity) || 100000);
   const baseRate = Math.max(1, Number(product.basePrice) || 500);
 
-  // Price Increasing / Increment Mode from Product Configuration (Stage 5):
-  // If product.quantityStep === 0 or not positive -> OFF (Fixed Quantities Only)
-  // If product.quantityStep > 0 -> ON (Incremental based on step)
+  // Option A: Single Fixed Quantity -> Quantity Range Brackets (1–10, 11–20, 21–50, 51–100 pcs)
+  // Option B: Bulk Quantity Range -> Discrete Fixed Quantity Tiers (100, 1,000, 25,000 pcs)
+  const isRangeBracketMode = product.pricingModel === 'SINGLE_FIXED_QUANTITY';
   const isIncrementalMode =
-    product.quantityStep !== undefined && product.quantityStep !== null
+    isRangeBracketMode ||
+    (product.quantityStep !== undefined && product.quantityStep !== null
       ? Number(product.quantityStep) > 0
-      : false;
-  const quantityStep = isIncrementalMode ? Math.max(1, Number(product.quantityStep) || 100) : 0;
+      : false);
+  const quantityStep = isIncrementalMode ? Math.max(1, Number(product.quantityStep) || (isRangeBracketMode ? 1 : 100)) : 0;
 
   const quantityTiers = useMemo(() => {
-    const isBulk = product.pricingModel === 'BULK_RANGE';
-
     // 1. Strict priority: Check base rate tiers configured in Stage 5 (Product Base Price by Quantity)
     const baseMatrices = (product.pricingMatrices || []).filter((m) => {
       const c = (m.attributeCombination as any) || {};
@@ -396,10 +447,9 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
       const maxQ = m.maxQty && Number(m.maxQty) >= q ? Number(m.maxQty) : q;
       const isRange = maxQ > q;
 
-      // Filter out non-matching tiers according to pricingModel:
-      // Fixed mode: only include discrete single quantities (minQty === maxQty), NO ranges like 10-20!
-      // Bulk mode: only include range brackets (maxQty > minQty)
-      if (isBulk ? !isRange : isRange) return false;
+      // Single Fixed Quantity mode: only include range brackets (1-10, 11-20, etc.)
+      // Bulk Quantity Range mode: only include discrete single quantities (100, 1000, etc.)
+      if (isRangeBracketMode ? !isRange : isRange) return false;
 
       return Number(m.unitPrice) > 0 || Number(c.totalPrice) > 0 || Number(c.price) > 0;
     });
@@ -458,7 +508,7 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
         const q = Number(m.minQty);
         const maxQ = m.maxQty && Number(m.maxQty) >= q ? Number(m.maxQty) : q;
         const isRange = maxQ > q;
-        if (isBulk ? !isRange : isRange) return false;
+        if (isRangeBracketMode ? !isRange : isRange) return false;
         return true;
       });
 
@@ -500,7 +550,7 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
         const q = Number(t.minQty);
         const maxQ = t.maxQty && Number(t.maxQty) >= q ? Number(t.maxQty) : q;
         const isRange = maxQ > q;
-        if (isBulk ? !isRange : isRange) return false;
+        if (isRangeBracketMode ? !isRange : isRange) return false;
         return q > 0;
       });
 
@@ -567,6 +617,73 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
       quantityTiers[0]
     );
   }, [quantityTiers, selectedQuantity]);
+
+  // Resolved weight for matched bulk range bracket
+  const configuredBracketWeightGrams = useMemo(() => {
+    if (!isRangeBracketMode) return null;
+    const bulkWeights = Array.isArray((product as any).bulkTierWeights) ? (product as any).bulkTierWeights : [];
+    if (bulkWeights.length === 0) return null;
+    const match = bulkWeights.find((b: any) => {
+      const minQ = Number(b.minQty || 0);
+      const maxQ = b.maxQty ? Number(b.maxQty) : Infinity;
+      return selectedQuantity >= minQ && selectedQuantity <= maxQ;
+    });
+    return match && Number(match.unitWeightGrams) > 0 ? Number(match.unitWeightGrams) : null;
+  }, [isRangeBracketMode, product, selectedQuantity]);
+
+  // Delivery & PIN Code State
+  const [deliveryPincode, setDeliveryPincode] = useState<string>('');
+  const [shippingQuote, setShippingQuote] = useState<any | null>(null);
+  const [isCheckingPincode, setIsCheckingPincode] = useState(false);
+  const [pincodeMessage, setPincodeMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Authoritative Weight Resolution for Storefront (Model A vs Model B)
+  const storefrontWeightInfo = useMemo(() => {
+    let productWeight = 0;
+    const tareWeight = Number((product as any).packagingProfile?.weightGrams ?? 200);
+
+    if (product.pricingModel === 'BULK_RANGE') {
+      // MODEL B: BULK_QUANTITY_RANGE
+      // Retrieve total weight associated with that discrete tier directly (never multiplied by qty)
+      const bulkWeights = Array.isArray((product as any).bulkTierWeights) ? (product as any).bulkTierWeights : [];
+      const exact = bulkWeights.find((b: any) => Number(b.minQty) === selectedQuantity);
+      if (exact && (Number(exact.totalProductWeightGrams) > 0 || Number(exact.unitWeightGrams) > 0)) {
+        productWeight = Number(exact.totalProductWeightGrams ?? exact.unitWeightGrams);
+      } else {
+        const sorted = [...bulkWeights].sort((a: any, b: any) => Number(a.minQty || 0) - Number(b.minQty || 0));
+        const bracket = sorted.find((b: any) => {
+          const minQ = Number(b.minQty || 0);
+          const maxQ = b.maxQty ? Number(b.maxQty) : Infinity;
+          return selectedQuantity >= minQ && selectedQuantity <= maxQ;
+        }) || (sorted.length > 0 ? sorted[sorted.length - 1] : null);
+
+        if (bracket && (Number(bracket.totalProductWeightGrams) > 0 || Number(bracket.unitWeightGrams) > 0)) {
+          const baseW = Number(bracket.totalProductWeightGrams ?? bracket.unitWeightGrams);
+          const baseQ = Math.max(1, Number(bracket.minQty || 1));
+          productWeight = Math.round(selectedQuantity * (baseW / baseQ) * 100) / 100;
+        } else {
+          productWeight = Math.round(selectedQuantity * (Number(product.unitWeightGrams) || 2.0) * 100) / 100;
+        }
+      }
+    } else {
+      // MODEL A: SINGLE_FIXED_QUANTITY
+      // Total Product Weight = Actual Order Quantity × Weight Per Piece
+      const perPiece = Number(product.unitWeightGrams) > 0 ? Number(product.unitWeightGrams) : 2.0;
+      productWeight = Math.round(selectedQuantity * perPiece * 100) / 100;
+    }
+
+    const netProductWeight = shippingQuote?.productWeightGrams ?? productWeight;
+    const actualPackagingWeight = shippingQuote?.packaging?.weightGrams ?? tareWeight;
+    const totalShipmentWeight = shippingQuote?.actualWeightGrams ?? Math.round((netProductWeight + actualPackagingWeight) * 100) / 100;
+    const billableWeight = shippingQuote?.billableWeightGrams ?? totalShipmentWeight;
+
+    return {
+      productWeightGrams: netProductWeight,
+      packagingWeightGrams: actualPackagingWeight,
+      actualWeightGrams: totalShipmentWeight,
+      billableWeightGrams: billableWeight,
+    };
+  }, [product, selectedQuantity, shippingQuote]);
 
   // Strict enforcement: If incremental mode is OFF, ensure selectedQuantity snaps to a valid fixed tier or range
   useEffect(() => {
@@ -640,11 +757,135 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
   const [activeCartItem, setActiveCartItem] = useState<CartDrawerItem | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
+  // Resolve Artwork Matrix configuration dynamically from Product Setup Studio
+  const resolvedArtwork = useMemo(() => {
+    return resolveArtworkConditions(
+      product.configurationRules || [],
+      selectedOptions,
+      {
+        artworkRequirement: product.artworkRequirement || undefined,
+        artworkFileFormats: product.artworkFileFormats,
+        maxArtworkFileSizeMb: product.maxArtworkFileSizeMb,
+        minimumArtworkMegapixels: product.minimumArtworkMegapixels ?? undefined,
+        designServiceRequirement: product.designServiceRequirement,
+        designServiceFee: (product as any).designServiceFee ?? (product as any).designServicePrice,
+      },
+      product.optionGroups || []
+    );
+  }, [product, selectedOptions]);
+
+// Helper to detect if user selections, configuration rules, or product settings mandate design service
+function detectIsDesignServiceSelected(
+  selectedOptions: Record<string, any>,
+  optionGroups: ProductOptionGroup[],
+  resolvedArtwork: { designFee?: number; designServiceRequirement?: string; artworkStatus?: string },
+  productDesignReq?: string
+): boolean {
+  // Check user selections
+  for (const [key, val] of Object.entries(selectedOptions || {})) {
+    if (val === undefined || val === null) continue;
+    const normKey = String(key).toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (normKey.includes('design') || normKey.includes('artworkservice') || normKey.includes('hireservice')) {
+      const strVal = String(val).toLowerCase().trim();
+      if (strVal === 'no' || strVal === 'false' || strVal === 'none' || strVal.includes('upload') || strVal.includes('own_file')) {
+        return false;
+      }
+      if (strVal === 'yes' || strVal === 'true' || strVal === 'required' || strVal.includes('hire') || strVal.includes('assist') || strVal.includes('need') || strVal.includes('yes_please')) {
+        return true;
+      }
+    }
+  }
+
+  // Check group names/codes
+  for (const grp of optionGroups || []) {
+    const normName = String(grp.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normCode = String(grp.code || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (
+      normName.includes('design') ||
+      normCode.includes('design') ||
+      normName.includes('artwork') ||
+      normCode.includes('artwork') ||
+      normName.includes('designer')
+    ) {
+      const val = selectedOptions[grp.code] ?? selectedOptions[grp.id];
+      if (val !== undefined && val !== null) {
+        const opt = grp.options?.find((o) => o.value === val || (o as any).id === val);
+        const rawVal = opt?.label || opt?.value || val;
+        const strVal = String(rawVal).toLowerCase().trim();
+        if (
+          strVal === 'no' ||
+          strVal === 'false' ||
+          strVal === 'none' ||
+          strVal.includes('upload') ||
+          strVal.includes('own_file') ||
+          strVal.includes('self') ||
+          strVal.includes('provide_own') ||
+          strVal.includes('skip')
+        ) {
+          return false;
+        }
+        if (
+          strVal === 'yes' ||
+          strVal === 'true' ||
+          strVal === 'required' ||
+          strVal.includes('hire') ||
+          strVal.includes('assist') ||
+          strVal.includes('need') ||
+          strVal.includes('yes_please')
+        ) {
+          return true;
+        }
+      }
+    }
+  }
+
+  // Check rule outcome or product requirement
+  if (resolvedArtwork.designServiceRequirement === 'REQUIRED' || productDesignReq === 'REQUIRED') {
+    return true;
+  }
+  if (resolvedArtwork.designFee !== undefined && Number(resolvedArtwork.designFee) > 0 && resolvedArtwork.artworkStatus === 'DISABLED') {
+    return true;
+  }
+
+  return false;
+}
+
+  // Real-time authoritative computation of active design fee and production totals
+  const isDesignServiceSelected = useMemo(() => {
+    return detectIsDesignServiceSelected(
+      selectedOptions,
+      effectiveOptionGroups,
+      resolvedArtwork,
+      product.designServiceRequirement
+    );
+  }, [selectedOptions, effectiveOptionGroups, resolvedArtwork, product.designServiceRequirement]);
+
+  const activeDesignFee = useMemo(() => {
+    if (!isDesignServiceSelected) return 0;
+    return (
+      resolvedArtwork.designFee !== undefined && Number(resolvedArtwork.designFee) > 0
+        ? Number(resolvedArtwork.designFee)
+        : Number((product as any).designServiceFee ?? (product as any).designServicePrice) > 0
+        ? Number((product as any).designServiceFee ?? (product as any).designServicePrice)
+        : 150
+    );
+  }, [isDesignServiceSelected, resolvedArtwork.designFee, product]);
+
+  const rawArtworkPrice = Number(product.artworkPrice) || 0;
+
+  // Base print subtotal (print items only, excluding design and artwork fees)
+  const basePrintSubtotal = serverSubtotal;
+
+  // Effective production subtotal including design service fee and artwork fee
+  const effectiveSubtotal = Math.round((basePrintSubtotal + activeDesignFee + rawArtworkPrice) * 100) / 100;
+  const effectiveTax = Math.round(effectiveSubtotal * 0.18 * 100) / 100;
+  const effectiveGrandTotal = Math.round((effectiveSubtotal + effectiveTax) * 100) / 100;
+
   // Server Quote Recalculation
   useEffect(() => {
     let isCancelled = false;
 
-    // Immediately synchronize with the exact matched Stage 5 tier (zero stale lag!)
+    // Immediately synchronize with the exact matched Stage 5 tier and client-side option modifiers (zero stale lag!)
     const matched =
       quantityTiers.find((t) =>
         t.isRange
@@ -652,21 +893,58 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
           : t.quantity === selectedQuantity
       ) || quantityTiers[0];
 
-    if (matched) {
-      const syncSubtotal =
-        matched.isRange || selectedQuantity !== matched.quantity
-          ? Math.round(matched.unitPrice * selectedQuantity)
-          : matched.totalPrice;
-      const syncUnitPrice =
-        matched.unitPrice || (selectedQuantity > 0 ? syncSubtotal / selectedQuantity : 0);
-      const syncTax = Math.round(syncSubtotal * 0.18 * 100) / 100;
-      const syncGrandTotal = Math.round((syncSubtotal + syncTax) * 100) / 100;
+    // Calculate option price modifiers across all selected options (including Additional Pricing Tiers)
+    let optionsUnitModifier = 0;
+    let bulkAddonTotal = 0;
+    for (const group of effectiveOptionGroups) {
+      const selectedVal = selectedOptions[group.code];
+      if (!selectedVal) continue;
+      const valList = Array.isArray(selectedVal) ? selectedVal : [selectedVal];
+      for (const v of valList) {
+        const addonCharge = getOptionAdditionalTierCharge(
+          product.additionalPricings,
+          group.code,
+          String(v),
+          selectedQuantity
+        );
 
-      setServerUnitPrice(syncUnitPrice);
-      setServerSubtotal(syncSubtotal);
-      setServerTax(syncTax);
-      setServerGrandTotal(syncGrandTotal);
+        if (addonCharge && !addonCharge.isExcluded) {
+          if (addonCharge.chargeBasis === 'PERCENTAGE') {
+            const baseU = matched?.unitPrice || 0;
+            optionsUnitModifier += (baseU * (addonCharge.unitPrice / 100));
+          } else {
+            // Model 3: Additional Cost = Configured Flat Add-on Amount for the Matched Quantity Tier (Flat per order)
+            bulkAddonTotal += addonCharge.unitPrice;
+          }
+        } else {
+          const opt = group.options?.find((o) => o.value === v);
+          if (opt && opt.priceModifier) {
+            const modNum = Number(opt.priceModifier) || 0;
+            if (opt.priceModifierType === 'PERCENTAGE') {
+              const baseU = matched?.unitPrice || 0;
+              optionsUnitModifier += (baseU * (modNum / 100));
+            } else {
+              optionsUnitModifier += modNum;
+            }
+          }
+        }
+      }
     }
+
+    const effectiveBaseUnit = Math.max(0, (matched?.unitPrice || 0) + optionsUnitModifier);
+    const syncSubtotal =
+      matched && !matched.isRange && selectedQuantity === matched.quantity && optionsUnitModifier === 0 && bulkAddonTotal === 0
+        ? matched.totalPrice
+        : Math.round(((effectiveBaseUnit * selectedQuantity) + bulkAddonTotal) * 100) / 100;
+    const syncUnitPrice =
+      selectedQuantity > 0 ? Math.round((syncSubtotal / selectedQuantity) * 10000) / 10000 : effectiveBaseUnit;
+    const syncTax = Math.round(syncSubtotal * 0.18 * 100) / 100;
+    const syncGrandTotal = Math.round((syncSubtotal + syncTax) * 100) / 100;
+
+    setServerUnitPrice(syncUnitPrice);
+    setServerSubtotal(syncSubtotal);
+    setServerTax(syncTax);
+    setServerGrandTotal(syncGrandTotal);
 
     async function fetchServerQuote() {
       setIsCalculatingPrice(true);
@@ -678,25 +956,47 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
           payloadFields.height_mm = height;
         }
 
+        const isDesignWanted = detectIsDesignServiceSelected(
+          selectedOptions,
+          effectiveOptionGroups,
+          resolvedArtwork,
+          product.designServiceRequirement
+        );
+
+        const optPayload = Object.entries(selectedOptions)
+          .filter(([_, v]) => v !== undefined && v !== null && v !== '')
+          .map(([k, v]) => ({
+            optionCode: k,
+            valueCode: Array.isArray(v) ? v.join(',') : String(v),
+          }));
+
         const quote = await api.calculateQuote({
           productId: product.id,
           quantity: selectedQuantity,
+          options: optPayload,
           fieldValues: payloadFields,
+          hasDesignService: isDesignWanted,
+          shippingPincode: deliveryPincode && deliveryPincode.trim().length === 6 ? deliveryPincode.trim() : undefined,
         });
 
         if (!isCancelled && quote) {
-          const uPrice = quote.unitPrice ?? (quote.subtotal ? quote.subtotal / selectedQuantity : serverUnitPrice);
-          const sTotal = quote.subtotal ?? (uPrice * selectedQuantity);
-          const tax = quote.totalTax ?? Math.round(sTotal * 0.18 * 100) / 100;
-          const gTotal = quote.grandTotal ?? (sTotal + tax);
+          const uPrice = quote.unitPrice ?? syncUnitPrice;
+          // Production subtotal reflects authoritative unit price including option & additional pricing
+          const sTotal = Math.round(uPrice * selectedQuantity * 100) / 100;
+          const tax = Math.round(sTotal * 0.18 * 100) / 100;
+          const shipAmt = quote.estimatedShipping !== undefined ? Number(quote.estimatedShipping) : (Number(quote.shipping?.finalShippingAmount) || 0);
+          const gTotal = Math.round((sTotal + tax + shipAmt) * 100) / 100;
 
           setServerUnitPrice(uPrice);
           setServerSubtotal(sTotal);
           setServerTax(tax);
           setServerGrandTotal(gTotal);
+          if (quote.shipping) {
+            setShippingQuote(quote.shipping);
+          }
         }
       } catch (err) {
-        // Fallback already synchronized from Stage 5 tier above
+        // Fallback already synchronized from Stage 5 tier and additional pricings above
       } finally {
         if (!isCancelled) {
           setIsCalculatingPrice(false);
@@ -713,11 +1013,16 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
     product.id,
     selectedQuantity,
     selectedOptions,
+    deliveryPincode,
     length,
     width,
     height,
     hasDimensionalInputs,
     quantityTiers,
+    effectiveOptionGroups,
+    resolvedArtwork,
+    product.designServiceRequirement,
+    product.additionalPricings,
   ]);
 
   // Dimension Handlers
@@ -799,22 +1104,6 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
     setPersonalizationErrors(errors);
     return Object.keys(errors).length === 0;
   };
-
-  // Resolve Artwork Matrix configuration dynamically from Product Setup Studio
-  const resolvedArtwork = useMemo(() => {
-    return resolveArtworkConditions(
-      product.configurationRules || [],
-      selectedOptions,
-      {
-        artworkRequirement: product.artworkRequirement || 'OPTIONAL',
-        artworkFileFormats: product.artworkFileFormats,
-        maxArtworkFileSizeMb: product.maxArtworkFileSizeMb,
-        minimumArtworkMegapixels: product.minimumArtworkMegapixels ?? undefined,
-        designServiceRequirement: product.designServiceRequirement,
-      },
-      product.optionGroups || []
-    );
-  }, [product, selectedOptions]);
 
   // Build the Authoritative Cart Item
   const buildCurrentCartItem = (): CartDrawerItem => {
@@ -917,11 +1206,34 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
       });
     }
 
-    const rawDesignFee =
-      resolvedArtwork.designFee !== undefined
-        ? Number(resolvedArtwork.designFee)
-        : Number((product as any).designServiceFee ?? (product as any).designServicePrice) || 0;
+    const hasDesignService = detectIsDesignServiceSelected(
+      selectedOptions,
+      effectiveOptionGroups,
+      resolvedArtwork,
+      product.designServiceRequirement
+    );
+
+    const isDesignApplicable =
+      hasDesignService ||
+      (resolvedArtwork.designFee !== undefined && Number(resolvedArtwork.designFee) > 0) ||
+      resolvedArtwork.designServiceRequirement === 'REQUIRED' ||
+      product.designServiceRequirement === 'REQUIRED';
+
+    const rawDesignFee = isDesignApplicable
+      ? (resolvedArtwork.designFee !== undefined && Number(resolvedArtwork.designFee) > 0
+          ? Number(resolvedArtwork.designFee)
+          : Number((product as any).designServiceFee ?? (product as any).designServicePrice) > 0
+          ? Number((product as any).designServiceFee ?? (product as any).designServicePrice)
+          : 150)
+      : 0;
+
     const rawArtworkPrice = Number(product.artworkPrice) || 0;
+    const activeDesignFee = hasDesignService ? rawDesignFee : 0;
+
+    const computedSubtotal = Math.round((finalSubtotal + activeDesignFee + rawArtworkPrice) * 100) / 100;
+    const computedTax = Math.round(computedSubtotal * 0.18 * 100) / 100;
+    const finalShippingFee = Number(shippingQuote?.finalShippingAmount) || 0;
+    const computedGrandTotal = Math.round((computedSubtotal + computedTax + finalShippingFee) * 100) / 100;
 
     return {
       productId: product.id,
@@ -930,11 +1242,25 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
       quantity: selectedQuantity,
       unitPrice: finalUnitPrice,
       totalPrice: finalSubtotal,
-      subtotal: finalSubtotal,
-      taxAmount: finalTax,
-      grandTotal: finalGrandTotal,
-      hasDesignService: false,
-      designServiceFee: rawDesignFee,
+      subtotal: computedSubtotal,
+      taxAmount: computedTax,
+      grandTotal: computedGrandTotal,
+      shippingFee: finalShippingFee,
+      shippingSnapshot: shippingQuote ? {
+        ...shippingQuote,
+        productWeightGrams: storefrontWeightInfo.productWeightGrams,
+        packagingWeightGrams: storefrontWeightInfo.packagingWeightGrams,
+        actualWeightGrams: storefrontWeightInfo.actualWeightGrams,
+        billableWeightGrams: storefrontWeightInfo.billableWeightGrams,
+      } : {
+        productWeightGrams: storefrontWeightInfo.productWeightGrams,
+        packagingWeightGrams: storefrontWeightInfo.packagingWeightGrams,
+        actualWeightGrams: storefrontWeightInfo.actualWeightGrams,
+        billableWeightGrams: storefrontWeightInfo.billableWeightGrams,
+        finalShippingAmount: finalShippingFee,
+      },
+      hasDesignService,
+      designServiceFee: activeDesignFee,
       artworkFee: rawArtworkPrice,
       specificationsSnapshot,
       selectedOptionsSummary,
@@ -948,8 +1274,15 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
         showDesignBrief: resolvedArtwork.showDesignBrief,
         requireReferenceImage: resolvedArtwork.requireReferenceImage,
         matchedRuleName: resolvedArtwork.matchedRuleName,
-        designServiceRequirement: product.designServiceRequirement || 'DISABLED',
-        designServiceFee: rawDesignFee,
+        designServiceRequirement:
+          hasDesignService
+            ? 'REQUIRED'
+            : (resolvedArtwork.designServiceRequirement && resolvedArtwork.designServiceRequirement !== 'DISABLED'
+                ? resolvedArtwork.designServiceRequirement
+                : product.designServiceRequirement === 'REQUIRED'
+                ? 'REQUIRED'
+                : 'DISABLED'),
+        designServiceFee: isDesignApplicable ? rawDesignFee : 0,
         artworkPrice: rawArtworkPrice,
       },
       artworkFile: uploadedArtwork,
@@ -991,7 +1324,7 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white pb-28 sm:pb-24">
       {/* ======================================================== */}
       {/* BREADCRUMBS                                              */}
       {/* ======================================================== */}
@@ -1536,14 +1869,31 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
                 group.options && group.options.length > 0
                   ? group.options.map((o) => {
                       let modifierText = '';
-                      const numMod = Number(o.priceModifier);
-                      if (numMod > 0) {
-                        modifierText = o.priceModifierType === 'PERCENTAGE' ? `+${numMod}%` : `+₹${numMod.toFixed(0)}`;
+                      const addonCharge = getOptionAdditionalTierCharge(
+                        product.additionalPricings,
+                        group.code,
+                        o.value,
+                        selectedQuantity
+                      );
+
+                      if (addonCharge && !addonCharge.isExcluded && addonCharge.unitPrice > 0) {
+                        if (addonCharge.chargeBasis === 'PERCENTAGE') {
+                          modifierText = `+${addonCharge.unitPrice}%`;
+                        } else {
+                          modifierText = `+₹${addonCharge.unitPrice % 1 === 0 ? addonCharge.unitPrice : addonCharge.unitPrice.toFixed(2)}`;
+                        }
+                      } else {
+                        const numMod = Number(o.priceModifier);
+                        if (numMod > 0) {
+                          modifierText = o.priceModifierType === 'PERCENTAGE' ? `+${numMod}%` : `+₹${numMod.toFixed(0)}`;
+                        }
                       }
+
                       return {
                         id: o.value,
                         title: o.label,
                         subtitle: modifierText || undefined,
+                        isExcluded: addonCharge?.isExcluded,
                       };
                     })
                   : FALLBACK_GROUP_OPTIONS[group.code] || [];
@@ -1634,14 +1984,17 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
                         <button
                           key={`${group.code}-${opt.id || optIdx}`}
                           type="button"
+                          disabled={opt.isExcluded}
                           onClick={handleCardClick}
                           className={`relative p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                            isSelected
+                            opt.isExcluded
+                              ? 'border-slate-200 bg-slate-100 opacity-60 cursor-not-allowed'
+                              : isSelected
                               ? 'border-2 border-[#FFED00] bg-amber-50/20 shadow-xs'
                               : 'border-slate-200 bg-white hover:border-slate-300'
                           }`}
                         >
-                          {isSelected && (
+                          {isSelected && !opt.isExcluded && (
                             <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-[#FFED00] text-black flex items-center justify-center">
                               <RiCheckLine className="w-3 h-3 stroke-[2.5]" />
                             </div>
@@ -1649,11 +2002,15 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
                           <span className="text-xs font-bold text-slate-900 block">
                             {opt.title}
                           </span>
-                          {opt.subtitle && (
-                            <span className="text-[11px] text-slate-500 block mt-0.5 font-medium">
+                          {opt.isExcluded ? (
+                            <span className="text-[10px] text-rose-500 block mt-0.5 font-medium">
+                              Unavailable
+                            </span>
+                          ) : opt.subtitle ? (
+                            <span className="text-[11px] text-amber-700 font-bold block mt-0.5 font-mono">
                               {opt.subtitle}
                             </span>
-                          )}
+                          ) : null}
                         </button>
                       );
                     })}
@@ -2020,41 +2377,47 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
                   <div className="p-3 bg-white border border-slate-200/90 rounded-xl flex items-center justify-between flex-wrap gap-2">
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">
-                        Active Order Rate ({selectedQuantity.toLocaleString()} units)
+                        Base Order Rate ({selectedQuantity.toLocaleString()} units)
                       </span>
                       <div className="flex items-baseline gap-2 mt-0.5">
                         <span className="text-base font-black text-slate-950 font-mono">
-                          {formatCurrency(serverSubtotal)}
+                          {formatCurrency(Math.round((activeMatchedTier?.unitPrice || 0) * selectedQuantity * 100) / 100)}
                         </span>
                         <span className="text-xs text-slate-600 font-mono">
-                          (₹{serverUnitPrice.toFixed(2)} / unit)
+                          (₹{(activeMatchedTier?.unitPrice || 0).toFixed(2)} / unit base)
                         </span>
                       </div>
                     </div>
-                    <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md inline-flex items-center gap-1 font-mono">
-                      <RiSparklingFill className="w-3.5 h-3.5 text-emerald-600" />
-                      Dynamic Increment Pricing
+                    <span className="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-300 px-2.5 py-1 rounded-md inline-flex items-center gap-1 font-mono">
+                      Base Tier Rate
                     </span>
                   </div>
 
                   {/* Active Bulk Range Alert Banner if applicable */}
-                  {activeMatchedTier?.isRange && (
-                    <div className="p-2.5 bg-amber-50/90 border border-amber-300 rounded-xl flex items-center justify-between text-xs text-amber-950">
+                  {(activeMatchedTier?.isRange || isRangeBracketMode) && (
+                    <div className="p-2.5 bg-amber-50/90 border border-amber-300 rounded-xl flex items-center justify-between text-xs text-amber-950 flex-wrap gap-2">
                       <div className="flex items-center gap-2">
                         <RiSparklingFill className="w-4 h-4 text-amber-600 shrink-0" />
                         <div>
                           <span className="font-bold">Bulk Range Applied: </span>
                           <span>
                             Ordering <strong>{selectedQuantity} units</strong> qualifies for the{' '}
-                            <strong className="font-mono">{activeMatchedTier.minQty}–{activeMatchedTier.maxQty} pcs</strong> rate (
-                            <strong className="font-mono">₹{activeMatchedTier.unitPrice.toFixed(2)} / unit</strong>
-                            ).
+                            <strong className="font-mono">{activeMatchedTier?.minQty}–{activeMatchedTier?.maxQty} pcs</strong> rate (
+                            <strong className="font-mono">₹{(activeMatchedTier?.unitPrice || 0).toFixed(2)} / unit</strong>
+                            ). Total: <strong className="font-mono">{formatCurrency(Math.round(selectedQuantity * (activeMatchedTier?.unitPrice || 0) * 100) / 100)}</strong>.
                           </span>
                         </div>
                       </div>
-                      <span className="hidden sm:inline-block font-mono font-bold text-amber-800 text-[11px] bg-amber-100/90 px-2 py-0.5 rounded border border-amber-300 shrink-0">
-                        ₹{activeMatchedTier.unitPrice.toFixed(2)}/pc Active
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {configuredBracketWeightGrams !== null && (
+                          <span className="font-mono font-bold text-slate-700 text-[11px] bg-white px-2 py-0.5 rounded border border-slate-300">
+                            Weight: {configuredBracketWeightGrams >= 1000 ? `${(configuredBracketWeightGrams / 1000).toFixed(2)} kg` : `${configuredBracketWeightGrams} g`}/pc
+                          </span>
+                        )}
+                        <span className="font-mono font-bold text-amber-800 text-[11px] bg-amber-100/90 px-2 py-0.5 rounded border border-amber-300 shrink-0">
+                          ₹{(activeMatchedTier?.unitPrice || 0).toFixed(2)}/pc Active
+                        </span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2066,12 +2429,6 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
                       const isSelected = tier.isRange
                         ? selectedQuantity >= tier.minQty && selectedQuantity <= tier.maxQty
                         : selectedQuantity === tier.quantity;
-
-                      const displayTotalPrice = isSelected
-                        ? serverSubtotal
-                        : tier.totalPrice;
-
-                      const displayUnitPrice = isSelected && !tier.isRange ? serverUnitPrice : tier.unitPrice;
 
                       return (
                         <button
@@ -2103,15 +2460,13 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
                           </span>
 
                           <span className="text-sm font-black text-slate-950 font-mono block mt-0.5">
-                            {isSelected
-                              ? formatCurrency(displayTotalPrice)
-                              : tier.isRange
+                            {tier.isRange
                               ? `From ${formatCurrency(tier.totalPrice)}`
-                              : formatCurrency(displayTotalPrice)}
+                              : formatCurrency(tier.totalPrice)}
                           </span>
 
                           <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-                            ₹{displayUnitPrice.toFixed(2)} / unit
+                            ₹{tier.unitPrice.toFixed(2)} / unit
                           </span>
                         </button>
                       );
@@ -2128,12 +2483,12 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
                             Ordering <strong>{selectedQuantity} units</strong> qualifies for the{' '}
                             <strong className="font-mono">{activeMatchedTier.minQty}–{activeMatchedTier.maxQty} pcs</strong> rate (
                             <strong className="font-mono">₹{activeMatchedTier.unitPrice.toFixed(2)} / unit</strong>
-                            ). Price = <strong className="font-mono">{selectedQuantity} × ₹{activeMatchedTier.unitPrice.toFixed(2)} = {formatCurrency(serverSubtotal)}</strong>.
+                            ). Base Price = <strong className="font-mono">{selectedQuantity} × ₹{activeMatchedTier.unitPrice.toFixed(2)} = {formatCurrency(Math.round(selectedQuantity * activeMatchedTier.unitPrice * 100) / 100)}</strong>.
                           </span>
                         </div>
                       </div>
                       <span className="hidden sm:inline-block font-mono font-bold text-amber-800 text-[11px] bg-amber-100/90 px-2 py-0.5 rounded border border-amber-300 shrink-0">
-                        ₹{activeMatchedTier.unitPrice.toFixed(2)}/pc Active
+                        ₹{activeMatchedTier.unitPrice.toFixed(2)}/pc Base
                       </span>
                     </div>
                   )}
@@ -2190,7 +2545,7 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
 
                 <div className="text-right">
                   <div className="text-2xl sm:text-3xl font-black font-mono text-white">
-                    {formatCurrency(serverSubtotal)}
+                    {formatCurrency(effectiveSubtotal)}
                   </div>
                   <div className="text-[10px] text-slate-400 font-mono">
                     Subtotal (Excl. Tax)
@@ -2199,16 +2554,126 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
               </div>
 
               {/* Price Details Bar */}
-              <div className="pt-2.5 border-t border-slate-800 flex items-center justify-between text-xs text-slate-300 flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-400">Estimated GST (18%):</span>
-                  <span className="font-mono text-slate-200">+{formatCurrency(serverTax)}</span>
-                </div>
-                <div className="flex items-center gap-2 font-bold text-white">
-                  <span className="text-slate-300">Total Payable:</span>
-                  <span className="font-mono text-amber-400 font-black text-base">{formatCurrency(serverGrandTotal)}</span>
+              <div className="pt-2.5 border-t border-slate-800 space-y-1.5">
+                {activeDesignFee > 0 && (
+                  <div className="flex items-center justify-between text-xs text-amber-300 font-mono">
+                    <span className="flex items-center gap-1.5 text-amber-400">
+                      <RiSparklingFill className="w-3.5 h-3.5 text-amber-400" />
+                      Design Assistance Fee:
+                    </span>
+                    <span className="font-bold">+{formatCurrency(activeDesignFee)}</span>
+                  </div>
+                )}
+                {shippingQuote && (
+                  <div className="flex items-center justify-between text-xs text-slate-300 font-mono">
+                    <span className="flex items-center gap-1.5 text-sky-400">
+                      <RiTruckLine className="w-3.5 h-3.5" />
+                      Shipping ({shippingQuote.zoneCode || 'Standard'}):
+                    </span>
+                    <span className="font-bold">
+                      {shippingQuote.isFreeShippingApplied ? (
+                        <span className="text-emerald-400">FREE</span>
+                      ) : Number(shippingQuote.finalShippingAmount) > 0 ? (
+                        `+${formatCurrency(shippingQuote.finalShippingAmount)}`
+                      ) : (
+                        <span className="text-amber-300">Pending PIN</span>
+                      )}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-xs text-slate-300 flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400">Estimated GST (18%):</span>
+                    <span className="font-mono text-slate-200">+{formatCurrency(effectiveTax)}</span>
+                  </div>
+                  <div className="flex items-center gap-2 font-bold text-white">
+                    <span className="text-slate-300">Total Payable:</span>
+                    <span className="font-mono text-amber-400 font-black text-base">{formatCurrency(effectiveGrandTotal)}</span>
+                  </div>
                 </div>
               </div>
+            </div>
+
+            {/* Delivery Pincode & Authoritative Weight Box */}
+            <div className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-2xs space-y-2.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <RiTruckLine className="w-4 h-4 text-sky-600" />
+                  Estimated Weight & Shipping
+                </span>
+                {shippingQuote?.estimatedDeliveryDays && (
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    ETA: {shippingQuote.estimatedDeliveryDays}
+                  </span>
+                )}
+              </div>
+
+              {/* Weight Breakdown Summary */}
+              <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200/80 space-y-1.5 text-[11px]">
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>Estimated Product Weight:</span>
+                  <span className="font-mono font-bold text-slate-900">
+                    {storefrontWeightInfo.productWeightGrams >= 1000
+                      ? `${(storefrontWeightInfo.productWeightGrams / 1000).toFixed(2)} kg`
+                      : `${storefrontWeightInfo.productWeightGrams} g`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-500">
+                  <span>Packaging Box (Tare):</span>
+                  <span className="font-mono">
+                    +{storefrontWeightInfo.packagingWeightGrams} g
+                  </span>
+                </div>
+                <div className="flex items-center justify-between pt-1 border-t border-slate-200 font-bold text-slate-900">
+                  <span>Estimated Shipment Weight:</span>
+                  <span className="font-mono text-sky-700">
+                    {storefrontWeightInfo.actualWeightGrams >= 1000
+                      ? `${(storefrontWeightInfo.actualWeightGrams / 1000).toFixed(2)} kg`
+                      : `${storefrontWeightInfo.actualWeightGrams} g`}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    placeholder="Enter 6-digit PIN code..."
+                    value={deliveryPincode}
+                    onChange={(e) => setDeliveryPincode(e.target.value.replace(/\D/g, ''))}
+                    className="w-full px-3 py-1.5 font-mono text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={deliveryPincode.length !== 6 || isCalculatingPrice}
+                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition disabled:opacity-40 cursor-pointer"
+                >
+                  Check
+                </button>
+              </div>
+
+              {shippingQuote && deliveryPincode.length === 6 ? (
+                <div className="text-[11px] text-slate-600 flex items-center justify-between pt-1 border-t border-slate-100">
+                  <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                    <RiCheckboxCircleLine className="w-3.5 h-3.5 text-emerald-600" />
+                    Serviceable ({shippingQuote.zoneCode} Zone)
+                  </span>
+                  <span className="font-mono font-bold text-slate-900">
+                    {shippingQuote.isFreeShippingApplied
+                      ? 'FREE Delivery'
+                      : Number(shippingQuote.finalShippingAmount) > 0
+                      ? formatCurrency(shippingQuote.finalShippingAmount)
+                      : 'Pending Quote'}
+                  </span>
+                </div>
+              ) : (
+                <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100">
+                  <span className="italic">Delivery Pincode:</span>
+                  <span className="font-semibold text-amber-600">Enter PIN to calculate</span>
+                </div>
+              )}
             </div>
 
             {/* ====================================================== */}
@@ -2296,10 +2761,28 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
         isOpen={isCartDrawerOpen}
         onClose={() => setIsCartDrawerOpen(false)}
         activeItem={activeCartItem}
-        onUpdateItem={(updated) => setActiveCartItem(updated)}
-        onProceedToCheckout={() => {
-          if (activeCartItem) {
-            sessionStorage.setItem('pb2_active_cart', JSON.stringify(activeCartItem));
+        onUpdateItem={(updated) => {
+          setActiveCartItem((prev) => {
+            if (!prev) return updated;
+            if (
+              prev.hasDesignService === updated.hasDesignService &&
+              prev.subtotal === updated.subtotal &&
+              prev.grandTotal === updated.grandTotal &&
+              prev.quantity === updated.quantity &&
+              prev.designServiceFee === updated.designServiceFee &&
+              prev.artworkFile?.fileUrl === updated.artworkFile?.fileUrl &&
+              JSON.stringify(prev.artworkFiles || {}) === JSON.stringify(updated.artworkFiles || {})
+            ) {
+              return prev;
+            }
+            return updated;
+          });
+        }}
+        onProceedToCheckout={(finalItem?: CartDrawerItem) => {
+          const itemToPersist = finalItem || activeCartItem;
+          if (itemToPersist) {
+            setActiveCartItem(itemToPersist);
+            sessionStorage.setItem('pb2_active_cart', JSON.stringify(itemToPersist));
           }
           if (user) {
             router.push('/checkout');
@@ -2315,13 +2798,15 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
         onClose={() => setIsAuthModalOpen(false)}
         onSuccess={() => {
           setIsAuthModalOpen(false);
+          setIsCartDrawerOpen(false);
           router.push('/checkout');
         }}
+        zIndex="z-[200]"
       />
 
       {/* Bulk Paste Modal for Per-Item Personalization */}
       {isBulkPasteModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-2xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-2xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
@@ -2375,7 +2860,7 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
 
       {/* 3D / High-Res Preview Modal */}
       {isPreviewModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-2xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-2xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
@@ -2422,7 +2907,7 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
 
       {/* Designer Support Helpline Modal */}
       {isDesignerModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-2xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-2xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
@@ -2459,6 +2944,86 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
           </div>
         </div>
       )}
+
+      {/* ======================================================== */}
+      {/* STICKY BOTTOM DYNAMIC PRICING & ACTION BAR               */}
+      {/* ======================================================== */}
+      <div className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-[0_-8px_30px_rgba(0,0,0,0.12)] py-3 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 flex-wrap sm:flex-nowrap">
+          {/* Left: Product & Active Selections Summary */}
+          <div className="min-w-0 flex items-center gap-3">
+            {galleryImages[0]?.url && (
+              <div className="w-11 h-11 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden shrink-0 hidden sm:block relative">
+                <img
+                  src={galleryImages[0].url}
+                  alt={product.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+            <div className="min-w-0 space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                  {product.name}
+                </span>
+                <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded shrink-0">
+                  {selectedQuantity} {selectedQuantity === 1 ? 'unit' : 'units'}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium truncate">
+                <span className="font-mono">₹{serverUnitPrice.toFixed(2)}/unit</span>
+                {activeDesignFee > 0 ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-amber-900 bg-amber-100 border border-amber-300 px-1.5 py-0.2 rounded">
+                    <RiSparklingFill className="w-2.5 h-2.5 text-amber-600" />
+                    +₹{activeDesignFee.toFixed(2)} Design
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
+                    Customer Files
+                  </span>
+                )}
+                <span className="text-slate-300">•</span>
+                {shippingQuote?.isFreeShippingApplied ? (
+                  <span className="text-emerald-700 font-semibold">Free Delivery</span>
+                ) : shippingQuote && Number(shippingQuote.finalShippingAmount) > 0 ? (
+                  <span className="text-slate-700 font-mono font-semibold">+{formatCurrency(shippingQuote.finalShippingAmount)} Delivery</span>
+                ) : deliveryPincode.length === 6 ? (
+                  <span className="text-sky-700 font-semibold">Standard Delivery</span>
+                ) : (
+                  <span className="text-slate-500">Shipping at Checkout</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Dynamic Price & Add to Cart Action */}
+          <div className="flex items-center gap-4 shrink-0 w-full sm:w-auto justify-between sm:justify-end">
+            <div className="text-right">
+              <div className="flex items-baseline gap-1.5 justify-end">
+                <span className="text-[10px] text-slate-500 uppercase tracking-wider font-mono font-semibold">
+                  Total (Incl. GST):
+                </span>
+                <span className="text-xl sm:text-2xl font-black font-mono text-slate-950">
+                  {formatCurrency(effectiveGrandTotal)}
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-500 font-mono">
+                Subtotal: {formatCurrency(effectiveSubtotal)} • GST (18%): {formatCurrency(effectiveTax)}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleAddToCart}
+              disabled={isCalculatingPrice}
+              className="h-11 sm:h-12 px-5 sm:px-7 bg-[#FFED00] hover:bg-[#F2E100] text-black font-bold text-xs sm:text-sm rounded-xl border border-black/10 shadow-xs flex items-center justify-center gap-2 transition-transform active:scale-95 cursor-pointer disabled:opacity-50 shrink-0"
+            >
+              <RiShoppingCart2Line className="w-4 h-4" />
+              <span>Add to Cart</span>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

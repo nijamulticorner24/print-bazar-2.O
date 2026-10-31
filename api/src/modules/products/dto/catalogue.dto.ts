@@ -603,8 +603,8 @@ export class CreateProductDto {
   slug: string;
 
   @IsString()
-  @IsNotEmpty()
-  sku: string;
+  @IsOptional()
+  sku?: string;
 
   @IsString()
   @IsOptional()
@@ -720,6 +720,17 @@ export class CreateProductDto {
   @Min(0)
   @IsOptional()
   unitWeightGrams?: number;
+
+  @IsOptional()
+  bulkTierWeights?: any[];
+
+  @IsString()
+  @IsOptional()
+  packagingProfileId?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isShippable?: boolean;
 
   @IsNumber()
   @Min(0)
@@ -934,6 +945,17 @@ export class UpdateProductDto {
   @Min(0)
   @IsOptional()
   unitWeightGrams?: number;
+
+  @IsOptional()
+  bulkTierWeights?: any[];
+
+  @IsString()
+  @IsOptional()
+  packagingProfileId?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isShippable?: boolean;
 
   @IsNumber()
   @Min(0)

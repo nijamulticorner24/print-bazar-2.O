@@ -21,6 +21,7 @@ import {
 } from 'react-icons/ri';
 import { ProductConfigurationRule, ProductOptionGroup, ProductOptionRequirement } from '@/lib/api';
 import { Modal } from '@/components/ui';
+import { StudioTab } from './StudioTabReview';
 import {
   ArtworkSlotConfig,
   normalizeKey,
@@ -44,6 +45,7 @@ export interface StudioTabArtworkConditionsProps {
   setDesignServiceRequirement?: (v: ProductOptionRequirement) => void;
   designServiceFee?: number | string;
   setDesignServiceFee?: (v: number | string) => void;
+  onNavigateToTab?: (tab: StudioTab) => void;
   onChange?: () => void;
 }
 
@@ -65,6 +67,7 @@ export function StudioTabArtworkConditions({
   setDesignServiceRequirement,
   designServiceFee = 150,
   setDesignServiceFee,
+  onNavigateToTab,
   onChange,
 }: StudioTabArtworkConditionsProps) {
   // ---------------------------------------------------------------------------
@@ -92,30 +95,31 @@ export function StudioTabArtworkConditions({
     }
     if (referenced.size > 0) return Array.from(referenced);
 
-    // Heuristic: automatically select printing location & design service groups if present
+    // Heuristic: automatically select printing location & design service groups ONLY if explicitly present
     const auto: string[] = [];
     for (const g of optionGroups) {
       const c = g.code.toLowerCase();
       const n = g.name.toLowerCase();
-      if (
+      const isSideOrLocation =
         c.includes('location') ||
         c.includes('side') ||
-        c.includes('print') ||
+        c.includes('print_side') ||
+        c.includes('printing_side') ||
+        c.includes('print_location') ||
         n.includes('location') ||
-        n.includes('side')
-      ) {
-        if (!auto.includes(g.code)) auto.push(g.code);
-      }
-      if (
+        n.includes('side');
+      const isDesignOrArtwork =
         c.includes('design') ||
         n.includes('design') ||
         c.includes('artwork') ||
-        n.includes('artwork')
-      ) {
+        n.includes('artwork');
+
+      if (isSideOrLocation || isDesignOrArtwork) {
         if (!auto.includes(g.code)) auto.push(g.code);
       }
     }
-    return auto.length > 0 ? auto : optionGroups.slice(0, 2).map((g) => g.code);
+    // If no design or artwork related groups exist, DO NOT select default groups
+    return auto;
   });
 
   const controllingGroups = useMemo(() => {
@@ -487,7 +491,7 @@ export function StudioTabArtworkConditions({
   // ---------------------------------------------------------------------------
   const handleApplyStandardDefaults = () => {
     if (combinations.length === 0) {
-      alert('Please select at least one condition group first.');
+      alert('Please select at least one artwork or design controlling group above (e.g. Printing Side, Design Required) before applying presets.');
       return;
     }
 
@@ -688,14 +692,27 @@ export function StudioTabArtworkConditions({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleApplyStandardDefaults}
-            className="flex items-center gap-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-[#0F172A] font-bold text-xs px-3.5 py-2 rounded-lg border border-[#E3A008]/40 shadow-2xs transition active:scale-95 shrink-0"
-          >
-            <RiSparklingFill className="w-3.5 h-3.5 text-amber-700" />
-            <span>Apply Standard Print Presets</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {selectedGroupCodes.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedGroupCodes([])}
+                className="px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition cursor-pointer"
+                title="Deselect all controlling groups"
+              >
+                Clear Selection
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleApplyStandardDefaults}
+              className="flex items-center gap-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-[#0F172A] font-bold text-xs px-3.5 py-2 rounded-lg border border-[#E3A008]/40 shadow-2xs transition active:scale-95 shrink-0"
+            >
+              <RiSparklingFill className="w-3.5 h-3.5 text-amber-700" />
+              <span>Apply Standard Print Presets</span>
+            </button>
+          </div>
         </div>
 
         {optionGroups.length === 0 ? (
@@ -773,8 +790,14 @@ export function StudioTabArtworkConditions({
         </div>
 
         {combinations.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 text-xs">
-            Please select at least one condition group above to generate artwork rules.
+          <div className="p-12 text-center text-slate-500 text-xs space-y-2">
+            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+              <RiFilter3Line className="w-5 h-5" />
+            </div>
+            <div className="font-semibold text-slate-800 text-sm">No Artwork Controlling Groups Selected</div>
+            <p className="text-slate-500 max-w-md mx-auto text-xs leading-relaxed">
+              This product will use global artwork settings (Policy: <strong className="text-slate-700">{artworkRequirement}</strong>). If upload slots or design fees depend on specific choices (e.g., Printing Side, Design Required), select one or more groups in Section A above.
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -903,6 +926,50 @@ export function StudioTabArtworkConditions({
             </table>
           </div>
         )}
+      </div>
+
+      {/* Step 4 Bottom Navigation Bar */}
+      <div className="bg-white border border-slate-200/90 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          {onNavigateToTab && (
+            <button
+              type="button"
+              onClick={() => {
+                onNavigateToTab('RULES');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="px-3.5 py-2 border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-50 transition cursor-pointer"
+            >
+              ← Back to Step 3: Option Dependencies & Rules
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+          <span className="font-semibold text-slate-900">Step 4 Summary:</span>
+          <span className="bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-mono text-[11px]">
+            Policy: {artworkRequirement}
+          </span>
+          <span className="bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded font-mono font-bold text-[11px]">
+            {designServiceRequirement === 'DISABLED' ? 'No Design Fee' : `Design Fee: ₹${designServiceFee}`}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {onNavigateToTab && (
+            <button
+              type="button"
+              onClick={() => {
+                onNavigateToTab('PRICING');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="flex items-center gap-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-[#0F172A] font-bold text-xs px-4 py-2.5 rounded-lg border border-[#E3A008]/40 shadow-xs transition active:scale-95 cursor-pointer"
+            >
+              <span>Next: 5. Pricing</span>
+              <RiArrowRightLine className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Row Edit Modal */}

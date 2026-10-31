@@ -11,6 +11,8 @@ interface ModalProps {
   subtitle?: React.ReactNode;
   children: React.ReactNode;
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | '6xl' | 'full';
+  zIndex?: string;
+  className?: string;
 }
 
 const maxWidthMap = {
@@ -33,6 +35,8 @@ export function Modal({
   subtitle,
   children,
   maxWidth = 'md',
+  zIndex = 'z-[200]',
+  className,
 }: ModalProps) {
   useEffect(() => {
     if (isOpen) {
@@ -48,10 +52,10 @@ export function Modal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+    <div className={cn('fixed inset-0 flex items-center justify-center p-4 sm:p-6 overflow-y-auto', zIndex)}>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+        className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
         onClick={onClose}
       />
 
@@ -59,7 +63,8 @@ export function Modal({
       <div
         className={cn(
           'relative w-full bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden z-10 animate-in zoom-in-95 duration-200',
-          maxWidthMap[maxWidth]
+          maxWidthMap[maxWidth],
+          className
         )}
       >
         {(title || subtitle) && (

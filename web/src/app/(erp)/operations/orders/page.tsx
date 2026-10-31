@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth-context';
 import {
   RiSearchLine,
   RiFilter3Line,
@@ -135,6 +137,8 @@ const DEFAULT_OPERATORS: StaffAssignee[] = [
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 
 export default function OrderAssignmentCenterPage() {
+  const router = useRouter();
+  const { user: currentUser, isAuthenticated } = useAuth();
   const { isConnected, lastEvent, subscribeToOperations } = useSocket();
 
   // Primary state
@@ -523,6 +527,20 @@ export default function OrderAssignmentCenterPage() {
 
     setIsSubmitting(true);
 
+    const token = typeof window !== 'undefined' ? localStorage.getItem('pb2_token') : null;
+    if (!token || !isAuthenticated) {
+      alert(
+        'Authentication Required:\n\n' +
+        'You are not currently authenticated as an Operations Coordinator.\n\n' +
+        'Please sign in with your Operations account:\n' +
+        'Email: operations@printbazzar.com\n' +
+        'Password: Admin@12345'
+      );
+      router.push('/login?returnTo=/operations/orders');
+      setIsSubmitting(false);
+      return;
+    }
+
     const staffList = drawerType === 'DESIGN' ? designers : operators;
     const chosenStaff = staffList.find((s) => s.id === selectedStaffId);
     const staffName = chosenStaff?.fullName || 'Assigned Staff';
@@ -567,7 +585,25 @@ export default function OrderAssignmentCenterPage() {
       await loadData();
     } catch (err: any) {
       console.error('Assignment error:', err);
-      alert(err.message || 'Failed to complete operational assignment.');
+      const isAuthErr =
+        err.message?.includes('Authentication') ||
+        err.message?.includes('Unauthorized') ||
+        err.message?.includes('jwt') ||
+        err.message?.includes('not authorized') ||
+        err.message?.includes('401') ||
+        err.message?.includes('403');
+      if (isAuthErr) {
+        alert(
+          'Authentication Required:\n\n' +
+          'Your operational session is missing, expired, or unauthorized.\n\n' +
+          'Please sign in as an Operations Coordinator:\n' +
+          'Email: operations@printbazzar.com\n' +
+          'Password: Admin@12345'
+        );
+        router.push('/login?returnTo=/operations/orders');
+      } else {
+        alert(err.message || 'Failed to complete operational assignment.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -1517,6 +1553,25 @@ export default function OrderAssignmentCenterPage() {
                   </div>
                 </div>
               </div>
+
+              {(!isAuthenticated || (currentUser?.role !== 'OPERATIONAL_MANAGER' && currentUser?.role !== 'ADMIN_MANAGER')) && (
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 space-y-1.5 shadow-2xs">
+                  <div className="flex items-center gap-2 font-bold">
+                    <RiAlertLine className="h-4 w-4 text-amber-600 shrink-0" />
+                    <span>Operations Coordinator Login Required</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800 leading-relaxed">
+                    You are currently {currentUser ? `signed in as ${currentUser.fullName} (${currentUser.role})` : 'not signed in'}. Assigning designers and operators requires an <strong>Operations Coordinator</strong> account.
+                  </p>
+                  <Link
+                    href={`/login?returnTo=${encodeURIComponent('/operations/orders')}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] transition shadow-xs"
+                  >
+                    <span>Sign In as Operations Coordinator (operations@printbazzar.com)</span>
+                    <RiArrowRightLine className="h-3 w-3" />
+                  </Link>
+                </div>
+              )}
 
               {/* Staff Person Selector Section */}
               <div className="space-y-3">

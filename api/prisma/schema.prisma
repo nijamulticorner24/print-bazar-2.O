@@ -400,6 +400,12 @@ model Product {
   personalizationTemplate     PersonalizationTemplate? @relation(fields: [personalizationTemplateId], references: [id], onDelete: SetNull)
   personalizationConfig       Json?                    // Optional product overrides: { isEnabled: boolean, requiredOverrides?: Record<string, boolean> }
 
+  // Enterprise Shipping & Logistics Packaging & Slabs
+  packagingProfileId         String?
+  packagingProfile           ShippingPackagingProfile? @relation(fields: [packagingProfileId], references: [id], onDelete: SetNull)
+  isShippable                Boolean                  @default(true)
+  bulkTierWeights            Json?                    // Model B Bulk Range: [{ minQty: number, maxQty: number, unitWeightGrams: number }]
+
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
@@ -1098,17 +1104,154 @@ model ShippingGstSetting {
   updatedAt             DateTime @updatedAt
 }
 
-model ShippingZone {
-  id             String   @id @default(uuid())
-  zoneName       String
-  pincodePrefix  String   @unique
-  shippingCharge Decimal  @db.Decimal(12, 2)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+model ShippingConfiguration {
+  id                           String   @id @default("default")
+  businessName                 String   @default("PRINT BAZAAR 2.0")
+  originAddress                String   @default("10/24 Industrial Estate, Peelamedu")
+  originCity                   String   @default("Coimbatore")
+  originState                  String   @default("Tamil Nadu")
+  originCountry                String   @default("India")
+  originPincode                String   @default("641004")
+  originPhone                  String?
+  originEmail                  String?
+  isWeightBasedEnabled         Boolean  @default(true)
+  isFixedShippingEnabled       Boolean  @default(false)
+  isPincodeZoneEnabled         Boolean  @default(true)
+  isVolumetricEnabled          Boolean  @default(false)
+  volumetricDivisor            Float    @default(5000.0)
+  weightUnit                   String   @default("GRAMS") // GRAMS or KILOGRAMS
+  weightRoundingMethod         String   @default("NEXT_SLAB") // NEXT_SLAB, NEAREST_INCREMENT, EXACT
+  minShippingCharge            Decimal  @default(40.00) @db.Decimal(12, 2)
+  freeShippingThreshold        Decimal  @default(2000.00) @db.Decimal(12, 2)
+  isFreeShippingEnabled        Boolean  @default(true)
+  defaultPackagingWeightGrams  Float    @default(200.0)
+  defaultPackagingProfileId    String?
+  gstRate                      Decimal  @default(18.00) @db.Decimal(5, 2)
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+}
 
-  @@index([pincodePrefix])
+model ShippingZone {
+  id                     String              @id @default(uuid())
+  zoneCode               String?             @unique
+  zoneName               String
+  pincodePrefix          String?             @unique // Optional unique prefix for legacy fallback
+  shippingCharge         Decimal             @default(100.00) @db.Decimal(12, 2) // Base fallback rate
+  zoneSurcharge          Decimal             @default(0.00) @db.Decimal(12, 2)
+  description            String?
+  estimatedDeliveryDays  String?
+  isActive               Boolean             @default(true)
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  pincodes               ShippingPincode[]
+  rateCards              ShippingRateCard[]
+
+  @@index([zoneCode])
   @@index([isActive])
+}
+
+model ShippingPincode {
+  id                    String       @id @default(uuid())
+  pincode               String       @unique
+  city                  String
+  district              String?
+  state                 String
+  country               String       @default("India")
+  zoneId                String
+  zone                  ShippingZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  isServiceable         Boolean      @default(true)
+  additionalSurcharge   Decimal      @default(0.00) @db.Decimal(12, 2)
+  deliveryRestrictions  String?
+  estimatedDays         String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  @@index([pincode])
+  @@index([city])
+  @@index([state])
+  @@index([zoneId])
+  @@index([isServiceable])
+}
+
+model ShippingRateCard {
+  id                    String              @id @default(uuid())
+  name                  String
+  zoneId                String
+  zone                  ShippingZone        @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  minShippingCharge     Decimal             @default(40.00) @db.Decimal(12, 2)
+  additionalWeightPerKg Decimal             @default(25.00) @db.Decimal(12, 2)
+  effectiveFrom         DateTime            @default(now())
+  effectiveTo           DateTime?
+  isActive              Boolean             @default(true)
+  priority              Int                 @default(1)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  slabs                 ShippingWeightSlab[]
+
+  @@index([zoneId])
+  @@index([isActive])
+}
+
+model ShippingWeightSlab {
+  id             String           @id @default(uuid())
+  rateCardId     String
+  rateCard       ShippingRateCard @relation(fields: [rateCardId], references: [id], onDelete: Cascade)
+  minWeightGrams Float
+  maxWeightGrams Float
+  rate           Decimal          @db.Decimal(12, 2)
+  sortOrder      Int              @default(0)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([rateCardId])
+  @@index([minWeightGrams, maxWeightGrams])
+}
+
+model ShippingPackagingProfile {
+  id                     String    @id @default(uuid())
+  name                   String
+  type                   String    @default("CARTON") // CARTON, BUNDLE, TUBE, ENVELOPE, CUSTOM
+  weightGrams            Float     @default(200.0)
+  lengthMm               Float?
+  widthMm                Float?
+  heightMm               Float?
+  maxWeightCapacityGrams Float?
+  packagingCharge        Decimal   @default(0.00) @db.Decimal(12, 2)
+  isActive               Boolean   @default(true)
+  isDefault              Boolean   @default(false)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  products               Product[]
+
+  @@index([isActive])
+  @@index([isDefault])
+}
+
+model ShippingCalculationSnapshot {
+  id                     String   @id @default(uuid())
+  orderId                String?
+  destinationPincode     String
+  zoneCode               String
+  productWeightGrams     Float
+  packagingWeightGrams   Float
+  actualWeightGrams      Float
+  volumetricWeightGrams  Float?
+  billableWeightGrams    Float
+  rateCardId             String?
+  matchedSlabId          String?
+  baseShippingCharge     Decimal  @db.Decimal(12, 2)
+  additionalWeightCharge Decimal  @default(0.00) @db.Decimal(12, 2)
+  surchargeTotal         Decimal  @default(0.00) @db.Decimal(12, 2)
+  isFreeShipping         Boolean  @default(false)
+  finalShippingAmount    Decimal  @db.Decimal(12, 2)
+  calculationBreakdown   Json?
+  createdAt              DateTime @default(now())
+
+  @@index([orderId])
+  @@index([destinationPincode])
 }
 
 // ==========================================

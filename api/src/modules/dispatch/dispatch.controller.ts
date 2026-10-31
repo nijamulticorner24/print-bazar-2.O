@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { DispatchService, CourierHandoverDto, StorePickupHandoverDto } from './dispatch.service';
 import { JwtAuthGuard, RolesGuard } from '../../common/guards/auth.guard';
@@ -11,6 +11,24 @@ import { UserRole, JwtPayload } from '../../common/types/roles';
 @Controller('dispatch')
 export class DispatchController {
   constructor(private readonly dispatchService: DispatchService) {}
+
+  @Get(':orderId/weight-details')
+  @Roles(UserRole.DISPATCH_LOGISTICS, UserRole.ADMIN_MANAGER, UserRole.PACKING_OPERATOR)
+  @ApiOperation({ summary: 'Get calculated vs measured weight and shipping charge details for an order' })
+  async getOrderDispatchDetails(@Param('orderId') orderId: string) {
+    return this.dispatchService.getOrderDispatchDetails(orderId);
+  }
+
+  @Post(':orderId/adjust-weight')
+  @Roles(UserRole.DISPATCH_LOGISTICS, UserRole.ADMIN_MANAGER)
+  @ApiOperation({ summary: 'Record actual scale measured shipment weight with audited variance recalculation' })
+  async adjustDispatchWeight(
+    @Param('orderId') orderId: string,
+    @Body() body: { measuredWeightGrams: number; reason?: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.dispatchService.adjustDispatchWeight(orderId, body, user.sub);
+  }
 
   @Post('courier-handover')
   @Roles(UserRole.DISPATCH_LOGISTICS, UserRole.ADMIN_MANAGER)

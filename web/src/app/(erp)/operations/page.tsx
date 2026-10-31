@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth-context';
 import {
   RiPulseLine,
   RiUserFollowLine,
@@ -25,6 +27,8 @@ import { Button, Badge, StatusBadge } from '@/components/ui';
 import { Modal } from '@/components/ui/Modal';
 
 export default function OperationsDashboardPage() {
+  const router = useRouter();
+  const { user: currentUser, isAuthenticated } = useAuth();
   const { isConnected, lastEvent, subscribeToOperations } = useSocket();
   const [metrics, setMetrics] = useState<any>(null);
   const [intakeOrders, setIntakeOrders] = useState<any[]>([]);

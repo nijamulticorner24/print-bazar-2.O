@@ -6,6 +6,7 @@ import {
   FileCheck2,
   AlertTriangle,
   CheckCircle,
+  CheckCircle2,
   Eye,
   RefreshCw,
   Send,
@@ -25,8 +26,11 @@ import {
   Phone,
   Mail,
   MessageCircle,
+  History,
+  Filter,
 } from 'lucide-react';
-import { api, resolveImageUrl } from '@/lib/api';
+import { api, resolveImageUrl, downloadFile } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 
 interface DesignQueueItem {
   id: string;
@@ -45,19 +49,44 @@ interface DesignQueueItem {
     quantity: number;
     artworkUrl?: string | null;
     artworkFile?: any;
+    artworkFiles?: any;
     referenceImageUrl?: string | null;
     referenceImage?: any;
     artworkSource?: string;
     specifications?: any;
+    personalizationData?: any;
+    personalizationRecords?: any;
     approvedArtworkVersion?: any;
+    latestArtworkVersion?: any;
     designNotes?: string | null;
   }>;
   artworkUrl?: string | null;
   referenceImageUrl?: string;
   assignedDesignerId?: string | null;
+  assignedDesignerName?: string | null;
+  assignedDesigner?: any;
+  assignedOperator?: any;
   customerNotes?: string | null;
   slaDueDate?: string;
   createdAt: string;
+  updatedAt?: string;
+  isPassedToProduction?: boolean;
+  passedToStation?: string;
+  passedToStageBadge?: string;
+  passedAt?: string | null;
+  passedByDesigner?: string | null;
+  passedPrepressNotes?: string | null;
+  latestArtworkVersion?: any;
+  approvedArtworkVersion?: any;
+  statusHistory?: Array<{
+    id: string;
+    fromStatus: string | null;
+    toStatus: string;
+    reason: string | null;
+    notes: string | null;
+    createdAt: string;
+    changedBy: string | null;
+  }>;
 }
 
 interface PreflightJob {
@@ -151,6 +180,12 @@ function isExcluded(keyOrLabel: string): boolean {
     'referenceimageurl',
     'referenceimage',
     'selecteddesignservice',
+    'artworkrequirement',
+    'designservicerequirement',
+    'referenceimagerequirement',
+    'ismultivariant',
+    'variantlines',
+    'specificationssnapshot',
     'designnotes',
     'customernotes',
     'internalnotes',
@@ -236,8 +271,58 @@ function parseSpecifications(specs: any) {
   return list;
 }
 
+function formatFieldLabel(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .split(' ')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function getPersonalizationDetails(item: any) {
+  if (!item) return null;
+  const pData = item.personalizationData || item.specifications?.personalization || null;
+  const pRecords = item.personalizationRecords || [];
+
+  const templateCode = pData?.templateCode || pData?.templateName || pData?.templateId || null;
+  const sharedValues: Record<string, any> = pData?.sharedValues || {};
+  let perItemEntries: Array<{ itemIndex?: number; values: Record<string, any> }> =
+    pData?.perItemEntries || [];
+
+  // If perItemEntries is empty or values are empty, check pRecords
+  if (perItemEntries.length === 0 || perItemEntries.every((e) => !e.values || Object.keys(e.values).length === 0)) {
+    if (pRecords && pRecords.length > 0) {
+      perItemEntries = pRecords.map((r: any, idx: number) => ({
+        itemIndex: r.itemIndex || idx + 1,
+        values: r.fieldValues || {},
+      }));
+    }
+  }
+
+  const hasShared = Object.keys(sharedValues).length > 0;
+  const hasPerItem = perItemEntries.some(
+    (e) => e.values && Object.keys(e.values).length > 0
+  );
+
+  if (!hasShared && !hasPerItem && !templateCode) {
+    return null;
+  }
+
+  return {
+    templateCode: templateCode || 'Custom Personalization',
+    sharedValues,
+    entries: perItemEntries.filter((e) => e.values && Object.keys(e.values).length > 0),
+  };
+}
+
 export default function ArtworkPrepressPage() {
-  const [activeTab, setActiveTab] = useState<'DESIGN_STUDIO' | 'PREFLIGHT'>('DESIGN_STUDIO');
+  const { user: currentUser } = useAuth();
+  const isDesigner = currentUser?.role === 'DESIGNER_PREPRESS';
+
+  const [activeTab, setActiveTab] = useState<'DESIGN_STUDIO' | 'PASSED_TO_PRODUCTION' | 'PREFLIGHT'>('DESIGN_STUDIO');
+  const [designSubFilter, setDesignSubFilter] = useState<'ALL' | 'ACTIVE' | 'PASSED'>('ALL');
+  const [scopeFilter, setScopeFilter] = useState<'ALL' | 'MINE'>('MINE');
   
   // Design Queue State
   const [designQueue, setDesignQueue] = useState<DesignQueueItem[]>([]);
@@ -251,6 +336,7 @@ export default function ArtworkPrepressPage() {
   const [prepressNotes, setPrepressNotes] = useState('');
   const [resolutionDpi, setResolutionDpi] = useState('300');
   const [isSubmittingDesign, setIsSubmittingDesign] = useState(false);
+  const [isSpecsConfirmed, setIsSpecsConfirmed] = useState(false);
 
   // Preflight State
   const [preflightJobs, setPreflightJobs] = useState<PreflightJob[]>(PREFLIGHT_JOBS);
@@ -259,16 +345,30 @@ export default function ArtworkPrepressPage() {
   const [actionError, setActionError] = useState('');
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
 
+  const activeOrders = designQueue.filter((o) => !o.isPassedToProduction);
+  const passedOrders = designQueue.filter((o) => o.isPassedToProduction);
+
+  const displayedOrders = (() => {
+    if (activeTab === 'PASSED_TO_PRODUCTION' || designSubFilter === 'PASSED') {
+      return passedOrders;
+    }
+    if (designSubFilter === 'ACTIVE') {
+      return activeOrders;
+    }
+    return designQueue;
+  })();
+
   const fetchDesignQueue = async () => {
     setIsLoadingQueue(true);
     try {
-      const data = await api.getDesignQueue(designSearch);
+      const effectiveScope = isDesigner ? 'mine' : (scopeFilter === 'MINE' ? 'mine' : 'all');
+      const data = await api.getDesignQueue(
+        designSearch,
+        'all',
+        effectiveScope,
+      );
       setDesignQueue(data || []);
       if (data && data.length > 0) {
-        if (!selectedDesignOrder) {
-          setSelectedDesignOrder(data[0]);
-        }
-
         const mappedJobs: PreflightJob[] = data.map((o: any) => {
           const firstItem = o.items?.[0];
           const artVersion = o.latestArtworkVersion || firstItem?.approvedArtworkVersion;
@@ -322,7 +422,20 @@ export default function ArtworkPrepressPage() {
 
   useEffect(() => {
     fetchDesignQueue();
-  }, [designSearch]);
+  }, [designSearch, scopeFilter, currentUser?.id]);
+
+  useEffect(() => {
+    if (displayedOrders.length > 0) {
+      const isStillSelected = displayedOrders.some(
+        (o) => (o.id || o.orderId) === (selectedDesignOrder?.id || selectedDesignOrder?.orderId),
+      );
+      if (!isStillSelected) {
+        setSelectedDesignOrder(displayedOrders[0]);
+      }
+    } else {
+      setSelectedDesignOrder(null);
+    }
+  }, [activeTab, designSubFilter, designQueue]);
 
   const handleClaimJob = async (orderId: string) => {
     try {
@@ -359,12 +472,14 @@ export default function ArtworkPrepressPage() {
         resolutionDpi: Number(resolutionDpi) || 300,
       });
 
-      setActionSuccess(`Design for Order #${selectedDesignOrder.orderNumber} successfully completed and released to Pre-Production QC!`);
+      setActionSuccess(`Design for Order #${selectedDesignOrder.orderNumber} successfully completed and routed to OE for Production Assignment!`);
       setUploadFile(null);
       setPrepressNotes('');
-      setSelectedDesignOrder(null);
-      fetchDesignQueue();
-      setTimeout(() => setActionSuccess(''), 5000);
+      setIsSpecsConfirmed(false);
+      await fetchDesignQueue();
+      setActiveTab('PASSED_TO_PRODUCTION');
+      setDesignSubFilter('PASSED');
+      setTimeout(() => setActionSuccess(''), 6000);
     } catch (err: any) {
       setActionError(err.message || 'Failed to complete design job');
     } finally {
@@ -454,15 +569,32 @@ export default function ArtworkPrepressPage() {
         {/* Tab Switcher */}
         <div className="flex items-center gap-1.5 p-1 bg-slate-100 border border-slate-200 rounded-lg">
           <button
-            onClick={() => setActiveTab('DESIGN_STUDIO')}
+            onClick={() => {
+              setActiveTab('DESIGN_STUDIO');
+              setDesignSubFilter('ACTIVE');
+            }}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md text-[13px] font-semibold transition ${
-              activeTab === 'DESIGN_STUDIO'
+              activeTab === 'DESIGN_STUDIO' && designSubFilter !== 'PASSED'
                 ? 'bg-amber-300 text-slate-900 shadow-sm border border-slate-300'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Paintbrush className="h-4 w-4" />
-            <span>Design Studio Queue ({designQueue.length})</span>
+            <span>Design Studio Queue ({activeOrders.length})</span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('PASSED_TO_PRODUCTION');
+              setDesignSubFilter('PASSED');
+            }}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md text-[13px] font-semibold transition ${
+              activeTab === 'PASSED_TO_PRODUCTION' || (activeTab === 'DESIGN_STUDIO' && designSubFilter === 'PASSED')
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <CheckCircle className="h-4 w-4" />
+            <span>Passed to Production ({passedOrders.length})</span>
           </button>
           <button
             onClick={() => setActiveTab('PREFLIGHT')}
@@ -492,39 +624,139 @@ export default function ArtworkPrepressPage() {
         </div>
       )}
 
-      {/* TAB 1: DESIGN STUDIO QUEUE (Route B: Design Service Orders) */}
-      {activeTab === 'DESIGN_STUDIO' && (
+      {/* TAB 1: DESIGN STUDIO QUEUE & PASSED DESIGNS (Route B) */}
+      {(activeTab === 'DESIGN_STUDIO' || activeTab === 'PASSED_TO_PRODUCTION') && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Column: Design Queue List */}
           <div className="lg:col-span-7 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+            <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h2 className="text-[13px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-amber-500" />
-                  <span>ROUTE B: DESIGN SERVICE QUEUE</span>
+                  {activeTab === 'PASSED_TO_PRODUCTION' || designSubFilter === 'PASSED' ? (
+                    <>
+                      <CheckCircle className="h-4 w-4 text-emerald-600" />
+                      <span>PASSED TO PRODUCTION & RELEASED DESIGNS</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 text-amber-500" />
+                      <span>ROUTE B: DESIGN SERVICE QUEUE</span>
+                    </>
+                  )}
                 </h2>
                 <p className="text-[12px] text-slate-500 mt-0.5">
-                  Orders requiring custom design preparation before Pre-Production QC.
+                  {activeTab === 'PASSED_TO_PRODUCTION' || designSubFilter === 'PASSED'
+                    ? (isDesigner
+                        ? 'Completed designs verified and routed by you to OE for Production Assignment.'
+                        : 'Completed designs verified and routed downstream to OE for Production Assignment.')
+                    : (isDesigner
+                        ? 'Orders assigned to you for custom design preparation before OE Production Assignment.'
+                        : 'Orders requiring custom design preparation before OE Production Assignment.')}
                 </p>
               </div>
-              <button
-                onClick={fetchDesignQueue}
-                className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-200 rounded transition"
-                title="Refresh Queue"
-              >
-                <RefreshCw className={`h-4 w-4 ${isLoadingQueue ? 'animate-spin' : ''}`} />
-              </button>
+
+              <div className="flex items-center flex-wrap gap-2">
+                {/* Subfilter pills */}
+                <div className="flex items-center gap-1 bg-white p-1 rounded-md border border-slate-200 text-xs">
+                  <button
+                    onClick={() => {
+                      setActiveTab('DESIGN_STUDIO');
+                      setDesignSubFilter('ALL');
+                    }}
+                    className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+                      activeTab === 'DESIGN_STUDIO' && designSubFilter === 'ALL'
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    All ({designQueue.length})
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab('DESIGN_STUDIO');
+                      setDesignSubFilter('ACTIVE');
+                    }}
+                    className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+                      activeTab === 'DESIGN_STUDIO' && designSubFilter === 'ACTIVE'
+                        ? 'bg-amber-300 text-slate-900 border border-slate-300'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Needs Design ({activeOrders.length})
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab('PASSED_TO_PRODUCTION');
+                      setDesignSubFilter('PASSED');
+                    }}
+                    className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+                      activeTab === 'PASSED_TO_PRODUCTION' || designSubFilter === 'PASSED'
+                        ? 'bg-emerald-600 text-white'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Passed ({passedOrders.length})
+                  </button>
+                </div>
+
+                {/* Scope selector */}
+                {isDesigner ? (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-bold">
+                    <UserCheck className="h-3.5 w-3.5 text-amber-600" />
+                    <span>My Assigned &amp; Passed Orders</span>
+                  </div>
+                ) : (
+                  <select
+                    value={scopeFilter}
+                    onChange={(e) => setScopeFilter(e.target.value as any)}
+                    className="text-[11px] font-bold px-2 py-1 rounded bg-white border border-slate-200 text-slate-700"
+                  >
+                    <option value="MINE">My Assigned Orders</option>
+                    <option value="ALL">All Studio Orders</option>
+                  </select>
+                )}
+
+                <button
+                  onClick={fetchDesignQueue}
+                  className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-200 rounded transition"
+                  title="Refresh Queue"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isLoadingQueue ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
             </div>
 
-            {designQueue.length === 0 ? (
+            {displayedOrders.length === 0 ? (
               <div className="p-10 text-center text-slate-500">
-                <Paintbrush className="h-10 w-10 text-slate-300 mx-auto mb-2" />
-                <p className="text-[14px] font-medium text-slate-700">No Orders in Design Queue</p>
-                <p className="text-[12px] text-slate-400 mt-1">All design service requests have been completed and released to QC.</p>
+                {activeTab === 'PASSED_TO_PRODUCTION' || designSubFilter === 'PASSED' ? (
+                  <>
+                    <CheckCircle className="h-10 w-10 text-slate-300 mx-auto mb-2" />
+                    <p className="text-[14px] font-medium text-slate-700">No Routed Orders Found</p>
+                    <p className="text-[12px] text-slate-400 mt-1">Orders will appear here once designs are completed and routed to OE.</p>
+                  </>
+                ) : (
+                  <>
+                    <Paintbrush className="h-10 w-10 text-slate-300 mx-auto mb-2" />
+                    <p className="text-[14px] font-medium text-slate-700">No Orders in Design Queue</p>
+                    <p className="text-[12px] text-slate-400 mt-1">All design service requests have been completed and routed to OE.</p>
+                    {passedOrders.length > 0 && (
+                      <button
+                        onClick={() => {
+                          setActiveTab('PASSED_TO_PRODUCTION');
+                          setDesignSubFilter('PASSED');
+                        }}
+                        className="mt-4 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition"
+                      >
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        <span>View Passed Designs ({passedOrders.length})</span>
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             ) : (
               <div className="divide-y divide-slate-100 max-h-[650px] overflow-y-auto">
-                {designQueue.map((order, idx) => {
+                {displayedOrders.map((order, idx) => {
                   const orderKey = order.id || order.orderId || `design-queue-item-${order.orderNumber || idx}`;
                   const isSelected = (selectedDesignOrder?.id || selectedDesignOrder?.orderId) === (order.id || order.orderId);
                   const item = order.items?.[0];
@@ -533,30 +765,57 @@ export default function ArtworkPrepressPage() {
                       key={orderKey}
                       onClick={() => setSelectedDesignOrder(order)}
                       className={`p-4 cursor-pointer transition-colors ${
-                        isSelected ? 'bg-amber-50/60 border-l-4 border-l-amber-400' : 'hover:bg-slate-50'
+                        isSelected
+                          ? order.isPassedToProduction
+                            ? 'bg-emerald-50/70 border-l-4 border-l-emerald-500'
+                            : 'bg-amber-50/60 border-l-4 border-l-amber-400'
+                          : 'hover:bg-slate-50'
                       }`}
                     >
                       <div className="flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
+                        <div className="space-y-1 flex-1 pr-3">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-mono font-bold text-[13px] text-slate-900 tabular-nums">
                               #{order.orderNumber}
                             </span>
                             <span className="text-[13px] font-semibold text-slate-800">
                               {order.customer?.fullName || 'Customer'}
                             </span>
-                            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
-                              DESIGN SERVICE
-                            </span>
+                            {order.isPassedToProduction ? (
+                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1 shadow-2xs">
+                                <CheckCircle className="h-3 w-3 text-emerald-600" />
+                                ROUTED TO OE
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                                DESIGN SERVICE
+                              </span>
+                            )}
                           </div>
-                          <p className="text-[13px] text-slate-700 font-medium mt-1">
+                          <p className="text-[13px] text-slate-700 font-medium">
                             {item?.productName || 'Custom Print Job'} ({item?.quantity || 1} pcs)
                           </p>
-                          <div className="flex flex-wrap items-center gap-2.5 mt-2 text-[11px] text-slate-500">
+
+                          {order.isPassedToProduction && (
+                            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-800 bg-slate-100/90 border border-slate-200/90 rounded-md px-2.5 py-1 mt-1">
+                              <ArrowRight className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                              <span>Current Stage: <strong className="text-emerald-950 font-bold">{order.passedToStation}</strong></span>
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap items-center gap-2.5 mt-1 text-[11px] text-slate-500">
                             <span className="flex items-center gap-1 font-mono">
                               <Clock className="h-3 w-3" />
-                              Created: {new Date(order.createdAt).toLocaleDateString()}
+                              {order.isPassedToProduction && order.passedAt
+                                ? `Passed: ${new Date(order.passedAt).toLocaleDateString()}`
+                                : `Created: ${new Date(order.createdAt).toLocaleDateString()}`}
                             </span>
+                            {order.isPassedToProduction && order.passedByDesigner && (
+                              <span className="flex items-center gap-1 font-mono text-purple-800 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                                <UserCheck className="h-3 w-3 text-purple-600" />
+                                By: {order.passedByDesigner}
+                              </span>
+                            )}
                             {order.customer?.phone && (
                               <span className="flex items-center gap-1 font-mono text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
                                 <Phone className="h-3 w-3 text-emerald-600" />
@@ -566,25 +825,46 @@ export default function ArtworkPrepressPage() {
                             {item?.referenceImageUrl && (
                               <span className="flex items-center gap-1 text-blue-600 font-medium">
                                 <ImageIcon className="h-3 w-3" />
-                                Reference Image
-                              </span>
-                            )}
-                            {(item?.designNotes || (order as any)?.customerNotes || (order as any)?.designNotes) && (
-                              <span className="flex items-center gap-1 text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-semibold">
-                                <MessageSquare className="h-3 w-3 text-amber-600" />
-                                Customer Note
+                                Reference
                               </span>
                             )}
                           </div>
                         </div>
 
-                        <div className="text-right">
-                          <span className="text-[11px] font-bold px-2.5 py-1 rounded bg-amber-100 text-amber-900 border border-amber-200 block">
-                            {order.currentStatus}
-                          </span>
-                          <span className="text-[11px] font-mono text-slate-500 block mt-2">
-                            {order.assignedDesignerId ? 'Assigned to Designer' : 'Unassigned'}
-                          </span>
+                        <div className="text-right shrink-0">
+                          {order.isPassedToProduction ? (
+                            <>
+                              <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded bg-slate-900 text-white shadow-2xs block">
+                                {order.passedToStageBadge || 'PASSED'}
+                              </span>
+                              {order.latestArtworkVersion?.storageKey && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    downloadFile(
+                                      order.latestArtworkVersion.storageKey,
+                                      `${order.orderNumber}_Proof.png`,
+                                    );
+                                  }}
+                                  className="mt-2 text-[10.5px] text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded inline-flex items-center gap-1 font-semibold cursor-pointer"
+                                  title="Download Proof Image"
+                                >
+                                  <Download className="h-3 w-3" />
+                                  Proof
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-[11px] font-bold px-2.5 py-1 rounded bg-amber-100 text-amber-900 border border-amber-200 block">
+                                {order.currentStatus}
+                              </span>
+                              <span className="text-[11px] font-mono text-slate-500 block mt-2">
+                                {order.assignedDesignerId ? 'Assigned' : 'Unassigned'}
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -656,13 +936,20 @@ export default function ArtworkPrepressPage() {
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleClaimJob(selectedDesignOrder.id || (selectedDesignOrder as any).orderId)}
-                  className="flex items-center gap-1 text-[12px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 px-3 py-1.5 rounded border border-slate-300 transition shrink-0"
-                >
-                  <UserCheck className="h-3.5 w-3.5" />
-                  <span>Claim Job</span>
-                </button>
+                {selectedDesignOrder.isPassedToProduction ? (
+                  <span className="flex items-center gap-1.5 text-[11px] font-mono font-bold bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-lg border border-emerald-300 shadow-2xs shrink-0">
+                    <CheckCircle className="h-4 w-4 text-emerald-600" />
+                    <span>PASSED TO PRODUCTION</span>
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => handleClaimJob(selectedDesignOrder.id || (selectedDesignOrder as any).orderId)}
+                    className="flex items-center gap-1 text-[12px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 px-3 py-1.5 rounded border border-slate-300 transition shrink-0"
+                  >
+                    <UserCheck className="h-3.5 w-3.5" />
+                    <span>Claim Job</span>
+                  </button>
+                )}
               </div>
 
               {/* Product Specifications & References */}
@@ -782,14 +1069,182 @@ export default function ArtworkPrepressPage() {
                   );
                 })()}
 
-                {/* Customer Uploaded Artwork (For Touch-up / Edits) */}
+                {/* Client Personalization & Custom Template Fields */}
                 {(() => {
                   const firstItem = selectedDesignOrder.items?.[0];
+                  const pDetails = getPersonalizationDetails(firstItem);
+                  if (!pDetails) return null;
+
+                  return (
+                    <div className="p-4 bg-gradient-to-br from-purple-50/90 via-white to-purple-50/50 rounded-xl border-2 border-purple-300 shadow-sm space-y-3.5">
+                      <div className="flex items-center justify-between border-b border-purple-200/80 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1.5 rounded-lg bg-purple-700 text-white shadow-xs">
+                            <Sparkles className="h-4 w-4" />
+                          </span>
+                          <div>
+                            <h5 className="text-[12.5px] font-black uppercase tracking-wider text-purple-950 font-display">
+                              Client Personalization Template Fields
+                            </h5>
+                            <span className="text-[11px] font-mono text-purple-700 font-bold block">
+                              Template: {pDetails.templateCode}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-mono font-bold bg-purple-100 text-purple-900 px-2.5 py-1 rounded-full border border-purple-300 shadow-2xs">
+                          CLIENT ENTERED DATA
+                        </span>
+                      </div>
+
+                      {/* Shared Order-Level Fields */}
+                      {Object.keys(pDetails.sharedValues).length > 0 && (
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] font-mono font-bold uppercase text-purple-900 block tracking-wider">
+                            Order-Level Inscription Details:
+                          </span>
+                          <div className="grid grid-cols-2 gap-2">
+                            {Object.entries(pDetails.sharedValues).map(([k, v]) => (
+                              <div key={k} className="bg-white p-2.5 rounded-lg border border-purple-200 shadow-2xs">
+                                <span className="text-[9.5px] font-mono uppercase font-bold text-slate-400 block tracking-wider">
+                                  {formatFieldLabel(k)}
+                                </span>
+                                <span className="text-[13px] font-black text-slate-950 block break-words mt-0.5">
+                                  {String(v)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Per-Item Personalization Fields */}
+                      {pDetails.entries.length > 0 && (
+                        <div className="space-y-2.5">
+                          {pDetails.entries.map((entry, eIdx) => {
+                            const hasVals = entry.values && Object.keys(entry.values).length > 0;
+                            if (!hasVals) return null;
+                            return (
+                              <div key={eIdx} className="bg-white rounded-lg border border-purple-200/90 p-3 shadow-2xs space-y-2">
+                                {pDetails.entries.length > 1 && (
+                                  <div className="flex items-center justify-between pb-1.5 border-b border-purple-100">
+                                    <span className="text-[11px] font-mono font-bold text-purple-900">
+                                      Unit #{entry.itemIndex || eIdx + 1}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                  {Object.entries(entry.values).map(([k, v]) => (
+                                    <div key={k} className="bg-purple-50/60 p-2.5 rounded-md border border-purple-200/80">
+                                      <span className="text-[9.5px] font-mono uppercase font-bold text-purple-800 block tracking-wider">
+                                        {formatFieldLabel(k)}
+                                      </span>
+                                      <span className="text-[13px] font-black text-slate-950 block break-words mt-0.5">
+                                        {String(v)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Customer Uploaded Artwork (Single or Multi-Slot) */}
+                {(() => {
+                  const firstItem = selectedDesignOrder.items?.[0];
+                  const afs = firstItem?.artworkFiles || firstItem?.specifications?.artworkFiles || null;
                   const rawArtworkUrl =
                     firstItem?.artworkUrl ||
                     firstItem?.specifications?.artworkUrl ||
                     firstItem?.specifications?.artworkFile?.fileUrl ||
                     (selectedDesignOrder as any)?.artworkUrl;
+
+                  const slotEntries = afs && typeof afs === 'object' ? Object.entries(afs) : [];
+
+                  if (slotEntries.length > 0) {
+                    return (
+                      <div className="p-3.5 bg-amber-50/70 rounded-xl border border-amber-200 shadow-2xs space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[12px] font-bold text-amber-950 flex items-center gap-1.5 uppercase tracking-wider">
+                            <ImageIcon className="h-4 w-4 text-amber-600" />
+                            <span>Customer Artwork Files ({slotEntries.length} Slots Uploaded)</span>
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {slotEntries.map(([slotKey, fileObj]: [string, any], sIdx: number) => {
+                            const fileUrl = fileObj?.fileUrl || (typeof fileObj === 'string' ? fileObj : '');
+                            if (!fileUrl) return null;
+                            const label = fileObj?.slotLabel || `Slot ${sIdx + 1}: ${slotKey.replace(/^slot_\d+_?/, '').replace(/_/g, ' ')}`;
+                            const fileName = fileObj?.originalFileName || fileUrl.split('/').pop() || 'Artwork File';
+                            const isDocOrVector =
+                              fileUrl.toLowerCase().endsWith('.pdf') ||
+                              fileUrl.toLowerCase().endsWith('.ai') ||
+                              fileUrl.toLowerCase().endsWith('.eps') ||
+                              fileUrl.toLowerCase().endsWith('.psd') ||
+                              fileUrl.toLowerCase().endsWith('.cdr');
+
+                            return (
+                              <div key={slotKey} className="bg-white rounded-lg border border-amber-200 p-2.5 space-y-2 shadow-2xs">
+                                <div className="flex items-center justify-between pb-1.5 border-b border-amber-100">
+                                  <span className="text-[11px] font-bold text-amber-950 truncate max-w-[150px]">
+                                    {label}
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <a
+                                      href={resolveImageUrl(fileUrl)}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-[10.5px] text-blue-700 font-semibold hover:underline flex items-center gap-0.5"
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                      Open
+                                    </a>
+                                    <button
+                                      type="button"
+                                      onClick={() => downloadFile(fileUrl, fileName || `${label}.png`)}
+                                      className="text-[10px] text-amber-900 bg-amber-200/80 hover:bg-amber-300 font-semibold px-1.5 py-0.5 rounded flex items-center gap-0.5 cursor-pointer"
+                                      title="Download File"
+                                    >
+                                      <Download className="h-2.5 w-2.5" />
+                                      Get
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {!isDocOrVector ? (
+                                  <div className="relative rounded overflow-hidden border border-slate-100 bg-slate-50">
+                                    <img
+                                      src={resolveImageUrl(fileUrl)}
+                                      alt={label}
+                                      className="w-full h-32 object-contain p-1"
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="p-3 bg-amber-50/50 rounded border border-amber-100 flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5 text-[11px] text-slate-800 font-medium truncate">
+                                      <FileCode className="h-4 w-4 text-amber-600 shrink-0" />
+                                      <span className="truncate">{fileName}</span>
+                                    </div>
+                                    <span className="text-[9.5px] font-mono font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded shrink-0">
+                                      VECTOR
+                                    </span>
+                                  </div>
+                                )}
+                                <span className="text-[10px] text-slate-500 font-mono block truncate" title={fileName}>
+                                  {fileName}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  }
 
                   if (!rawArtworkUrl) return null;
                   const isDocOrVector =
@@ -816,16 +1271,20 @@ export default function ArtworkPrepressPage() {
                             <ExternalLink className="h-3 w-3" />
                             Open Full
                           </a>
-                          <a
-                            href={resolveImageUrl(rawArtworkUrl)}
-                            target="_blank"
-                            rel="noreferrer"
-                            download
-                            className="text-[11px] text-amber-900 bg-amber-200/80 hover:bg-amber-300 border border-amber-300 font-semibold px-2 py-0.5 rounded flex items-center gap-1 transition"
+                          <button
+                            type="button"
+                            onClick={() =>
+                              downloadFile(
+                                rawArtworkUrl,
+                                rawArtworkUrl.split('/').pop() || 'customer_artwork.png',
+                              )
+                            }
+                            className="text-[11px] text-amber-900 bg-amber-200/80 hover:bg-amber-300 border border-amber-300 font-semibold px-2 py-0.5 rounded flex items-center gap-1 transition cursor-pointer"
+                            title="Download Customer Artwork"
                           >
                             <Download className="h-3 w-3" />
                             Download
-                          </a>
+                          </button>
                         </div>
                       </div>
 
@@ -860,15 +1319,31 @@ export default function ArtworkPrepressPage() {
                         <ImageIcon className="h-4 w-4 text-blue-600" />
                         Customer Reference Image
                       </span>
-                      <a
-                        href={resolveImageUrl(selectedDesignOrder.items[0].referenceImageUrl)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[11px] text-blue-700 font-semibold flex items-center gap-1 hover:underline"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        Open Full
-                      </a>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={resolveImageUrl(selectedDesignOrder.items[0].referenceImageUrl)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] text-blue-700 font-semibold flex items-center gap-1 hover:underline"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Open Full
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            downloadFile(
+                              selectedDesignOrder.items[0].referenceImageUrl,
+                              `${selectedDesignOrder.orderNumber}_Reference.png`,
+                            )
+                          }
+                          className="text-[11px] text-blue-900 bg-blue-100 hover:bg-blue-200 border border-blue-200 font-semibold px-2 py-0.5 rounded flex items-center gap-1 transition cursor-pointer"
+                          title="Download Reference Image"
+                        >
+                          <Download className="h-3 w-3" />
+                          Download
+                        </button>
+                      </div>
                     </div>
                     <img
                       src={resolveImageUrl(selectedDesignOrder.items[0].referenceImageUrl)}
@@ -879,80 +1354,311 @@ export default function ArtworkPrepressPage() {
                 )}
               </div>
 
-              {/* Upload Final Artwork & Complete Gate */}
-              <div className="border-t border-slate-200 pt-4 space-y-4">
-                <div>
-                  <h4 className="text-[12px] font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <UploadCloud className="h-4 w-4 text-slate-700" />
-                    <span>Upload Final Print-Ready Artwork</span>
-                  </h4>
-                  <p className="text-[12px] text-slate-500 mb-2">
-                    Submit the finished high-resolution artwork (PDF / AI / TIFF).
-                  </p>
-                  
-                  <input
-                    type="file"
-                    accept=".pdf,.ai,.eps,.psd,.tiff,.png,.jpg,.jpeg"
-                    onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                    className="block w-full text-[12px] text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-[12px] file:font-semibold file:bg-amber-300 file:text-slate-900 hover:file:bg-amber-400 cursor-pointer border border-slate-300 rounded-lg p-1.5 bg-slate-50"
-                  />
-                  {uploadFile && (
-                    <p className="text-[11px] font-mono text-emerald-700 font-semibold mt-1">
-                      ✓ Selected: {uploadFile.name} ({(uploadFile.size / (1024 * 1024)).toFixed(2)} MB)
+              {/* Work Panel Action Area */}
+              {selectedDesignOrder.isPassedToProduction ? (
+                /* ROUTED TO OE FOR PRODUCTION ASSIGNMENT HANDOFF PANEL */
+                <div className="border-t border-slate-200 pt-4 space-y-4">
+                  <div className="p-4 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50/40 rounded-xl border border-emerald-200 shadow-2xs space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-lg bg-emerald-600 text-white shadow-xs">
+                          <CheckCircle className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-[14px] font-black uppercase tracking-wider text-emerald-950 font-display">
+                            Routed to OE for Production Assignment
+                          </h4>
+                          <span className="text-[11px] font-mono text-emerald-800 font-bold block">
+                            Order #{selectedDesignOrder.orderNumber} • Awaiting OE Operator Assignment
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/operations/orders?search=${selectedDesignOrder.orderNumber}`}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition shadow-xs"
+                        >
+                          <span>OE Orders Queue</span>
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Link>
+                        <span className="text-[10px] font-mono font-bold bg-emerald-200 text-emerald-900 px-2.5 py-1 rounded-full border border-emerald-300 shadow-2xs">
+                          ROUTED TO OE
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-[12px] text-emerald-900/90 leading-relaxed">
+                      This custom design has been finalized, verified against customer specifications, and routed to the Operations Coordinator (OE) to assign a production operator.
                     </p>
+
+                    {/* Target Station Card */}
+                    <div className="p-3 bg-white/95 rounded-lg border border-emerald-200 space-y-2.5">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[12px]">
+                        <div>
+                          <span className="text-[10px] font-mono uppercase font-bold text-slate-400 block tracking-wider">
+                            Destination Station / Current Stage
+                          </span>
+                          <span className="text-[13px] font-black text-slate-900 block mt-0.5 flex items-center gap-1.5">
+                            <ArrowRight className="h-4 w-4 text-emerald-600 shrink-0" />
+                            <span>{selectedDesignOrder.passedToStation}</span>
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-mono uppercase font-bold text-slate-400 block tracking-wider">
+                            Assigned Production Operator
+                          </span>
+                          <span className="text-[13px] font-black text-slate-900 block mt-0.5">
+                            {selectedDesignOrder.assignedOperator?.fullName || 'Pending OE Operator Assignment'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[12px] pt-2 border-t border-emerald-100">
+                        <div>
+                          <span className="text-[10px] font-mono uppercase font-bold text-slate-400 block tracking-wider">
+                            Passed By Designer
+                          </span>
+                          <span className="text-[12px] font-bold text-purple-900 block mt-0.5">
+                            {selectedDesignOrder.passedByDesigner || 'Studio Designer'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-mono uppercase font-bold text-slate-400 block tracking-wider">
+                            Passed Timestamp
+                          </span>
+                          <span className="text-[12px] font-mono font-bold text-slate-700 block mt-0.5">
+                            {selectedDesignOrder.passedAt
+                              ? new Date(selectedDesignOrder.passedAt).toLocaleString()
+                              : 'Recently'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {selectedDesignOrder.passedPrepressNotes && (
+                        <div className="pt-2 border-t border-emerald-100">
+                          <span className="text-[10px] font-mono uppercase font-bold text-slate-400 block tracking-wider">
+                            Designer Handoff Notes & OE Directives:
+                          </span>
+                          <p className="text-[12px] text-slate-800 bg-emerald-50/60 p-2 rounded border border-emerald-200/80 mt-1 italic">
+                            &quot;{selectedDesignOrder.passedPrepressNotes}&quot;
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Final Approved Print-Ready Artwork Card */}
+                  {(() => {
+                    const approvedArt =
+                      selectedDesignOrder.approvedArtworkVersion ||
+                      selectedDesignOrder.latestArtworkVersion ||
+                      selectedDesignOrder.items?.[0]?.approvedArtworkVersion;
+                    const fileUrl = approvedArt?.storageKey || approvedArt?.fileUrl;
+                    const fileName = approvedArt?.originalFileName || (fileUrl ? fileUrl.split('/').pop() : 'PrintReady_Artwork.pdf');
+                    const isDocOrVector =
+                      fileName.toLowerCase().endsWith('.pdf') ||
+                      fileName.toLowerCase().endsWith('.ai') ||
+                      fileName.toLowerCase().endsWith('.eps') ||
+                      fileName.toLowerCase().endsWith('.psd');
+
+                    return (
+                      <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[12px] font-bold text-slate-900 flex items-center gap-1.5 uppercase tracking-wider">
+                            <CheckCircle className="h-4 w-4 text-emerald-600" />
+                            <span>Final Approved Print-Ready Artwork (Passed File)</span>
+                          </span>
+                          <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded border border-emerald-300">
+                            {approvedArt?.resolutionDpi || 300} DPI CMYK
+                          </span>
+                        </div>
+
+                        {fileUrl ? (
+                          <div className="space-y-2.5">
+                            {!isDocOrVector ? (
+                              <div className="relative rounded-lg overflow-hidden border border-emerald-200 bg-slate-50 flex items-center justify-center p-2">
+                                <img
+                                  src={resolveImageUrl(fileUrl)}
+                                  alt="Final Approved Proof"
+                                  className="max-h-60 w-auto object-contain rounded"
+                                />
+                              </div>
+                            ) : (
+                              <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <FileCode className="h-6 w-6 text-amber-600 shrink-0" />
+                                  <div>
+                                    <span className="text-[12px] font-bold text-slate-900 block truncate max-w-[220px]">
+                                      {fileName}
+                                    </span>
+                                    <span className="text-[10px] font-mono text-slate-500 block">
+                                      {approvedArt?.fileSize ? `${(approvedArt.fileSize / (1024 * 1024)).toFixed(2)} MB • ` : ''}
+                                      Print-Ready Document
+                                    </span>
+                                  </div>
+                                </div>
+                                <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-900 px-2 py-1 rounded">
+                                  PROOF LOCKED
+                                </span>
+                              </div>
+                            )}
+
+                            <div className="flex items-center gap-2 pt-1">
+                              <a
+                                href={resolveImageUrl(fileUrl)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex-1 flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[12px] py-2 rounded-lg transition"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                <span>Open Full Proof</span>
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  downloadFile(
+                                    fileUrl,
+                                    fileName || `${selectedDesignOrder.orderNumber}_Approved_Artwork.png`,
+                                  )
+                                }
+                                className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[12px] py-2 rounded-lg transition cursor-pointer"
+                                title="Download Artwork to Files"
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                                <span>Download Artwork</span>
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-[12px] text-slate-500 italic">No artwork version file attached.</p>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Status History Trail */}
+                  {selectedDesignOrder.statusHistory && selectedDesignOrder.statusHistory.length > 0 && (
+                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
+                      <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                        <History className="h-3.5 w-3.5 text-slate-600" />
+                        <span>Handoff Timeline & Audit Trail</span>
+                      </span>
+
+                      <div className="divide-y divide-slate-200/80">
+                        {selectedDesignOrder.statusHistory.map((h, hIdx) => (
+                          <div key={h.id || hIdx} className="py-2 text-[11.5px] space-y-0.5">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-800">
+                                {h.fromStatus ? `${h.fromStatus} → ${h.toStatus}` : h.toStatus}
+                              </span>
+                              <span className="text-[10.5px] font-mono text-slate-400">
+                                {new Date(h.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <p className="text-slate-600 text-[11px]">{h.reason}</p>
+                            {h.changedBy && (
+                              <span className="text-[10px] text-slate-400 block font-mono">By: {h.changedBy}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
+              ) : (
+                /* ACTIVE DESIGN WORKFLOW FORM (SUBMIT & RELEASE) */
+                <div className="border-t border-slate-200 pt-4 space-y-4">
+                  <div>
+                    <h4 className="text-[12px] font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <UploadCloud className="h-4 w-4 text-slate-700" />
+                      <span>Upload Final Print-Ready Artwork</span>
+                    </h4>
+                    <p className="text-[12px] text-slate-500 mb-2">
+                      Submit the finished high-resolution artwork (PDF / AI / TIFF).
+                    </p>
+                    
+                    <input
+                      type="file"
+                      accept=".pdf,.ai,.eps,.psd,.tiff,.png,.jpg,.jpeg"
+                      onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                      className="block w-full text-[12px] text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-[12px] file:font-semibold file:bg-amber-300 file:text-slate-900 hover:file:bg-amber-400 cursor-pointer border border-slate-300 rounded-lg p-1.5 bg-slate-50"
+                    />
+                    {uploadFile && (
+                      <p className="text-[11px] font-mono text-emerald-700 font-semibold mt-1">
+                        ✓ Selected: {uploadFile.name} ({(uploadFile.size / (1024 * 1024)).toFixed(2)} MB)
+                      </p>
+                    )}
+                  </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
+                        Target DPI
+                      </label>
+                      <input
+                        type="number"
+                        value={resolutionDpi}
+                        onChange={(e) => setResolutionDpi(e.target.value)}
+                        className="w-full text-[12px] px-3 py-1.5 rounded border border-slate-300 bg-white"
+                        placeholder="300"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
+                        Color Mode
+                      </label>
+                      <input
+                        type="text"
+                        disabled
+                        value="CMYK (FOGRA39 / SWOP)"
+                        className="w-full text-[12px] px-3 py-1.5 rounded border border-slate-200 bg-slate-100 text-slate-500 font-mono"
+                      />
+                    </div>
+                  </div>
+
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
-                      Target DPI
+                      Prepress Notes & Directives for OE / Production
                     </label>
-                    <input
-                      type="number"
-                      value={resolutionDpi}
-                      onChange={(e) => setResolutionDpi(e.target.value)}
-                      className="w-full text-[12px] px-3 py-1.5 rounded border border-slate-300 bg-white"
-                      placeholder="300"
+                    <textarea
+                      rows={2}
+                      value={prepressNotes}
+                      onChange={(e) => setPrepressNotes(e.target.value)}
+                      placeholder="E.g., 3mm bleed added, fonts outlined, vector dieline on separate spot layer."
+                      className="w-full text-[12px] p-2.5 rounded-lg border border-slate-300 bg-white placeholder:text-slate-400"
                     />
                   </div>
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
-                      Color Mode
-                    </label>
-                    <input
-                      type="text"
-                      disabled
-                      value="CMYK (FOGRA39 / SWOP)"
-                      className="w-full text-[12px] px-3 py-1.5 rounded border border-slate-200 bg-slate-100 text-slate-500 font-mono"
-                    />
-                  </div>
-                </div>
 
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
-                    Prepress Notes & Instructions for QC
+                  {/* Mandatory Specifications Verification Gate */}
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50/80 border border-amber-300/80 cursor-pointer text-xs text-amber-950 font-medium select-none shadow-2xs">
+                    <input
+                      type="checkbox"
+                      checked={isSpecsConfirmed}
+                      onChange={(e) => setIsSpecsConfirmed(e.target.checked)}
+                      className="mt-0.5 rounded text-amber-600 focus:ring-amber-500 h-4 w-4 border-amber-300"
+                    />
+                    <div>
+                      <span className="font-bold block">
+                        I have reviewed and verified customer specifications for this design
+                      </span>
+                      <span className="text-[11px] text-amber-800 block mt-0.5">
+                        Confirming that the artwork strictly adheres to customer-selected specifications before routing to OE for Production Assignment.
+                      </span>
+                    </div>
                   </label>
-                  <textarea
-                    rows={2}
-                    value={prepressNotes}
-                    onChange={(e) => setPrepressNotes(e.target.value)}
-                    placeholder="E.g., 3mm bleed added, fonts outlined, vector dieline on separate spot layer."
-                    className="w-full text-[12px] p-2.5 rounded-lg border border-slate-300 bg-white placeholder:text-slate-400"
-                  />
-                </div>
 
-                <button
-                  onClick={handleCompleteDesignJob}
-                  disabled={isSubmittingDesign || !uploadFile}
-                  className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold text-[13px] py-3 rounded-lg shadow-sm transition active:scale-[0.98]"
-                >
-                  <CheckCircle className="h-4 w-4" />
-                  <span>
-                    {isSubmittingDesign ? 'Uploading & Releasing...' : 'SUBMIT DESIGN & RELEASE TO PRE-QC'}
-                  </span>
-                </button>
-              </div>
+                  <button
+                    onClick={handleCompleteDesignJob}
+                    disabled={isSubmittingDesign || !uploadFile || !isSpecsConfirmed}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold text-[13px] py-3 rounded-lg shadow-sm transition active:scale-[0.98]"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    <span>
+                      {isSubmittingDesign ? 'Uploading & Routing...' : 'SUBMIT DESIGN & ROUTE TO OE'}
+                    </span>
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg p-10 text-center text-slate-400">

@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingService, OptionSelectionDto } from '../pricing/pricing.service';
 import { ShippingGstService } from '../shipping-gst/shipping-gst.service';
+import { ShippingCalculatorService } from '../shipping/shipping-calculator.service';
 import { AuditService } from '../audit/audit.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -165,10 +166,11 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly pricingService: PricingService,
     private readonly shippingGstService: ShippingGstService,
+    private readonly shippingCalculatorService: ShippingCalculatorService,
     private readonly auditService: AuditService,
     private readonly eventEmitter: EventEmitter2,
     private readonly personalizationService: PersonalizationTemplateService,
-  ) {}
+  ) { }
 
   /**
    * Omnichannel Order Creation:
@@ -333,18 +335,18 @@ export class OrdersService {
       const rawArt = af
         ? af
         : firstSlotArt
-        ? firstSlotArt
-        : itemDto.artworkUrl
-        ? {
-            fileUrl: itemDto.artworkUrl,
-            storageKey: itemDto.artworkStorageKey || itemDto.artworkUrl,
-            originalFileName: 'Customer_Artwork',
-            mimeType: 'image/jpeg',
-            fileSize: 1024 * 1024,
-            actualMegapixels: undefined,
-            qualityStatus: 'PASSED',
-          }
-        : null;
+          ? firstSlotArt
+          : itemDto.artworkUrl
+            ? {
+              fileUrl: itemDto.artworkUrl,
+              storageKey: itemDto.artworkStorageKey || itemDto.artworkUrl,
+              originalFileName: 'Customer_Artwork',
+              mimeType: 'image/jpeg',
+              fileSize: 1024 * 1024,
+              actualMegapixels: undefined,
+              qualityStatus: 'PASSED',
+            }
+            : null;
 
       const hasArtwork = Boolean(
         rawArt?.fileUrl ||
@@ -357,18 +359,34 @@ export class OrdersService {
         itemDto.referenceImage ||
         (itemDto.referenceImageUrl
           ? {
-              fileUrl: itemDto.referenceImageUrl,
-              storageKey: itemDto.referenceImageUrl,
-              originalFileName: 'Reference_Image',
-            }
+            fileUrl: itemDto.referenceImageUrl,
+            storageKey: itemDto.referenceImageUrl,
+            originalFileName: 'Reference_Image',
+          }
           : null);
 
       const hasRefImage = Boolean(rawRef?.fileUrl);
       const designReq = product.designServiceRequirement || 'DISABLED';
+      const rawChoices = itemDto.options || itemDto.fieldValues || itemDto.selectedOptions || {};
+      let userDesignChoice = '';
+      if (typeof rawChoices === 'object' && rawChoices !== null) {
+        for (const [k, v] of Object.entries(rawChoices)) {
+          const normK = String(k).toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (normK.includes('design') || normK.includes('artworkservice')) {
+            userDesignChoice = String(v).toLowerCase().trim();
+            break;
+          }
+        }
+      }
+      const isExplicitNoDesign = userDesignChoice === 'no' || userDesignChoice === 'false' || userDesignChoice === 'none';
+      const isExplicitYesDesign = userDesignChoice === 'yes' || userDesignChoice === 'true' || userDesignChoice.includes('hire') || userDesignChoice.includes('assist');
+
       const wantsDesign = Boolean(
-        itemDto.selectedDesignService ||
-        itemDto.hasDesignService ||
-        designReq === 'REQUIRED',
+        !isExplicitNoDesign &&
+        (itemDto.selectedDesignService ||
+          itemDto.hasDesignService ||
+          isExplicitYesDesign ||
+          designReq === 'REQUIRED')
       );
 
       let artworkSource: 'CUSTOMER' | 'DESIGN_TEAM' | 'CUSTOMER_WITH_DESIGN_ASSISTANCE' = 'CUSTOMER';
@@ -526,15 +544,26 @@ export class OrdersService {
       });
     }
 
-    // 2b. Authoritative Order-Level Shipping and GST Calculation
+    // 2b. Authoritative Order-Level Enterprise Shipping and GST Calculation
     const deliveryMethod = dto.deliveryMethod || 'COURIER';
+    const totalOrderQty = evaluatedItems.reduce((acc, curr) => acc + (curr.quantity || 1), 0);
+
+    const shippingBreakdown = await this.shippingCalculatorService.calculateShipping({
+      productId: evaluatedItems[0]?.productId,
+      quantity: totalOrderQty,
+      destinationPincode: dto.shippingAddress?.postalCode,
+      orderSubtotal: subtotal,
+      deliveryMethod: deliveryMethod === 'STORE_PICKUP' ? 'STORE_PICKUP' : 'COURIER',
+    });
+
     const shipTaxCalc = await this.shippingGstService.calculateShippingAndTax(
       subtotal,
       dto.shippingAddress?.postalCode,
       deliveryMethod === 'STORE_PICKUP' ? 'STORE_PICKUP' : 'COURIER',
       false,
     );
-    shippingAmount = shipTaxCalc.shippingFee;
+
+    shippingAmount = dto.shippingAddress?.postalCode ? shippingBreakdown.finalShippingAmount : 0;
     totalTax = shipTaxCalc.gstAmount;
     const totalAmount = Math.round((subtotal + totalTax + shippingAmount) * 100) / 100;
 
@@ -543,10 +572,19 @@ export class OrdersService {
       if (typeof it.specifications === 'object' && it.specifications !== null) {
         (it.specifications as any)['_shippingGstSnapshot'] = {
           shippingCharge: shippingAmount,
-          isFreeShipping: shipTaxCalc.isFreeShippingApplied,
-          matchedZone: shipTaxCalc.matchedZone,
+          isFreeShipping: shippingBreakdown.isFreeShippingApplied,
+          matchedZone: shippingBreakdown.zone,
           gstRatePercent: shipTaxCalc.gstRatePercent,
           gstAmount: totalTax,
+          destinationPincode: shippingBreakdown.destinationPincode,
+          productWeightGrams: shippingBreakdown.productWeightGrams,
+          packagingWeightGrams: shippingBreakdown.packaging.weightGrams,
+          actualWeightGrams: shippingBreakdown.actualWeightGrams,
+          billableWeightGrams: shippingBreakdown.billableWeightGrams,
+          rateCard: shippingBreakdown.rateCard,
+          matchedSlab: shippingBreakdown.matchedSlab,
+          baseShippingCharge: shippingBreakdown.baseShippingCharge,
+          additionalWeightCharge: shippingBreakdown.additionalWeightCharge,
         };
       }
     }
@@ -975,6 +1013,7 @@ export class OrdersService {
         items: {
           include: {
             variants: true,
+            personalizationRecords: true,
             artworkVersions: { orderBy: { versionNumber: 'desc' } },
             jobCards: {
               include: {

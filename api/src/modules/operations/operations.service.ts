@@ -151,8 +151,8 @@ export interface OperationalBlocker {
 const OE_STATUS_GROUPS: Record<string, OrderStatus[]> = {
   NEW_UNASSIGNED: [OrderStatus.ORDER_CREATED, OrderStatus.PAYMENT_PENDING, OrderStatus.PAYMENT_CONFIRMED],
   REQUIREMENT_REVIEW: [OrderStatus.ORDER_REVIEW],
-  DESIGN: [OrderStatus.ARTWORK_REVIEW, OrderStatus.DESIGN_REQUIRED, OrderStatus.ARTWORK_APPROVED, OrderStatus.CUSTOMER_APPROVAL_REQUIRED],
-  PRODUCTION: [OrderStatus.PRODUCTION_QUEUE, OrderStatus.PRINTING],
+  DESIGN: [OrderStatus.ARTWORK_REVIEW, OrderStatus.DESIGN_REQUIRED, OrderStatus.CUSTOMER_APPROVAL_REQUIRED],
+  PRODUCTION: [OrderStatus.ARTWORK_APPROVED, OrderStatus.PRODUCTION_QUEUE, OrderStatus.PRINTING],
   FINISHING: [OrderStatus.FINISHING],
   FINAL_QC: [OrderStatus.QUALITY_CHECK],
   PACKING: [OrderStatus.PACKING],
@@ -245,10 +245,10 @@ export class OperationsService {
         },
       }),
 
-      // Unassigned production: orders in production queue but no operator assigned
+      // Unassigned production: orders in production queue or artwork-approved but no operator assigned
       this.prisma.order.count({
         where: {
-          status: { in: [OrderStatus.PRODUCTION_QUEUE] },
+          status: { in: [OrderStatus.ARTWORK_APPROVED, OrderStatus.PRODUCTION_QUEUE] },
           assignments: {
             none: {
               taskType: AssignmentTaskType.PRODUCTION,
@@ -353,9 +353,9 @@ export class OperationsService {
       };
     }
 
-    // Unassigned production filter
+    // Unassigned production filter (ready for OE to assign press operator or already queued)
     if (filters.unassignedProduction === 'true') {
-      where.status = { in: [OrderStatus.PRODUCTION_QUEUE] };
+      where.status = { in: [OrderStatus.ARTWORK_APPROVED, OrderStatus.PRODUCTION_QUEUE] };
       where.assignments = {
         none: {
           taskType: AssignmentTaskType.PRODUCTION,

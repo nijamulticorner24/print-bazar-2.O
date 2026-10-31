@@ -32,6 +32,9 @@ async function bootstrap() {
 
   // Serve static uploaded assets
   app.use('/uploads', express.static(uploadsDir));
+  app.use('/artwork', express.static(artworkUploadsDir));
+  app.use('/references', express.static(referencesUploadsDir));
+  app.use('/products', express.static(productsUploadsDir));
 
   app.setGlobalPrefix('api/v1');
 

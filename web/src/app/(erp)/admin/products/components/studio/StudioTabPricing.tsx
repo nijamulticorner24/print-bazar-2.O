@@ -19,7 +19,6 @@ import {
   RiSparklingFill,
   RiPriceTag3Line,
   RiPaletteLine,
-  RiPlayCircleLine,
   RiSettings4Line,
   RiCheckboxCircleLine,
   RiAlertFill,
@@ -27,11 +26,15 @@ import {
   RiStackLine,
   RiCheckDoubleLine,
   RiLockLine,
+  RiScales3Line,
+  RiTruckLine,
+  RiBox3Line,
 } from 'react-icons/ri';
 import { ProductOptionGroup, ProductOption, ProductAdditionalPricingTier, api } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { resolveArtworkConditions } from '@/lib/artwork-rule-resolver';
 import { Modal } from '@/components/ui';
+import { StudioTab } from './StudioTabReview';
 
 export interface MatrixRowItem {
   id?: string;
@@ -125,6 +128,17 @@ export interface StudioTabPricingProps {
   artworkFileFormats?: string[];
   defaultSize?: string;
 
+  // Shipping & Logistics Weight Configuration (Stage 5)
+  unitWeightGrams?: number | string;
+  setUnitWeightGrams?: (val: number | string) => void;
+  packagingProfileId?: string;
+  setPackagingProfileId?: (val: string) => void;
+  isShippable?: boolean;
+  setIsShippable?: (val: boolean) => void;
+  bulkTierWeights?: Array<{ id?: string; minQty: number; maxQty?: number; totalProductWeightGrams?: number; unitWeightGrams: number }>;
+  setBulkTierWeights?: React.Dispatch<React.SetStateAction<Array<{ id?: string; minQty: number; maxQty?: number; totalProductWeightGrams?: number; unitWeightGrams: number }>>>;
+
+  onNavigateToTab?: (tab: StudioTab) => void;
   onChange?: () => void;
 }
 
@@ -149,7 +163,7 @@ export function StudioTabPricing({
   minQuantity,
   setMinQuantity,
   maxQuantity,
-  quantityStep = 100,
+  quantityStep,
   setQuantityStep,
   optionGroups,
   setOptionGroups,
@@ -163,6 +177,15 @@ export function StudioTabPricing({
   artworkRequirement = 'OPTIONAL',
   artworkFileFormats = ['PDF', 'AI', 'PSD'],
   defaultSize,
+  unitWeightGrams = 2,
+  setUnitWeightGrams,
+  packagingProfileId = '',
+  setPackagingProfileId,
+  isShippable = true,
+  setIsShippable,
+  bulkTierWeights = [],
+  setBulkTierWeights,
+  onNavigateToTab,
   onChange,
 }: StudioTabPricingProps) {
   // Derived Reference Unit Price: Starting Reference Rate (₹) / Minimum Order Quantity = Reference Unit Price
@@ -173,7 +196,11 @@ export function StudioTabPricing({
   // Quantity increment / Price Increasing mode:
   // If OFF: only fixed predefined quantities (quantityStep === 0)
   // If ON: price increasing based on the step increment (quantityStep > 0)
-  const isIncrementalMode = quantityStep !== undefined && quantityStep !== null ? Number(quantityStep) > 0 : true;
+  // For Bulk Quantity Range alone, keep this toggle OFF by default (quantityStep === 0)
+  const isIncrementalMode =
+    quantityStep !== undefined && quantityStep !== null
+      ? Number(quantityStep) > 0
+      : pricingModel !== 'BULK_RANGE';
 
   const handleToggleIncrementalMode = (enabled: boolean) => {
     if (!enabled) {
@@ -231,10 +258,12 @@ export function StudioTabPricing({
     return activeAddonGroup.options.filter((opt) => opt.isActive !== false);
   }, [activeAddonGroup]);
 
-  const isBulkRangeMode = pricingModel === 'BULK_RANGE';
+  // Canonical Mapping:
+  // Option A: Single Fixed Quantity ('SINGLE_FIXED_QUANTITY') -> Quantity Range Brackets (1–10, 11–20, 21–50, 51–100)
+  // Option B: Bulk Quantity Range ('BULK_RANGE') -> Discrete Fixed Quantity Tiers (100, 1,000, 25,000)
+  const isRangeBracketMode = pricingModel === 'SINGLE_FIXED_QUANTITY';
 
   // Dynamic Quantity Tiers for Product Base Pricing & Additional Pricing
-  // STRICT REPLICATION: Enforce exact pricingModel structure so ranges like 10-20 do not mix with fixed quantities.
   const [addonQuantityTiers, setAddonQuantityTiers] = useState<AddonQuantityTierItem[]>(() => {
     const tierMap = new Map<string, AddonQuantityTierItem>();
 
@@ -252,10 +281,10 @@ export function StudioTabPricing({
         if (isBase && row.minQty > 0) {
           const max = row.maxQty && row.maxQty >= row.minQty ? row.maxQty : row.minQty;
           const isRange = row.minQty !== max;
-          // Strictly match active mode: Fixed mode only accepts minQty === maxQty; Bulk mode only accepts ranges
-          if (isBulkRangeMode ? isRange : !isRange) {
+          // Single Fixed Quantity mode accepts ranges; Bulk Quantity Range accepts discrete fixed quantities
+          if (isRangeBracketMode ? isRange : !isRange) {
             const id = isRange ? `${row.minQty}-${max}` : `${row.minQty}`;
-            const label = isRange ? `${row.minQty}–${max} pcs` : `${row.minQty} pcs`;
+            const label = isRange ? `${row.minQty}–${max} pcs` : `${row.minQty.toLocaleString()} pcs`;
             if (!tierMap.has(id)) {
               tierMap.set(id, { id, minQty: row.minQty, maxQty: max, label });
             }
@@ -270,9 +299,9 @@ export function StudioTabPricing({
         if (row.minQty > 0) {
           const max = row.maxQty && row.maxQty >= row.minQty ? row.maxQty : row.minQty;
           const isRange = row.minQty !== max;
-          if (isBulkRangeMode ? isRange : !isRange) {
+          if (isRangeBracketMode ? isRange : !isRange) {
             const id = isRange ? `${row.minQty}-${max}` : `${row.minQty}`;
-            const label = isRange ? `${row.minQty}–${max} pcs` : `${row.minQty} pcs`;
+            const label = isRange ? `${row.minQty}–${max} pcs` : `${row.minQty.toLocaleString()} pcs`;
             if (!tierMap.has(id)) {
               tierMap.set(id, { id, minQty: row.minQty, maxQty: max, label });
             }
@@ -285,29 +314,29 @@ export function StudioTabPricing({
       return Array.from(tierMap.values()).sort((a, b) => a.minQty - b.minQty);
     }
 
-    return isBulkRangeMode ? DEFAULT_BULK_RANGE_TIERS : DEFAULT_FIXED_TIERS;
+    return isRangeBracketMode ? DEFAULT_BULK_RANGE_TIERS : DEFAULT_FIXED_TIERS;
   });
 
   // Replicate Pricing Mode from Stage 1 into Stage 5 Quantity Tiers
   // When the mode changes, filter out obsolete non-matching tiers and prevent mixing (e.g. 10-20 with fixed batches)
   const prevPricingModelRef = useRef<string>(pricingModel);
   useEffect(() => {
-    const wasBulk = prevPricingModelRef.current === 'BULK_RANGE';
-    const isNowBulk = pricingModel === 'BULK_RANGE';
+    const wasRange = prevPricingModelRef.current === 'SINGLE_FIXED_QUANTITY';
+    const isNowRange = pricingModel === 'SINGLE_FIXED_QUANTITY';
     prevPricingModelRef.current = pricingModel;
 
-    if (wasBulk !== isNowBulk) {
+    if (wasRange !== isNowRange) {
       setAddonQuantityTiers((prev) => {
         const matching = prev.filter((tier) => {
           const isRange = tier.minQty !== tier.maxQty;
-          return isNowBulk ? isRange : !isRange;
+          return isNowRange ? isRange : !isRange;
         });
 
         if (matching.length > 0) {
           return matching.sort((a, b) => a.minQty - b.minQty);
         }
 
-        return isNowBulk ? DEFAULT_BULK_RANGE_TIERS : DEFAULT_FIXED_TIERS;
+        return isNowRange ? DEFAULT_BULK_RANGE_TIERS : DEFAULT_FIXED_TIERS;
       });
 
       // Also clean up matrixRows base tiers that don't match the new mode so they don't corrupt the matrix
@@ -323,7 +352,7 @@ export function StudioTabPricing({
 
           if (isBase) {
             const isRange = Number(r.minQty) !== Number(r.maxQty);
-            return isNowBulk ? isRange : !isRange;
+            return isNowRange ? isRange : !isRange;
           }
           return true;
         })
@@ -333,7 +362,7 @@ export function StudioTabPricing({
       setAdditionalPricingRows?.((prev) =>
         prev.filter((r) => {
           const isRange = Number(r.minQty) !== Number(r.maxQty);
-          return isNowBulk ? isRange : !isRange;
+          return isNowRange ? isRange : !isRange;
         })
       );
 
@@ -352,14 +381,117 @@ export function StudioTabPricing({
   const [newAddonTierInput, setNewAddonTierInput] = useState('');
   const [addonTierError, setAddonTierError] = useState<string | null>(null);
 
+  // Packaging Profiles & Shipping Weight State (Stage 5 Integration)
+  const [packagingProfilesList, setPackagingProfilesList] = useState<any[]>([]);
+  useEffect(() => {
+    let isCancelled = false;
+    api.listPackagingProfiles(true).then((res) => {
+      if (!isCancelled && Array.isArray(res)) {
+        setPackagingProfilesList(res);
+      }
+    }).catch(() => {});
+    return () => { isCancelled = true; };
+  }, []);
+
+  const activePackagingProfile = useMemo(() => {
+    if (packagingProfileId) {
+      const match = packagingProfilesList.find((p) => p.id === packagingProfileId);
+      if (match) return match;
+    }
+    return (
+      packagingProfilesList.find((p) => p.isDefault) ||
+      packagingProfilesList[0] || {
+        id: 'pkg-small-carton',
+        name: 'Small Carton (Default)',
+        weightGrams: 200,
+        lengthMm: 220,
+        widthMm: 160,
+        heightMm: 120,
+      }
+    );
+  }, [packagingProfileId, packagingProfilesList]);
+
+  const getBulkTierWeight = (tier: AddonQuantityTierItem): number | string => {
+    const found = bulkTierWeights?.find((b: any) => Number(b.minQty) === tier.minQty);
+    if (found && (found.totalProductWeightGrams !== undefined || found.unitWeightGrams !== undefined)) {
+      return Number(found.totalProductWeightGrams ?? found.unitWeightGrams);
+    }
+    const baseRow = matrixRows?.find((r) => {
+      const c = (r.attributeCombination as any) || {};
+      return (c.isBasePrice === true || c.type === 'BASE') && r.minQty === tier.minQty;
+    });
+    const c = (baseRow?.attributeCombination as any) || {};
+    if (c.totalProductWeightGrams !== undefined && Number(c.totalProductWeightGrams) > 0) {
+      return Number(c.totalProductWeightGrams);
+    }
+    return '';
+  };
+
+  const handleBulkTierWeightChange = (tier: AddonQuantityTierItem, newWeight: number) => {
+    if (isNaN(newWeight) || newWeight < 0) return;
+    setBulkTierWeights?.((prev) => {
+      const list = Array.isArray(prev) ? [...prev] : [];
+      const idx = list.findIndex((b: any) => Number(b.minQty) === tier.minQty);
+      if (idx >= 0) {
+        list[idx] = {
+          ...list[idx],
+          id: tier.id,
+          minQty: tier.minQty,
+          maxQty: tier.maxQty,
+          totalProductWeightGrams: newWeight,
+          unitWeightGrams: newWeight,
+        };
+      } else {
+        list.push({
+          id: tier.id,
+          minQty: tier.minQty,
+          maxQty: tier.maxQty,
+          totalProductWeightGrams: newWeight,
+          unitWeightGrams: newWeight,
+        });
+      }
+      return list;
+    });
+
+    setMatrixRows?.((prev) =>
+      prev.map((r) => {
+        const c = (r.attributeCombination as any) || {};
+        if ((c.isBasePrice === true || c.type === 'BASE') && r.minQty === tier.minQty) {
+          return {
+            ...r,
+            attributeCombination: {
+              ...c,
+              totalProductWeightGrams: newWeight,
+            },
+          };
+        }
+        return r;
+      })
+    );
+    onChange?.();
+  };
+
+  const getBracketWeight = (minQ: number, maxQ?: number) => {
+    const found = bulkTierWeights?.find((b: any) => b.minQty === minQ && (b.maxQty === maxQ || (!b.maxQty && !maxQ)));
+    return found !== undefined && (found.totalProductWeightGrams !== undefined || found.unitWeightGrams !== undefined)
+      ? Number(found.totalProductWeightGrams ?? found.unitWeightGrams)
+      : Number(unitWeightGrams) || 2;
+  };
+
+  const handleBracketWeightChange = (tier: AddonQuantityTierItem, newWeight: number) => {
+    if (isNaN(newWeight) || newWeight < 0) return;
+    handleBulkTierWeightChange(tier, newWeight);
+  };
+
   const [editingAddonTier, setEditingAddonTier] = useState<AddonQuantityTierItem | null>(null);
   const [editAddonTierInput, setEditAddonTierInput] = useState('');
 
   const openAddTierModal = () => {
-    const isBulk = pricingModel === 'BULK_RANGE';
-    setAddTierMode(isBulk ? 'range' : 'single');
+    // Single Fixed Quantity uses range brackets; Bulk Quantity Range uses discrete single tiers
+    const isRange = pricingModel === 'SINGLE_FIXED_QUANTITY';
+    setAddTierMode(isRange ? 'range' : 'single');
 
-    if (isBulk) {
+    if (isRange) {
       const highestMax = addonQuantityTiers.reduce((max, t) => Math.max(max, t.maxQty), 0);
       const nextMin = highestMax > 0 ? highestMax + 1 : 1;
       const nextMax = nextMin === 1 ? 10 : nextMin + (nextMin <= 20 ? 9 : nextMin <= 50 ? 29 : 49);
@@ -378,21 +510,21 @@ export function StudioTabPricing({
   };
 
   const handleAddAddonTier = () => {
-    const isBulk = pricingModel === 'BULK_RANGE';
+    const isRange = pricingModel === 'SINGLE_FIXED_QUANTITY';
     let parsed: AddonQuantityTierItem | null = null;
     let initialRate: number | '' = '';
 
-    if (!isBulk) {
-      // Single Fixed Quantity mode: only accept single positive integer (e.g. 100)
+    if (!isRange) {
+      // Bulk Quantity Range mode: accepts discrete single quantity (e.g. 100, 1000, 25000)
       const q = Number(singleQtyInput);
       if (!q || isNaN(q) || q <= 0) {
         setAddonTierError('Please enter a valid positive quantity number.');
         return;
       }
-      parsed = { id: `${q}`, minQty: q, maxQty: q, label: `${q} pcs` };
+      parsed = { id: `${q}`, minQty: q, maxQty: q, label: `${q.toLocaleString()} pcs` };
       initialRate = singleInitialRate;
     } else {
-      // Bulk Quantity Range mode: only accept range bracket (e.g. 11-20)
+      // Single Fixed Quantity mode: accepts range bracket (e.g. 1-10, 11-20, 21-50, 51-100)
       const min = Number(rangeMinInput);
       const max = Number(rangeMaxInput);
       if (!min || isNaN(min) || min <= 0) {
@@ -400,7 +532,7 @@ export function StudioTabPricing({
         return;
       }
       if (!max || isNaN(max) || max <= min) {
-        setAddonTierError('Ending quantity (To) must be strictly greater than starting quantity (From) for a bulk range bracket.');
+        setAddonTierError('Ending quantity (To) must be strictly greater than starting quantity (From) for a range bracket.');
         return;
       }
       parsed = { id: `${min}-${max}`, minQty: min, maxQty: max, label: `${min}–${max} pcs` };
@@ -492,23 +624,23 @@ export function StudioTabPricing({
 
   const handleSaveEditAddonTier = () => {
     if (!editingAddonTier) return;
-    const isBulk = pricingModel === 'BULK_RANGE';
+    const isRangeMode = pricingModel === 'SINGLE_FIXED_QUANTITY';
     const parsed = parseQuantityTier(editAddonTierInput);
     if (!parsed) {
       setAddonTierError(
-        isBulk
+        isRangeMode
           ? 'Enter a valid range bracket (e.g. 11-20 or 21-50).'
-          : 'Enter a valid positive integer quantity (e.g. 100 or 250).'
+          : 'Enter a valid positive integer quantity (e.g. 100 or 1000).'
       );
       return;
     }
     const isRange = parsed.minQty !== parsed.maxQty;
-    if (!isBulk && isRange) {
-      setAddonTierError('Single Fixed Quantity mode is active. Please enter an exact single quantity (e.g. 100), not a range like 10-20.');
+    if (isRangeMode && !isRange) {
+      setAddonTierError('Single Fixed Quantity mode is active. Please enter a range bracket (e.g. 11-20), not a single quantity.');
       return;
     }
-    if (isBulk && !isRange) {
-      setAddonTierError('Bulk Quantity Range mode is active. Please enter a range bracket (e.g. 11-20), not a single quantity.');
+    if (!isRangeMode && isRange) {
+      setAddonTierError('Bulk Quantity Range mode is active. Please enter an exact single quantity (e.g. 100), not a range.');
       return;
     }
     if (parsed.id !== editingAddonTier.id && addonQuantityTiers.some((t) => t.id === parsed.id)) {
@@ -763,6 +895,7 @@ export function StudioTabPricing({
         copy[existingIdx] = {
           ...copy[existingIdx],
           unitPrice: newRate,
+          chargeBasis: 'FLAT_PER_ORDER',
         };
         return copy;
       } else {
@@ -774,7 +907,7 @@ export function StudioTabPricing({
           minQty: tier.minQty,
           maxQty: tier.maxQty,
           unitPrice: newRate,
-          chargeBasis: 'PER_UNIT',
+          chargeBasis: 'FLAT_PER_ORDER',
           isExcluded: wasExcluded,
         };
         return [...prev, newRow];
@@ -1058,11 +1191,11 @@ export function StudioTabPricing({
   // 5. METHOD B: COMBINATION-BASED PRICING MATRIX ENGINE
   // ---------------------------------------------------------------------------
   const [quantityColumns, setQuantityColumns] = useState<number[]>(() => {
-    const isBulk = pricingModel === 'BULK_RANGE';
+    const isRangeMode = pricingModel === 'SINGLE_FIXED_QUANTITY';
     const set = new Set<number>();
     for (const r of matrixRows) {
       const isRange = Number(r.minQty) !== Number(r.maxQty);
-      if (!isBulk && isRange) continue;
+      if (isRangeMode ? !isRange : isRange) continue;
       const q = Number(r.minQty);
       if (q > 0) set.add(q);
     }
@@ -1071,13 +1204,13 @@ export function StudioTabPricing({
   });
 
   useEffect(() => {
-    const isBulk = pricingModel === 'BULK_RANGE';
+    const isRangeMode = pricingModel === 'SINGLE_FIXED_QUANTITY';
     setQuantityColumns((prev) => {
       const set = new Set(prev);
       let changed = false;
       for (const r of matrixRows) {
         const isRange = Number(r.minQty) !== Number(r.maxQty);
-        if (!isBulk && isRange) continue;
+        if (isRangeMode ? !isRange : isRange) continue;
         const q = Number(r.minQty);
         if (q > 0 && !set.has(q)) {
           set.add(q);
@@ -1605,193 +1738,6 @@ export function StudioTabPricing({
   };
 
   // ---------------------------------------------------------------------------
-  // 6. LIVE STOREFRONT PRICING SIMULATOR PREVIEW (SECTION 8)
-  // ---------------------------------------------------------------------------
-  const [previewSelections, setPreviewSelections] = useState<Record<string, string>>(() => {
-    const init: Record<string, string> = {};
-    for (const g of optionGroups) {
-      const activeOpts = g.options.filter((o) => o.isActive !== false);
-      const def = activeOpts.find((o) => o.isDefault) || activeOpts[0];
-      if (def) init[g.code] = def.value;
-    }
-    return init;
-  });
-
-  const [previewQty, setPreviewQty] = useState<number>(quantityColumns[0] || minQuantity || 100);
-  const [previewWantsDesign, setPreviewWantsDesign] = useState<boolean>(false);
-  const [previewQuote, setPreviewQuote] = useState<any>(null);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [isCalculatingPreview, setIsCalculatingPreview] = useState<boolean>(false);
-
-  // Sync preview selections when options change
-  useEffect(() => {
-    setPreviewSelections((prev) => {
-      const next = { ...prev };
-      for (const g of optionGroups) {
-        const activeOpts = g.options.filter((o) => o.isActive !== false);
-        if (!next[g.code] || !activeOpts.some((o) => o.value === next[g.code])) {
-          const def = activeOpts.find((o) => o.isDefault) || activeOpts[0];
-          if (def) next[g.code] = def.value;
-        }
-      }
-      return next;
-    });
-  }, [optionGroups]);
-
-  // Debounced quote calculation
-  useEffect(() => {
-    let active = true;
-    const runQuote = async () => {
-      setIsCalculatingPreview(true);
-      setPreviewError(null);
-      try {
-        const optPayload = Object.entries(previewSelections).map(([k, v]) => ({
-          optionCode: k,
-          valueCode: v,
-        }));
-
-        if (productId) {
-          const q = await api.calculateQuote({
-            productId,
-            quantity: previewQty,
-            options: optPayload,
-            fieldValues: previewSelections,
-            hasDesignService: previewWantsDesign,
-            deliveryMethod: 'COURIER',
-          });
-          if (active) setPreviewQuote(q);
-        } else {
-          // Local fallback simulator when product ID is pending save
-          const matchedBaseTier = matrixRows.find((r) => {
-            const combo = (r.attributeCombination as any) || {};
-            const isBase =
-              combo.isBasePrice === true ||
-              combo.type === 'BASE' ||
-              Object.keys(combo).filter(
-                (k) => !['label', 'rangeLabel', 'discountPercent', 'isBasePrice', 'type'].includes(k)
-              ).length === 0;
-
-            return isBase && previewQty >= r.minQty && (r.maxQty ? previewQty <= r.maxQty : true);
-          });
-
-          const currentMoq = Math.max(1, Number(minQuantity) || 1);
-          const refUnitPrice =
-            matchedBaseTier && Number(matchedBaseTier.unitPrice) > 0
-              ? Number(matchedBaseTier.unitPrice)
-              : Number(basePrice) > 0
-              ? Number(basePrice)
-              : 0;
-          const startingRef = Math.round(refUnitPrice * currentMoq * 100) / 100;
-          let optAddons = 0;
-          const activeOptBreakdown: Array<{ groupCode: string; optionCode: string; priceModifier: number; subtotal: number }> = [];
-
-          for (const g of optionGroups) {
-            const chosen = g.options.find((o) => o.value === previewSelections[g.code]);
-            if (chosen) {
-              let matchedAddonTier: ProductAdditionalPricingTier | undefined;
-              if (g.enableAdditionalPricing && additionalPricingRows) {
-                matchedAddonTier = additionalPricingRows.find(
-                  (t) =>
-                    t.groupCode === g.code &&
-                    t.optionValue === chosen.value &&
-                    !t.isExcluded &&
-                    previewQty >= t.minQty &&
-                    previewQty <= t.maxQty
-                );
-              }
-
-              if (matchedAddonTier && Number(matchedAddonTier.unitPrice) > 0) {
-                const addPrice = Number(matchedAddonTier.unitPrice);
-                optAddons += addPrice;
-                activeOptBreakdown.push({
-                  groupCode: g.code,
-                  optionCode: `${chosen.label} (Tier ${matchedAddonTier.minQty} pcs)`,
-                  priceModifier: addPrice,
-                  subtotal: Math.round(addPrice * previewQty * 100) / 100,
-                });
-              } else if (Number(chosen.priceModifier) > 0) {
-                const modifier = Number(chosen.priceModifier);
-                optAddons += modifier;
-                activeOptBreakdown.push({
-                  groupCode: g.code,
-                  optionCode: chosen.label,
-                  priceModifier: modifier,
-                  subtotal: Math.round(modifier * previewQty * 100) / 100,
-                });
-              }
-            }
-          }
-
-          const designFeeNum = previewWantsDesign ? Number(designServiceFee) || 0 : 0;
-          const basePrintSubtotal = Math.round(refUnitPrice * previewQty * 100) / 100;
-          const optSubtotal = Math.round(optAddons * previewQty * 100) / 100;
-          const subtotal = Math.round((basePrintSubtotal + optSubtotal + designFeeNum) * 100) / 100;
-          const tax = Math.round(subtotal * 0.18 * 100) / 100;
-          const shipping = subtotal >= 1000 ? 0 : 100;
-
-          if (active) {
-            setPreviewQuote({
-              startingReferenceRate: startingRef,
-              referenceUnitPrice: refUnitPrice,
-              baseUnitPrice: refUnitPrice,
-              baseSubtotal: basePrintSubtotal,
-              optionsSubtotal: optSubtotal,
-              optionsBreakdown: activeOptBreakdown,
-              unitPrice: refUnitPrice + optAddons,
-              subtotal,
-              totalTax: tax,
-              estimatedShipping: shipping,
-              designServiceFee: designFeeNum,
-              grandTotal: Math.round((subtotal + tax + shipping) * 100) / 100,
-              items: [
-                {
-                  productId: 'pending',
-                  productName: 'Pending Product Preview',
-                  quantity: previewQty,
-                  startingReferenceRate: startingRef,
-                  referenceUnitPrice: refUnitPrice,
-                  baseUnitPrice: refUnitPrice,
-                  baseSubtotal: basePrintSubtotal,
-                  optionsBreakdown: activeOptBreakdown,
-                  optionsSubtotal: optSubtotal,
-                  conditionalChargesBreakdown: [],
-                  conditionalChargesSubtotal: 0,
-                  designServiceFee: designFeeNum,
-                  preTaxSubtotal: subtotal,
-                  taxSubtotal: tax,
-                  lineTotal: Math.round((subtotal + tax) * 100) / 100,
-                },
-              ],
-            });
-          }
-        }
-      } catch (err: any) {
-        if (active) {
-          setPreviewError(err?.message || 'Selected configuration is unavailable in current matrix.');
-          setPreviewQuote(null);
-        }
-      } finally {
-        if (active) setIsCalculatingPreview(false);
-      }
-    };
-
-    const timer = setTimeout(runQuote, 200);
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [
-    productId,
-    previewSelections,
-    previewQty,
-    previewWantsDesign,
-    basePrice,
-    designServiceFee,
-    matrixRows,
-    optionGroups,
-  ]);
-
-  // ---------------------------------------------------------------------------
   // 7. RENDER WORKSPACE
   // ---------------------------------------------------------------------------
   return (
@@ -1812,7 +1758,7 @@ export function StudioTabPricing({
               </h2>
             </div>
             <p className="text-xs text-slate-500 mt-0.5 max-w-3xl">
-              Configure product base prices based on quantity tiers, and define per-unit additive rates for eligible option groups and choices.
+              Configure product base prices based on quantity tiers, and define bulk additive amounts for eligible option groups and choices.
             </p>
           </div>
 
@@ -1852,23 +1798,23 @@ export function StudioTabPricing({
               </span>
               <span
                 className={`text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
-                  pricingModel === 'BULK_RANGE'
+                  isRangeBracketMode
                     ? 'bg-amber-100 text-amber-900 border-amber-300'
                     : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                 }`}
               >
-                {pricingModel === 'BULK_RANGE' ? '📦 Bulk Quantity Range Mode' : '📦 Single Fixed Quantity Mode'}
+                {isRangeBracketMode ? '📦 Single Fixed Quantity (Range Brackets)' : '📦 Bulk Quantity Range (Discrete Tiers)'}
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1 max-w-3xl">
-              Manually define the foundational product base price for each configured quantity tier or range.
+              Manually define the foundational product base price for each configured quantity tier or range bracket.
             </p>
           </div>
 
           <div className="text-right">
             <span className="text-[11px] font-mono text-slate-400 block">Pricing Formula:</span>
             <span className="text-xs font-mono font-bold text-slate-800">
-              {pricingModel === 'BULK_RANGE'
+              {isRangeBracketMode
                 ? 'Order Qty × Tier Rate (₹/pc)'
                 : 'Selected Batch Total (₹)'}
             </span>
@@ -1878,7 +1824,7 @@ export function StudioTabPricing({
         {/* Active Pricing Structure Banner */}
         <div
           className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
-            pricingModel === 'BULK_RANGE'
+            isRangeBracketMode
               ? 'bg-amber-50/80 border-amber-300/80 text-amber-950'
               : 'bg-slate-50 border-slate-200 text-slate-800'
           }`}
@@ -1886,15 +1832,15 @@ export function StudioTabPricing({
           <div className="flex items-center gap-2.5">
             <div
               className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
-                pricingModel === 'BULK_RANGE'
+                isRangeBracketMode
                   ? 'bg-[#FFED00] text-slate-900 border border-amber-400 shadow-2xs'
                   : 'bg-slate-200 text-slate-700'
               }`}
             >
-              {pricingModel === 'BULK_RANGE' ? (
-                <RiPriceTag3Line className="w-4 h-4" />
-              ) : (
+              {isRangeBracketMode ? (
                 <RiStackLine className="w-4 h-4" />
+              ) : (
+                <RiPriceTag3Line className="w-4 h-4" />
               )}
             </div>
             <div>
@@ -1902,34 +1848,37 @@ export function StudioTabPricing({
                 <span>
                   Stage 1 Pricing Structure:{' '}
                   <strong>
-                    {pricingModel === 'BULK_RANGE'
-                      ? 'Bulk Quantity Range'
-                      : 'Single Fixed Quantity'}
+                    {isRangeBracketMode
+                      ? 'Single Fixed Quantity'
+                      : 'Bulk Quantity Range'}
                   </strong>
                 </span>
                 <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-white/70 border border-slate-200">
-                  {pricingModel === 'BULK_RANGE'
-                    ? 'Dynamic Unit Multiplier'
-                    : 'Fixed Batch Packages'}
+                  {isRangeBracketMode
+                    ? 'Quantity Range Brackets'
+                    : 'Fixed Discrete Packages'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-600 mt-0.5">
-                {pricingModel === 'BULK_RANGE'
-                  ? 'Tiers represent wholesale brackets (e.g. 1–10 pcs @ ₹100/pc, 11–20 pcs @ ₹90/pc). On storefront, ordering 11 units multiplies as 11 × ₹90 = ₹990.'
-                  : 'Tiers represent fixed discrete package quantities (e.g. 100 pcs, 200 pcs, 500 pcs) with set batch total prices.'}
+                {isRangeBracketMode
+                  ? 'Tiers represent wholesale range brackets (e.g. 1–10 pcs, 11–20 pcs, 21–50 pcs, 51–100 pcs). Orders multiply matched bracket rate by actual quantity.'
+                  : 'Tiers represent fixed discrete package quantities (e.g. 100 pcs, 1,000 pcs, 25,000 pcs) with set batch total prices.'}
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => {
-              const next = pricingModel === 'BULK_RANGE' ? 'FIXED' : 'BULK_RANGE';
+              const next = isRangeBracketMode ? 'BULK_RANGE' : 'SINGLE_FIXED_QUANTITY';
               setPricingModel?.(next);
+              if (next === 'SINGLE_FIXED_QUANTITY') {
+                setQuantityStep?.(0);
+              }
               onChange?.();
             }}
             className="shrink-0 px-3 py-1.5 text-[11px] font-bold rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 transition cursor-pointer shadow-2xs"
           >
-            Switch to {pricingModel === 'BULK_RANGE' ? 'Single Fixed Quantity' : 'Bulk Quantity Range'}
+            Switch to {isRangeBracketMode ? 'Bulk Quantity Range' : 'Single Fixed Quantity'}
           </button>
         </div>
 
@@ -2305,6 +2254,30 @@ export function StudioTabPricing({
                               />
                             </div>
                           </div>
+
+                          {/* MODEL B: Total Product Weight (g) for this Discrete Quantity Tier */}
+                          <div className="flex items-center gap-1.5 mt-1 pt-1.5 border-t border-slate-100">
+                            <span className="text-[10px] text-sky-800 font-mono font-bold whitespace-nowrap">Weight:</span>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={getBulkTierWeight(tier)}
+                                onChange={(e) => {
+                                  const parsed = parseFloat(e.target.value);
+                                  handleBulkTierWeightChange(
+                                    tier,
+                                    isNaN(parsed) || e.target.value === '' ? 0 : parsed
+                                  );
+                                }}
+                                placeholder="e.g. 200"
+                                className="w-20 pl-2 pr-5 py-0.5 bg-sky-50/70 border border-sky-300 rounded text-right font-mono text-[11px] font-bold text-slate-900 focus:outline-none focus:border-sky-500 shadow-2xs"
+                                title={`Total product weight for ${tier.label} (e.g. 200g for 100 pcs, 1,500g for 1,000 pcs)`}
+                              />
+                              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-400 font-semibold pointer-events-none">g</span>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </td>
@@ -2342,18 +2315,18 @@ export function StudioTabPricing({
                   Additional Pricing by Group & Quantity
                 </h3>
                 <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
-                  Per-Unit Additive Matrix
+                  Flat Add-on per Order Matrix
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1 max-w-3xl">
-                Configure quantity-bracket additional charges (<strong>₹ per printed unit</strong>) for option choices belonging to eligible option groups. Rates are dynamically multiplied by the total order quantity at quotation time.
+                Configure flat add-on additional charges (<strong>flat ₹ per order</strong>) for option choices belonging to eligible option groups. Input values represent the complete additional charge for the selected quantity tier.
               </p>
             </div>
 
             <div className="text-right">
               <span className="text-[11px] font-mono text-slate-400 block">Pricing Formula:</span>
               <span className="text-xs font-mono font-bold text-slate-800">
-                Order Qty × Tier Rate (₹/pc)
+                Flat Add-on per Order
               </span>
             </div>
           </div>
@@ -2503,7 +2476,7 @@ export function StudioTabPricing({
                             <th key={tier.id} className="py-3 px-3.5 text-right whitespace-nowrap min-w-[130px]">
                               <div>{tier.label}</div>
                               <span className="text-[9px] font-normal text-slate-400 lowercase block font-sans">
-                                ₹ / printed unit
+                                ₹ / order
                               </span>
                             </th>
                           ))}
@@ -2576,7 +2549,7 @@ export function StudioTabPricing({
                                 {addonQuantityTiers.map((tier) => {
                                   const currentRate = getAddonTierPrice(activeAddonGroup.code, opt.value, tier);
                                   const numRate = typeof currentRate === 'number' ? currentRate : 0;
-                                  const tierTotal = Math.round(numRate * tier.minQty * 100) / 100;
+                                  const perPc = tier.minQty > 0 ? Math.round((numRate / tier.minQty) * 100) / 100 : 0;
                                   const isMissing = !isExcluded && (currentRate === '' || currentRate === 0);
 
                                   return (
@@ -2612,16 +2585,16 @@ export function StudioTabPricing({
                                           />
                                         </div>
 
-                                        {/* Helper showing total tier addition */}
+                                        {/* Helper showing addition */}
                                         <div className="text-[10px] font-mono text-slate-400 mt-0.5 flex items-center gap-1">
                                           {isMissing ? (
                                             <span className="text-amber-700 font-semibold flex items-center gap-0.5">
                                               <RiInformationLine className="w-2.5 h-2.5" />
-                                              <span>₹0 / pc</span>
+                                              <span>₹0 flat / order</span>
                                             </span>
                                           ) : (
-                                            <span>
-                                              = ₹{tierTotal.toLocaleString()} for {tier.label}
+                                            <span title={`Effective ~₹${perPc}/pc for ${tier.label}`}>
+                                              +₹{numRate.toLocaleString()} flat / order (~₹{perPc}/pc)
                                             </span>
                                           )}
                                         </div>
@@ -2667,255 +2640,310 @@ export function StudioTabPricing({
           )}
         </div>
 
-
-
-      {/* ============================================================== */}
-      {/* SECTION 8: LIVE STOREFRONT PRICING SIMULATOR PREVIEW           */}
-      {/* ============================================================== */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-card space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <RiPlayCircleLine className="w-5 h-5 text-indigo-600" />
-            <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 font-display">
-              Live Storefront Pricing Preview
-            </h3>
-          </div>
-          <span className="text-[10px] font-mono font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
-            Authoritative Server Quote Engine
-          </span>
-        </div>
-
-        <p className="text-xs text-slate-500">
-          Test customer configurations live. The quote calculations below use the server quote engine to test base rates, option charges, Step 3 design pricing, tax, and delivery.
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-          {/* Left: Input Selectors */}
-          <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {optionGroups
-                .filter((grp) => grp.isActive !== false && grp.options.some((opt) => opt.isActive !== false))
-                .map((grp) => (
-                <div key={grp.id} className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-700 block">
-                    {grp.name}
-                  </label>
-                  <select
-                    value={previewSelections[grp.code] || ''}
-                    onChange={(e) =>
-                      setPreviewSelections((prev) => ({ ...prev, [grp.code]: e.target.value }))
-                    }
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-slate-900 cursor-pointer"
-                  >
-                    {grp.options
-                      .filter((opt) => opt.isActive !== false)
-                      .map((opt) => (
-                      <option key={opt.id} value={opt.value}>
-                        {opt.label} {Number(opt.priceModifier) > 0 ? `(+₹${opt.priceModifier})` : ''}
-                      </option>
-                    ))}
-                  </select>
+        {/* ========================================================================= */}
+        {/* SECTION 4: SHIPPING & LOGISTICS WEIGHT CONFIGURATION                      */}
+        {/* ========================================================================= */}
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100 shrink-0 mt-0.5">
+                <RiTruckLine className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                    Shipping & Logistics Weight Configuration
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-sky-100 text-sky-700">
+                    Stage 5 Core
+                  </span>
                 </div>
-              ))}
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Configure physical product weight and tare packaging profile. Weight determines live shipping slabs and excess kg rates during customer checkout.
+                </p>
+              </div>
             </div>
 
-            {/* Quantity Run Selector */}
-            <div className="space-y-1.5 pt-1">
-              <label className="text-[11px] font-bold text-slate-700 block">
-                Quantity Run Size
+            <div className="flex items-center gap-3">
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isShippable !== false}
+                  onChange={(e) => setIsShippable?.(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+                <span className="ml-2.5 text-xs font-semibold text-slate-700">
+                  {isShippable !== false ? 'Shippable Physical Product' : 'Digital / In-store Only'}
+                </span>
               </label>
-              <div className="flex flex-wrap gap-1.5">
-                {addonQuantityTiers.map((tier) => (
-                  <button
-                    key={tier.id}
-                    type="button"
-                    onClick={() => setPreviewQty(tier.minQty)}
-                    className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition cursor-pointer ${
-                      previewQty === tier.minQty
-                        ? 'bg-slate-950 text-white shadow-2xs'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {tier.label}
-                  </button>
-                ))}
-              </div>
             </div>
-
-            {/* Design Service Toggle */}
-            {designServiceRequirement !== 'DISABLED' && (
-              <div className="pt-2">
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  Artwork & Design Service
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewWantsDesign(false)}
-                    className={`p-2 rounded-lg text-xs font-bold border transition text-left cursor-pointer ${
-                      !previewWantsDesign
-                        ? 'bg-slate-950 text-white border-slate-950'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    Customer Supplied Artwork
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewWantsDesign(true)}
-                    className={`p-2 rounded-lg text-xs font-bold border transition text-left cursor-pointer ${
-                      previewWantsDesign
-                        ? 'bg-amber-400 text-slate-950 border-amber-400 font-black'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    Design Assistance (+₹{designServiceFee})
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* Right: Calculated Price Breakdown Card */}
-          <div className="p-4 bg-slate-50/90 border border-slate-200 rounded-xl space-y-3">
-            <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider block">
-              Authoritative Quote Calculation
-            </span>
-
-            {isCalculatingPreview ? (
-              <div className="p-6 text-center text-xs text-slate-400 font-mono animate-pulse">
-                Calculating authoritative pricing...
-              </div>
-            ) : previewError ? (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs font-bold flex items-start gap-2">
-                <RiAlertFill className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                <div>
-                  <span>Unavailable in Matrix</span>
-                  <p className="text-[11px] font-normal text-rose-700 mt-0.5">{previewError}</p>
+          {isShippable === false ? (
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-3 text-slate-600 text-xs">
+              <RiInformationLine className="w-5 h-5 text-slate-400 shrink-0" />
+              <span>
+                Shipping calculation is disabled for this product. No shipping charge or weight slabs will be applied at checkout.
+              </span>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Packaging Profile & Master Attributes */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="p-4 bg-slate-50/70 border border-slate-200/80 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <RiBox3Line className="w-4 h-4 text-sky-600" />
+                      Default Packaging Profile (Tare Weight)
+                    </label>
+                    <span className="text-[11px] font-mono text-slate-500">Added once per order</span>
+                  </div>
+                  <select
+                    value={packagingProfileId || (activePackagingProfile?.id ?? '')}
+                    onChange={(e) => setPackagingProfileId?.(e.target.value)}
+                    className="w-full text-xs font-medium bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                  >
+                    {packagingProfilesList.length === 0 ? (
+                      <option value="">Standard Carton Box (200g - 220×160×120mm)</option>
+                    ) : (
+                      packagingProfilesList.map((pkg) => (
+                        <option key={pkg.id} value={pkg.id}>
+                          {pkg.name} — {pkg.weightGrams}g ({pkg.lengthMm}×{pkg.widthMm}×{pkg.heightMm} mm)
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Tare packaging weight is added strictly <strong>once</strong> to the shipment's total weight. It is never multiplied by product order quantity.
+                  </p>
                 </div>
-              </div>
-            ) : previewQuote ? (
-              (() => {
-                const item = previewQuote.items?.[0];
-                const refRate = Number(item?.referenceUnitPrice ?? previewQuote.referenceUnitPrice ?? referenceUnitPrice);
-                const baseUnit = Number(item?.baseUnitPrice ?? previewQuote.baseUnitPrice ?? refRate);
-                const baseSub = Number(item?.baseSubtotal ?? previewQuote.baseSubtotal ?? Math.round(refRate * previewQty * 100) / 100);
-                const optSub = Number(item?.optionsSubtotal ?? previewQuote.optionsSubtotal ?? 0);
-                const hasTierAdjustment = Math.abs(baseUnit - refRate) > 0.0001;
 
-                return (
-                  <div className="space-y-2.5 text-xs">
-                    {/* Base Rate by Quantity Tier */}
-                    <div className="flex justify-between text-slate-700">
-                      <div>
-                        <span className="font-semibold block">Base Printing Rate</span>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          Tier rate for {previewQty} pcs
-                        </span>
+                <div className="p-4 bg-sky-50/40 border border-sky-100 rounded-xl space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-sky-900">
+                    <RiScales3Line className="w-4 h-4 text-sky-600" />
+                    Live Dimensional & Tare Specs
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                    <div className="bg-white p-2 rounded-lg border border-sky-100">
+                      <div className="text-[10px] text-slate-400 font-medium">Box Tare Weight</div>
+                      <div className="font-bold text-slate-800 mt-0.5">
+                        {activePackagingProfile?.weightGrams ?? 200} grams ({(Number(activePackagingProfile?.weightGrams ?? 200) / 1000).toFixed(2)} kg)
                       </div>
-                      <span className="font-mono font-bold text-slate-900">
-                        ₹{baseUnit.toFixed(4)} / pc
-                      </span>
                     </div>
-
-                    {/* Base Print Subtotal */}
-                    <div className="flex justify-between text-slate-700">
-                      <div>
-                        <span className="font-semibold block">Base Printing Price</span>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          {previewQty} pcs × ₹{baseUnit.toFixed(4)}/pc
-                        </span>
+                    <div className="bg-white p-2 rounded-lg border border-sky-100">
+                      <div className="text-[10px] text-slate-400 font-medium">Volumetric Weight (5000 Divisor)</div>
+                      <div className="font-bold text-slate-800 mt-0.5">
+                        {(((activePackagingProfile?.lengthMm ?? 220) / 10 * (activePackagingProfile?.widthMm ?? 160) / 10 * (activePackagingProfile?.heightMm ?? 120) / 10) / 5000).toFixed(2)} kg
                       </div>
-                      <span className="font-mono font-bold text-slate-900">
-                        {formatCurrency(baseSub)}
-                      </span>
-                    </div>
-
-                    {/* Tier Adjustment if rate differs */}
-                    {hasTierAdjustment && (
-                      <div className="flex justify-between text-blue-900 bg-blue-50/80 p-1.5 rounded-lg border border-blue-200 text-[11px]">
-                        <span>Quantity Tier Adjustment</span>
-                        <span className="font-mono font-bold">
-                          {baseUnit < refRate ? '-' : '+'}{formatCurrency(Math.abs(Math.round((baseUnit - refRate) * previewQty * 100) / 100))}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Option Surcharges (Distinct from Base) */}
-                    {optSub > 0 && (
-                      <div className="flex justify-between text-slate-700">
-                        <div>
-                          <span className="font-semibold block">Option Surcharges</span>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            Independent choice modifiers
-                          </span>
-                        </div>
-                        <span className="font-mono font-bold text-slate-900">
-                          +{formatCurrency(optSub)}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Design Service Fee (Step 3) - Single Flat Fee or ₹0 */}
-                    <div className="flex justify-between text-slate-700">
-                      <div>
-                        <span className="font-semibold block">Design Service Fee</span>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          {previewWantsDesign
-                            ? 'Single flat fee applied once'
-                            : 'Customer Artwork Provided (No Design Fee)'}
-                        </span>
-                      </div>
-                      <span className="font-mono font-bold text-slate-900">
-                        {previewWantsDesign && Number(previewQuote.designServiceFee) > 0
-                          ? `+${formatCurrency(Number(previewQuote.designServiceFee))}`
-                          : '₹0.00'}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between text-slate-600 pt-2 border-t border-slate-200">
-                      <span>Pre-Tax Subtotal</span>
-                      <span className="font-mono font-bold text-slate-900">
-                        {formatCurrency(Number(previewQuote.subtotal || 0))}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between text-slate-600">
-                      <span>Estimated GST (18%)</span>
-                      <span className="font-mono font-bold text-slate-900">
-                        +{formatCurrency(Number(previewQuote.totalTax || 0))}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between text-slate-600">
-                      <span>Shipping (Courier)</span>
-                      <span className="font-mono font-bold text-slate-900">
-                        {Number(previewQuote.estimatedShipping) === 0 ? (
-                          <span className="text-emerald-700 font-bold">FREE</span>
-                        ) : (
-                          `+${formatCurrency(Number(previewQuote.estimatedShipping || 0))}`
-                        )}
-                      </span>
-                    </div>
-
-                    <div className="pt-2 border-t border-slate-300 flex justify-between items-baseline">
-                      <div>
-                        <span className="text-xs font-black uppercase text-slate-900 block font-display">
-                          Grand Total
-                        </span>
-                        <span className="text-[10px] text-slate-500 font-mono">
-                          ₹{(Number(previewQuote.grandTotal || 0) / Math.max(1, previewQty)).toFixed(2)}/pc all-inclusive
-                        </span>
-                      </div>
-                      <span className="text-lg font-black font-mono text-slate-950">
-                        {formatCurrency(Number(previewQuote.grandTotal || 0))}
-                      </span>
                     </div>
                   </div>
-                );
-              })()
-            ) : null}
-          </div>
+                  <p className="text-[11px] text-slate-500">
+                    Billable weight = <code>max(Actual Weight + Box Tare, Volumetric Weight)</code>.
+                  </p>
+                </div>
+              </div>
+
+              {/* Model A vs Model B Weight Configuration */}
+              {isRangeBracketMode ? (
+                /* MODEL A: Single Fixed Quantity -> 1 single weight input with live automatic preview */
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                          MODEL A: Single Fixed Quantity Weight Configuration
+                        </h4>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Admin enters one product weight per printed piece. Total weight is automatically calculated as <code>Total Product Weight = Actual Order Quantity × Weight Per Piece</code>.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-300 shadow-2xs">
+                      <label className="text-xs font-bold text-slate-700 whitespace-nowrap">
+                        Weight per Printed Piece:
+                      </label>
+                      <div className="relative flex items-center">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={unitWeightGrams !== undefined && unitWeightGrams !== '' ? unitWeightGrams : 2}
+                          onChange={(e) => setUnitWeightGrams?.(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                          className="w-20 px-2 py-1 text-xs font-bold text-slate-900 border border-slate-300 rounded focus:ring-1 focus:ring-sky-500 focus:outline-none text-right pr-6"
+                        />
+                        <span className="absolute right-2 text-[10px] text-slate-400 font-semibold pointer-events-none">g</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-50 text-[11px] font-bold text-slate-600 border-b border-slate-200 uppercase tracking-wider">
+                        <tr>
+                          <th className="py-2.5 px-4">Sample Order Quantity</th>
+                          <th className="py-2.5 px-4 text-right">Weight per Piece</th>
+                          <th className="py-2.5 px-4 text-right">Total Product Weight</th>
+                          <th className="py-2.5 px-4 text-right">Packaging Tare Box</th>
+                          <th className="py-2.5 px-4 text-right bg-sky-50/50 text-sky-900 font-bold">Total Shipment Weight</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {[1, 5, 10, 20, 50, 100].map((sampleQty) => {
+                          const perPieceGrams = Number(unitWeightGrams) || 2;
+                          const netWeightGrams = Math.round(sampleQty * perPieceGrams * 100) / 100;
+                          const tareGrams = Number(activePackagingProfile?.weightGrams ?? 200);
+                          const totalWeightGrams = netWeightGrams + tareGrams;
+                          return (
+                            <tr key={`sample-qty-${sampleQty}`} className="hover:bg-slate-50/60 transition">
+                              <td className="py-2.5 px-4 font-semibold text-slate-800">
+                                {sampleQty} {sampleQty === 1 ? 'piece' : 'pieces'}
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-mono text-slate-600">
+                                {perPieceGrams} g
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-mono text-slate-700">
+                                {netWeightGrams} g ({sampleQty} × {perPieceGrams}g)
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-mono text-slate-500">
+                                + {tareGrams} g
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-mono font-bold text-sky-900 bg-sky-50/30">
+                                {totalWeightGrams >= 1000 ? `${(totalWeightGrams / 1000).toFixed(3)} kg` : `${totalWeightGrams} g`}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                /* MODEL B: Bulk Quantity Range -> Configured in Section 2 Table, Live Breakdown displayed here */
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                        <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                          MODEL B: Bulk Quantity Range Weight Breakdown (Discrete Tiers)
+                        </h4>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Total product weights are manually entered per discrete quantity tier in <strong>Section 2 (Product Base Price by Quantity table)</strong> above. These weights represent the complete batch and are <strong>never multiplied by quantity</strong>.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-50 text-[11px] font-bold text-slate-600 border-b border-slate-200 uppercase tracking-wider">
+                        <tr>
+                          <th className="py-2.5 px-4">Configured Quantity Tier</th>
+                          <th className="py-2.5 px-4 text-right">Items in Tier</th>
+                          <th className="py-2.5 px-4 text-right">Configured Product Weight</th>
+                          <th className="py-2.5 px-4 text-right">Box Tare (Added Once)</th>
+                          <th className="py-2.5 px-4 text-right bg-sky-50/50 text-sky-900 font-bold">Total Shipment Weight</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {addonQuantityTiers.map((tier) => {
+                          const configuredWeight = Number(getBulkTierWeight(tier)) || (tier.minQty * (Number(unitWeightGrams) || 2));
+                          const tareGrams = Number(activePackagingProfile?.weightGrams ?? 200);
+                          const totalWeightGrams = configuredWeight + tareGrams;
+                          return (
+                            <tr key={tier.id} className="hover:bg-slate-50/60 transition">
+                              <td className="py-2.5 px-4 font-semibold text-slate-800">
+                                {tier.label}
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-mono text-slate-600">
+                                {tier.minQty} pcs
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900">
+                                {configuredWeight >= 1000 ? `${(configuredWeight / 1000).toFixed(2)} kg (${configuredWeight} g)` : `${configuredWeight} g`}
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-mono text-slate-500">
+                                + {tareGrams} g
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-mono font-bold text-sky-900 bg-sky-50/30">
+                                {totalWeightGrams >= 1000 ? `${(totalWeightGrams / 1000).toFixed(3)} kg` : `${totalWeightGrams} g`}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Bottom Shipping Notice */}
+              <div className="p-3 bg-sky-50/60 border border-sky-200/70 rounded-xl flex items-center justify-between text-xs text-sky-800">
+                <div className="flex items-center gap-2">
+                  <RiCheckboxCircleLine className="w-4 h-4 text-sky-600 shrink-0" />
+                  <span>
+                    Shipping rates (Local, Regional, National, Remote) and Weight Slabs are centrally managed under <strong>Admin Sidebar &rarr; Shipping & Logistics</strong>.
+                  </span>
+                </div>
+                <a
+                  href="/admin/shipping/rates"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sky-700 hover:text-sky-900 font-semibold underline text-[11px] shrink-0"
+                >
+                  View Rate Cards &rarr;
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      <div className="bg-white border border-slate-200/90 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          {onNavigateToTab && (
+            <button
+              type="button"
+              onClick={() => {
+                onNavigateToTab('ARTWORK');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="px-3.5 py-2 border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-50 transition cursor-pointer"
+            >
+              ← Back to Step 4: Artwork Upload & Design Matrix
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+          <span className="font-semibold text-slate-900">Step 5 Summary:</span>
+          <span className="bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-mono text-[11px]">
+            Base Price: {formatCurrency(Number(basePrice))}
+          </span>
+          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded font-mono font-bold text-[11px]">
+            {matrixRows.length} Pricing Matrix Rows
+          </span>
+          {additionalPricingRows.length > 0 && (
+            <span className="bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded font-mono text-[11px]">
+              {additionalPricingRows.length} Add-on Rates
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {onNavigateToTab && (
+            <button
+              type="button"
+              onClick={() => {
+                onNavigateToTab('REVIEW');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="flex items-center gap-1.5 bg-[#FFED00] hover:bg-[#F2E100] text-[#0F172A] font-bold text-xs px-4 py-2.5 rounded-lg border border-[#E3A008]/40 shadow-xs transition active:scale-95 cursor-pointer"
+            >
+              <span>Next: 6. Review & Publish</span>
+              <RiArrowRightLine className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 

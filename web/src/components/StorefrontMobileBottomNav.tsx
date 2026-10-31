@@ -53,6 +53,11 @@ export function StorefrontMobileBottomNav() {
     };
   }, []);
 
+  // On product detail pages, yield to the product sticky action & pricing bar
+  if (pathname.startsWith('/products/') && pathname !== '/products') {
+    return null;
+  }
+
   return (
     <nav
       className="md:hidden fixed bottom-0 inset-x-0 w-full max-w-[100vw] z-[100] bg-white/98 backdrop-blur-md border-t border-[#E5E5E5] shadow-elevated"

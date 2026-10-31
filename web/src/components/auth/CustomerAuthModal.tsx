@@ -24,6 +24,7 @@ export interface CustomerAuthModalProps {
   initialMode?: 'LOGIN' | 'REGISTER';
   title?: string;
   subtitle?: string;
+  zIndex?: string;
 }
 
 export function CustomerAuthModal({
@@ -33,6 +34,7 @@ export function CustomerAuthModal({
   initialMode = 'LOGIN',
   title,
   subtitle,
+  zIndex = 'z-[200]',
 }: CustomerAuthModalProps) {
   const { login, register } = useAuth();
 
@@ -134,6 +136,7 @@ export function CustomerAuthModal({
       title={title || defaultTitle}
       subtitle={subtitle || defaultSubtitle}
       maxWidth="md"
+      zIndex={zIndex}
     >
       <div className="space-y-4">
         {/* Toggle Mode Pills */}

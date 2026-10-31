@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Package,
   Scale,
@@ -31,6 +31,34 @@ export default function DispatchStationPage() {
   const [heightCm, setHeightCm] = useState(10);
   const [courierName, setCourierName] = useState('Delhivery Express');
   const [packingComplete, setPackingComplete] = useState(false);
+  const [dispatchDetails, setDispatchDetails] = useState<any | null>(null);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+
+  useEffect(() => {
+    if (!orderNumber || orderNumber.trim().length < 3) return;
+    let isCancelled = false;
+    setIsLoadingDetails(true);
+    api.getOrderDispatchDetails(orderNumber.trim())
+      .then((data) => {
+        if (!isCancelled && data) {
+          setDispatchDetails(data);
+          if (data.measuredGrossWeightGrams) {
+            setWeightGrams(data.measuredGrossWeightGrams);
+          } else if (data.actualShipmentWeightGrams) {
+            setWeightGrams(data.actualShipmentWeightGrams);
+          }
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) setDispatchDetails(null);
+      })
+      .finally(() => {
+        if (!isCancelled) setIsLoadingDetails(false);
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [orderNumber]);
 
   // Handover State
   const [scannedBarcode, setScannedBarcode] = useState('BAR-20260929-PB20260001-1');
@@ -68,6 +96,15 @@ export default function DispatchStationPage() {
         ],
         courierName,
       });
+
+      // Record dispatch weight adjustment if scale measured weight differs from quote
+      if (dispatchDetails && Math.abs(weightGrams - Number(dispatchDetails.actualShipmentWeightGrams)) > 0) {
+        await api.adjustDispatchWeight(orderNumber.trim(), {
+          measuredWeightGrams: weightGrams,
+          reason: 'Physical scale weight verified during packaging dispatch',
+        }).catch(() => null);
+      }
+
       setPackingComplete(true);
       setFeedbackSuccess(`Order #${orderNumber.trim()} packaging finalized and moved to READY_FOR_DISPATCH.`);
     } catch (err: any) {
@@ -256,11 +293,72 @@ export default function DispatchStationPage() {
                 </div>
               </div>
 
+              {/* Authoritative Order Logistics Snapshot */}
+              {dispatchDetails && (
+                <div className="p-4 bg-sky-50/70 border border-sky-200 rounded-xl space-y-2 text-xs font-mono">
+                  <div className="flex items-center justify-between font-bold text-sky-950 pb-1.5 border-b border-sky-200">
+                    <span className="flex items-center gap-1.5">
+                      <Truck className="h-4 w-4 text-sky-700" />
+                      Authoritative Dispatch Weight Specs — #{dispatchDetails.orderNumber}
+                    </span>
+                    <span className="bg-sky-200/80 px-2 py-0.5 rounded text-[11px] font-bold">
+                      {dispatchDetails.zoneCode} Zone ({dispatchDetails.destinationPincode})
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px]">
+                    <div>
+                      <span className="text-slate-500 block">Product Qty:</span>
+                      <strong className="text-slate-900">{dispatchDetails.productQuantity} pcs</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Product Weight:</span>
+                      <strong className="text-slate-900">{dispatchDetails.configuredProductWeightGrams} g</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Box Tare:</span>
+                      <strong className="text-slate-900">+{dispatchDetails.packagingWeightGrams} g</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Estimated Weight:</span>
+                      <strong className="text-sky-800">{dispatchDetails.actualShipmentWeightGrams} g</strong>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1.5 border-t border-sky-200/60 text-[11px]">
+                    <span>Expected Courier Charge:</span>
+                    <strong className="text-slate-900 font-bold">₹{Number(dispatchDetails.expectedCourierShippingAmount || 0).toFixed(2)}</strong>
+                  </div>
+
+                  {/* Weight Variance Notice if measured weight differs */}
+                  {Math.abs(weightGrams - Number(dispatchDetails.actualShipmentWeightGrams)) > 10 && (
+                    <div className="mt-2 p-2 bg-amber-50 border border-amber-300 rounded-lg flex items-center justify-between text-amber-950 text-[11px]">
+                      <div>
+                        <strong>Weight Variance Detected: </strong>
+                        <span>
+                          Measured: {weightGrams}g vs Quote: {dispatchDetails.actualShipmentWeightGrams}g (
+                          {weightGrams - dispatchDetails.actualShipmentWeightGrams > 0 ? '+' : ''}
+                          {weightGrams - dispatchDetails.actualShipmentWeightGrams}g)
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold bg-amber-200/80 px-2 py-0.5 rounded text-amber-900">
+                        Variance will be audit-logged
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Physical Parcel Specs */}
               <div className="rounded-lg bg-slate-50 border border-slate-200 p-5">
-                <span className="text-[12px] font-semibold text-slate-700 block mb-3 uppercase tracking-wider">
-                  Parcel 1 of 1 Physical Specifications
-                </span>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[12px] font-semibold text-slate-700 uppercase tracking-wider">
+                    Parcel 1 of 1 Physical Specifications (Scale Verification)
+                  </span>
+                  <span className="text-[11px] font-mono text-slate-500">
+                    Enter physical scale weight
+                  </span>
+                </div>
                 <div className="grid grid-cols-4 gap-3 font-mono">
                   <div>
                     <label className="text-[11px] text-slate-500 block mb-1">GROSS WEIGHT (G)</label>

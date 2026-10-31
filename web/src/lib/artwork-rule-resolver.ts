@@ -29,6 +29,7 @@ export interface ResolvedArtworkCondition {
   isCombinationRule: boolean;
   designFee?: number;
   designScope?: string;
+  designServiceRequirement?: ProductOptionRequirement;
 }
 
 export interface ArtworkConditionConflict {
@@ -56,6 +57,8 @@ export interface ResolverDefaultSettings {
   minimumArtworkMegapixels?: number;
   artworkFileFormats?: string[];
   designServiceRequirement?: ProductOptionRequirement;
+  designServiceFee?: number | string;
+  designServicePrice?: number | string;
 }
 
 const DEFAULT_FORMATS = ['PDF', 'AI', 'PSD', 'CDR', 'TIFF', 'PNG', 'JPG'];
@@ -136,100 +139,122 @@ export function resolveArtworkConditions(
     ? defaults.artworkFileFormats
     : DEFAULT_FORMATS;
 
-  // Find all matching artwork rules
-  const matchingArtworkRules: ProductConfigurationRule[] = [];
+  // Find all configured artwork rules on the product
+  const configuredArtworkRules = rules.filter(
+    (r) =>
+      r.isActive &&
+      (r.actionType === 'REQUIRE_ARTWORK_FILES' ||
+        r.actionType === 'CONFIGURE_ARTWORK' ||
+        r.actionType === 'ARTWORK_CONDITIONS')
+  );
 
-  for (const rule of rules) {
-    if (!rule.isActive) continue;
-    if (
-      rule.actionType === 'REQUIRE_ARTWORK_FILES' ||
-      rule.actionType === 'CONFIGURE_ARTWORK' ||
-      rule.actionType === 'ARTWORK_CONDITIONS'
-    ) {
-      if (matchesRuleCondition(rule, selectedOptions)) {
-        matchingArtworkRules.push(rule);
+  const matchingArtworkRules = configuredArtworkRules.filter((rule) =>
+    matchesRuleCondition(rule, selectedOptions)
+  );
+
+  // Case 1: Product has configured artwork rules in Step 4
+  if (configuredArtworkRules.length > 0) {
+    if (matchingArtworkRules.length > 0) {
+      // Prioritize multi-group combination rules over single-group rules
+      matchingArtworkRules.sort((a, b) => {
+        const aCombo = (a.actionPayload as any)?.conditionCombination;
+        const bCombo = (b.actionPayload as any)?.conditionCombination;
+        const aCount = aCombo && typeof aCombo === 'object' ? Object.keys(aCombo).length : 1;
+        const bCount = bCombo && typeof bCombo === 'object' ? Object.keys(bCombo).length : 1;
+        return bCount - aCount;
+      });
+
+      const bestRule = matchingArtworkRules[0];
+      const p = (bestRule.actionPayload as any) || {};
+      const status: ProductOptionRequirement = p.artworkStatus || 'REQUIRED';
+      const slotCount = Number(p.slotCount) || (Array.isArray(p.slotLabels) ? p.slotLabels.length : 1);
+      const rawLabels: string[] = Array.isArray(p.slotLabels)
+        ? p.slotLabels
+        : String(p.slotLabels || '').split(',').map((s) => s.trim()).filter(Boolean);
+
+      const labels = rawLabels.length > 0
+        ? rawLabels
+        : slotCount === 2
+        ? ['Front Side', 'Back Side']
+        : slotCount === 1
+        ? ['Front Side']
+        : Array.from({ length: slotCount }, (_, i) => `Artwork File ${i + 1}`);
+
+      const slots: ArtworkSlotConfig[] = [];
+      if (status !== 'DISABLED') {
+        for (let i = 0; i < slotCount; i++) {
+          const lbl = labels[i] || `Artwork File ${i + 1}`;
+          const key = `slot_${i + 1}_${normalizeKey(lbl)}`;
+          const isHidden = Array.isArray(p.hiddenSlots) && p.hiddenSlots.includes(key);
+          if (isHidden) continue;
+
+          const isRequiredSlot =
+            status === 'REQUIRED' &&
+            (!Array.isArray(p.optionalSlots) || !p.optionalSlots.includes(key));
+
+          slots.push({
+            slotKey: key,
+            label: lbl,
+            minMegapixels: Number(p.minMegapixels) || baseMinMP,
+            isRequired: isRequiredSlot,
+            isCustomerSupplied: p.customerSuppliedSides ? p.customerSuppliedSides.includes(lbl) : true,
+          });
+        }
       }
-    }
-  }
 
-  // Prioritize multi-group combination rules over single-group rules
-  matchingArtworkRules.sort((a, b) => {
-    const aCombo = (a.actionPayload as any)?.conditionCombination;
-    const bCombo = (b.actionPayload as any)?.conditionCombination;
-    const aCount = aCombo && typeof aCombo === 'object' ? Object.keys(aCombo).length : 1;
-    const bCount = bCombo && typeof bCombo === 'object' ? Object.keys(bCombo).length : 1;
-    return bCount - aCount;
-  });
-
-  const bestRule = matchingArtworkRules[0];
-
-  if (bestRule) {
-    const p = (bestRule.actionPayload as any) || {};
-    const status: ProductOptionRequirement = p.artworkStatus || 'REQUIRED';
-    const slotCount = Number(p.slotCount) || (Array.isArray(p.slotLabels) ? p.slotLabels.length : 1);
-    const rawLabels: string[] = Array.isArray(p.slotLabels)
-      ? p.slotLabels
-      : String(p.slotLabels || '').split(',').map((s) => s.trim()).filter(Boolean);
-
-    const labels = rawLabels.length > 0
-      ? rawLabels
-      : slotCount === 2
-      ? ['Front Side', 'Back Side']
-      : slotCount === 1
-      ? ['Front Side']
-      : Array.from({ length: slotCount }, (_, i) => `Artwork File ${i + 1}`);
-
-    const slots: ArtworkSlotConfig[] = [];
-    if (status !== 'DISABLED') {
-      for (let i = 0; i < slotCount; i++) {
-        const lbl = labels[i] || `Artwork File ${i + 1}`;
-        const key = `slot_${i + 1}_${normalizeKey(lbl)}`;
-        const isHidden = Array.isArray(p.hiddenSlots) && p.hiddenSlots.includes(key);
-        if (isHidden) continue;
-
-        const isRequiredSlot =
-          status === 'REQUIRED' &&
-          (!Array.isArray(p.optionalSlots) || !p.optionalSlots.includes(key));
-
-        slots.push({
-          slotKey: key,
-          label: lbl,
-          minMegapixels: Number(p.minMegapixels) || baseMinMP,
-          isRequired: isRequiredSlot,
-          isCustomerSupplied: p.customerSuppliedSides ? p.customerSuppliedSides.includes(lbl) : true,
-        });
-      }
+      return {
+        artworkStatus: status,
+        slots,
+        requireDesignBrief: Boolean(p.requireDesignBrief || p.designServicePolicy === 'REQUIRE_BRIEF'),
+        showDesignBrief: p.showDesignBrief !== false && (p.requireDesignBrief || p.designServicePolicy === 'REQUIRE_BRIEF'),
+        requireReferenceImage: Boolean(p.requireReferenceImage),
+        showReferenceImage: p.showReferenceImage !== false,
+        maxArtworkFileSizeMb: Number(p.maxFileSizeMb) || baseMaxMB,
+        minimumArtworkMegapixels: Number(p.minMegapixels) || baseMinMP,
+        allowedFormats: Array.isArray(p.acceptedFormats)
+          ? p.acceptedFormats
+          : typeof p.acceptedFormats === 'string'
+          ? p.acceptedFormats.split(',').map((s: string) => s.trim()).filter(Boolean)
+          : baseFormats,
+        matchedRuleName: bestRule.name,
+        isCombinationRule: Boolean(p.conditionCombination),
+        designFee: p.designFee !== undefined ? Number(p.designFee) : (p.designFeeEnabled ? (Number(defaults.designServiceFee) || 150) : undefined),
+        designScope: p.designScope || undefined,
+        designServiceRequirement:
+          p.designFeeEnabled === true || (p.designFee !== undefined && Number(p.designFee) > 0) || p.requireDesignBrief === true
+            ? 'REQUIRED'
+            : (defaults.designServiceRequirement || 'DISABLED'),
+      };
     }
 
+    // Rules exist for this product, but none match this customer's selected groups/options:
+    // Therefore artwork/design is NOT applicable for this configuration!
     return {
-      artworkStatus: status,
-      slots,
-      requireDesignBrief: Boolean(p.requireDesignBrief || p.designServicePolicy === 'REQUIRE_BRIEF'),
-      showDesignBrief: p.showDesignBrief !== false && (p.requireDesignBrief || p.designServicePolicy === 'REQUIRE_BRIEF'),
-      requireReferenceImage: Boolean(p.requireReferenceImage),
-      showReferenceImage: p.showReferenceImage !== false,
-      maxArtworkFileSizeMb: Number(p.maxFileSizeMb) || baseMaxMB,
-      minimumArtworkMegapixels: Number(p.minMegapixels) || baseMinMP,
-      allowedFormats: Array.isArray(p.acceptedFormats)
-        ? p.acceptedFormats
-        : typeof p.acceptedFormats === 'string'
-        ? p.acceptedFormats.split(',').map((s: string) => s.trim()).filter(Boolean)
-        : baseFormats,
-      matchedRuleName: bestRule.name,
-      isCombinationRule: Boolean(p.conditionCombination),
-      designFee: p.designFee !== undefined ? Number(p.designFee) : undefined,
-      designScope: p.designScope || undefined,
+      artworkStatus: 'DISABLED',
+      slots: [],
+      requireDesignBrief: false,
+      showDesignBrief: false,
+      requireReferenceImage: false,
+      showReferenceImage: false,
+      maxArtworkFileSizeMb: baseMaxMB,
+      minimumArtworkMegapixels: baseMinMP,
+      allowedFormats: baseFormats,
+      isCombinationRule: false,
+      designFee: undefined,
+      designServiceRequirement: 'DISABLED',
     };
   }
 
-  // Fallback heuristic from selected option group option definitions (e.g. printing_side = both, fileCount)
-  let heuristicSlots: ArtworkSlotConfig[] = [];
-  let detectedCount = 1;
-  let detectedLabels: string[] = ['Front Side'];
+  // Case 2: Product has ZERO custom artwork rules configured in Step 4.
+  // Evaluate strictly based on option groups selected by customer.
+  let isArtworkOrDesignGroupSelected = false;
+  let isDesignSelected = false;
+  let detectedCount = 0;
+  let detectedLabels: string[] = [];
 
   for (const grp of availableOptionGroups) {
-    const val = selectedOptions[grp.code];
-    if (!val) continue;
+    const val = selectedOptions[grp.code] ?? selectedOptions[grp.id];
+    if (val === undefined || val === null || val === '') continue;
     const opt = grp.options?.find((o) => normalizeKey(o.value) === normalizeKey(val));
     const valStr = String(val).toLowerCase();
     const lblStr = String(opt?.label || '').toLowerCase();
@@ -240,15 +265,18 @@ export function resolveArtworkConditions(
       grpCodeStr.includes('print') ||
       grpCodeStr.includes('design') ||
       grpCodeStr.includes('upload') ||
+      grpCodeStr.includes('artwork') ||
       grpCodeStr.includes('location') ||
       grpNameStr.includes('side') ||
       grpNameStr.includes('print') ||
       grpNameStr.includes('design') ||
       grpNameStr.includes('upload') ||
+      grpNameStr.includes('artwork') ||
       grpNameStr.includes('location');
 
     if (opt && opt.fileCount && opt.fileCount > 0) {
       detectedCount = opt.fileCount;
+      isArtworkOrDesignGroupSelected = true;
       if (opt.fileSlotLabels && opt.fileSlotLabels.length > 0) {
         detectedLabels = opt.fileSlotLabels;
       } else if (detectedCount === 2) {
@@ -262,6 +290,7 @@ export function resolveArtworkConditions(
     }
 
     if (isSidesOrDesignGroup) {
+      isArtworkOrDesignGroupSelected = true;
       if (
         valStr.includes('both') ||
         valStr.includes('double') ||
@@ -306,34 +335,96 @@ export function resolveArtworkConditions(
         detectedCount = 4;
         detectedLabels = ['Artwork File 1', 'Artwork File 2', 'Artwork File 3', 'Artwork File 4'];
         break;
+      } else if (
+        valStr.includes('upload') ||
+        valStr.includes('own_file') ||
+        lblStr.includes('upload') ||
+        lblStr.includes('own artwork') ||
+        lblStr.includes('customer supplied')
+      ) {
+        detectedCount = 1;
+        detectedLabels = ['Artwork File'];
+        break;
       }
     }
   }
 
-  if (baseStatus !== 'DISABLED') {
-    for (let i = 0; i < detectedCount; i++) {
-      const lbl = detectedLabels[i] || `Artwork File ${i + 1}`;
-      heuristicSlots.push({
-        slotKey: `slot_${i + 1}_${normalizeKey(lbl)}`,
-        label: lbl,
-        minMegapixels: baseMinMP,
-        isRequired: baseStatus === 'REQUIRED',
-        isCustomerSupplied: true,
-      });
+  // Check if customer selected design service
+  for (const [key, val] of Object.entries(selectedOptions || {})) {
+    if (val === undefined || val === null) continue;
+    const normKey = String(key).toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (
+      normKey.includes('design') ||
+      normKey.includes('artworkservice') ||
+      normKey.includes('hireservice') ||
+      normKey.includes('designer')
+    ) {
+      const strVal = String(val).toLowerCase().trim();
+      if (
+        strVal === 'yes' ||
+        strVal === 'true' ||
+        strVal === 'required' ||
+        strVal.includes('hire') ||
+        strVal.includes('assist') ||
+        strVal.includes('need') ||
+        strVal.includes('yes_please')
+      ) {
+        isDesignSelected = true;
+        isArtworkOrDesignGroupSelected = true;
+        break;
+      }
     }
   }
 
+  const isExplicitlyMandated =
+    defaults.artworkRequirement === 'REQUIRED' || defaults.designServiceRequirement === 'REQUIRED';
+
+  // If customer did NOT select any artwork/sides/design option group, and product doesn't mandate it:
+  if (!isArtworkOrDesignGroupSelected && !isDesignSelected && !isExplicitlyMandated) {
+    return {
+      artworkStatus: 'DISABLED',
+      slots: [],
+      requireDesignBrief: false,
+      showDesignBrief: false,
+      requireReferenceImage: false,
+      showReferenceImage: false,
+      maxArtworkFileSizeMb: baseMaxMB,
+      minimumArtworkMegapixels: baseMinMP,
+      allowedFormats: baseFormats,
+      isCombinationRule: false,
+      designFee: undefined,
+      designServiceRequirement: 'DISABLED',
+    };
+  }
+
+  const heuristicSlots: ArtworkSlotConfig[] = [];
+  const effectiveSlotCount = detectedCount > 0 ? detectedCount : (defaults.artworkRequirement === 'REQUIRED' ? 1 : 0);
+  for (let i = 0; i < effectiveSlotCount; i++) {
+    const lbl = detectedLabels[i] || `Artwork File ${i + 1}`;
+    heuristicSlots.push({
+      slotKey: `slot_${i + 1}_${normalizeKey(lbl)}`,
+      label: lbl,
+      minMegapixels: baseMinMP,
+      isRequired: defaults.artworkRequirement === 'REQUIRED',
+      isCustomerSupplied: true,
+    });
+  }
+
+  const globalDesignFee = Number(defaults.designServiceFee) > 0 ? Number(defaults.designServiceFee) : 150;
+
   return {
-    artworkStatus: baseStatus,
+    artworkStatus: isDesignSelected ? 'OPTIONAL' : (effectiveSlotCount > 0 ? (defaults.artworkRequirement || 'REQUIRED') : 'DISABLED'),
     slots: heuristicSlots,
-    requireDesignBrief: defaults.designServiceRequirement === 'REQUIRED',
-    showDesignBrief: defaults.designServiceRequirement !== 'DISABLED',
+    requireDesignBrief: isDesignSelected || defaults.designServiceRequirement === 'REQUIRED',
+    showDesignBrief: isDesignSelected || defaults.designServiceRequirement === 'REQUIRED',
     requireReferenceImage: false,
-    showReferenceImage: true,
+    showReferenceImage: isArtworkOrDesignGroupSelected,
     maxArtworkFileSizeMb: baseMaxMB,
     minimumArtworkMegapixels: baseMinMP,
     allowedFormats: baseFormats,
     isCombinationRule: false,
+    designFee: isDesignSelected ? globalDesignFee : undefined,
+    designServiceRequirement: isDesignSelected ? 'REQUIRED' : (defaults.designServiceRequirement === 'REQUIRED' ? 'REQUIRED' : 'DISABLED'),
   };
 }
 
