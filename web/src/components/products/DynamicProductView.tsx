@@ -605,6 +605,59 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
     return quantityTiers[0]?.quantity || minQty;
   });
 
+  // -------------------------------------------------------------
+  // VARIANT-WISE QUANTITY STATE & VALIDATION (selectionBehavior === 'VARIANT_WISE')
+  // -------------------------------------------------------------
+  const [variantQuantities, setVariantQuantities] = useState<Record<string, number>>({});
+
+  const variantWiseGroups = useMemo(() => {
+    return effectiveOptionGroups.filter((g) => g.selectionBehavior === 'VARIANT_WISE');
+  }, [effectiveOptionGroups]);
+
+  const hasVariantWiseGroups = variantWiseGroups.length > 0;
+
+  const totalVariantAllocated = useMemo(() => {
+    return Object.values(variantQuantities).reduce((acc, q) => acc + (Number(q) || 0), 0);
+  }, [variantQuantities]);
+
+  const isVariantAllocationValid = useMemo(() => {
+    if (!hasVariantWiseGroups) return true;
+    return variantWiseGroups.every((g) => {
+      const groupSum = (g.options || []).reduce(
+        (sum, opt) => sum + (Number(variantQuantities[opt.value]) || 0),
+        0
+      );
+      return groupSum === selectedQuantity;
+    });
+  }, [hasVariantWiseGroups, variantWiseGroups, variantQuantities, selectedQuantity]);
+
+  const variantLinesPayload = useMemo(() => {
+    if (!hasVariantWiseGroups) return undefined;
+    const lines: Array<{
+      code: string;
+      optionCode: string;
+      qty: number;
+      quantity: number;
+      combination: Record<string, string>;
+    }> = [];
+
+    for (const group of variantWiseGroups) {
+      for (const opt of group.options || []) {
+        const q = Number(variantQuantities[opt.value]) || 0;
+        if (q > 0) {
+          lines.push({
+            code: opt.value,
+            optionCode: opt.value,
+            qty: q,
+            quantity: q,
+            combination: { [group.code]: opt.value },
+          });
+        }
+      }
+    }
+    return lines.length > 0 ? lines : undefined;
+  }, [hasVariantWiseGroups, variantWiseGroups, variantQuantities]);
+
   // Identify active matched tier (handles range brackets like 51–100)
   const activeMatchedTier = useMemo(() => {
     return (
@@ -975,6 +1028,7 @@ function detectIsDesignServiceSelected(
           quantity: selectedQuantity,
           options: optPayload,
           fieldValues: payloadFields,
+          variantLines: variantLinesPayload,
           hasDesignService: isDesignWanted,
           shippingPincode: deliveryPincode && deliveryPincode.trim().length === 6 ? deliveryPincode.trim() : undefined,
         });
@@ -1023,6 +1077,7 @@ function detectIsDesignServiceSelected(
     resolvedArtwork,
     product.designServiceRequirement,
     product.additionalPricings,
+    variantLinesPayload,
   ]);
 
   // Dimension Handlers
@@ -1166,22 +1221,38 @@ function detectIsDesignServiceSelected(
     }
 
     for (const group of effectiveOptionGroups) {
-      const selectedVal = selectedOptions[group.code];
-      if (Array.isArray(selectedVal)) {
-        selectedOptionsSummary.push({
-          fieldLabel: group.name,
-          value: selectedVal.join(', '),
-        });
-      } else {
-        const optMatch = group.options?.find((o) => o.value === selectedVal);
-        const fallbackMatch = FALLBACK_GROUP_OPTIONS[group.code]?.find((o) => o.id === selectedVal);
-        const displayLabel = optMatch?.label || fallbackMatch?.title || selectedVal;
+      if (group.selectionBehavior === 'VARIANT_WISE') {
+        const allocatedForGroup = (group.options || [])
+          .map((o) => {
+            const q = Number(variantQuantities[o.value]) || 0;
+            return q > 0 ? `${o.label} (${q})` : null;
+          })
+          .filter(Boolean);
 
-        if (displayLabel) {
+        if (allocatedForGroup.length > 0) {
           selectedOptionsSummary.push({
             fieldLabel: group.name,
-            value: displayLabel,
+            value: allocatedForGroup.join(', '),
           });
+        }
+      } else {
+        const selectedVal = selectedOptions[group.code];
+        if (Array.isArray(selectedVal)) {
+          selectedOptionsSummary.push({
+            fieldLabel: group.name,
+            value: selectedVal.join(', '),
+          });
+        } else {
+          const optMatch = group.options?.find((o) => o.value === selectedVal);
+          const fallbackMatch = FALLBACK_GROUP_OPTIONS[group.code]?.find((o) => o.id === selectedVal);
+          const displayLabel = optMatch?.label || fallbackMatch?.title || selectedVal;
+
+          if (displayLabel) {
+            selectedOptionsSummary.push({
+              fieldLabel: group.name,
+              value: displayLabel,
+            });
+          }
         }
       }
     }
@@ -1262,7 +1333,11 @@ function detectIsDesignServiceSelected(
       hasDesignService,
       designServiceFee: activeDesignFee,
       artworkFee: rawArtworkPrice,
-      specificationsSnapshot,
+      specificationsSnapshot: {
+        ...specificationsSnapshot,
+        variantLines: variantLinesPayload,
+      },
+      variantLines: variantLinesPayload,
       selectedOptionsSummary,
       artworkConfig: {
         status: resolvedArtwork.artworkStatus,
@@ -1293,6 +1368,9 @@ function detectIsDesignServiceSelected(
 
   // Add to Cart
   const handleAddToCart = () => {
+    if (!isVariantAllocationValid) {
+      return;
+    }
     if (!validatePersonalization()) {
       return;
     }
@@ -1930,6 +2008,166 @@ function detectIsDesignServiceSelected(
                         placeholder={group.description || `Enter ${group.name}...`}
                         className="w-full h-9 px-3 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
                       />
+                    )}
+                  </div>
+                );
+              }
+
+              // ======================================================
+              // VARIANT-WISE QUANTITY GRID (Wrapped Box Model with Inline Boxes)
+              // ======================================================
+              if (group.selectionBehavior === 'VARIANT_WISE') {
+                const groupSum = (group.options || []).reduce(
+                  (sum, o) => sum + (Number(variantQuantities[o.value]) || 0),
+                  0
+                );
+                const isValid = groupSum === selectedQuantity;
+
+                return (
+                  <div key={group.id || group.code} className="space-y-1.5">
+                    {/* Wrap the variant options in a border container */}
+                    <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                      {/* Header of the box */}
+                      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-gray-800 text-sm">
+                            {groupStepNum}. {group.name}
+                          </h4>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 uppercase tracking-wider">
+                            Variant-Wise
+                          </span>
+                        </div>
+                        {/* Dynamic Badge */}
+                        <span
+                          className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                            isValid
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-red-100 text-red-700'
+                          }`}
+                        >
+                          {isValid ? `${groupSum} / ${selectedQuantity} Allocated` : 'Mismatch'}
+                        </span>
+                      </div>
+
+                      {/* Inline Boxes for Variant Values */}
+                      <div className="p-3 bg-white">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+                          {(group.options && group.options.length > 0 ? group.options : []).map((opt) => {
+                            const currentQty = Number(variantQuantities[opt.value]) || 0;
+
+                            // Check price modifier
+                            let modifierText = '';
+                            const addonCharge = getOptionAdditionalTierCharge(
+                              product.additionalPricings,
+                              group.code,
+                              opt.value,
+                              selectedQuantity
+                            );
+                            if (addonCharge && !addonCharge.isExcluded && addonCharge.unitPrice > 0) {
+                              modifierText =
+                                addonCharge.chargeBasis === 'PERCENTAGE'
+                                  ? `+${addonCharge.unitPrice}%`
+                                  : `+₹${addonCharge.unitPrice % 1 === 0 ? addonCharge.unitPrice : addonCharge.unitPrice.toFixed(2)}`;
+                            } else {
+                              const numMod = Number(opt.priceModifier);
+                              if (numMod > 0) {
+                                modifierText =
+                                  opt.priceModifierType === 'PERCENTAGE'
+                                    ? `+${numMod}%`
+                                    : `+₹${numMod.toFixed(0)}`;
+                              }
+                            }
+
+                            const handleDecrement = () => {
+                              setVariantQuantities((prev) => ({
+                                ...prev,
+                                [opt.value]: Math.max(0, currentQty - 1),
+                              }));
+                            };
+
+                            const handleIncrement = () => {
+                              setVariantQuantities((prev) => ({
+                                ...prev,
+                                [opt.value]: currentQty + 1,
+                              }));
+                            };
+
+                            const handleDirectChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+                              const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                              setVariantQuantities((prev) => ({
+                                ...prev,
+                                [opt.value]: val,
+                              }));
+                            };
+
+                            const isSelected = currentQty > 0;
+
+                            return (
+                              <div
+                                key={opt.id || opt.value}
+                                className={`p-3 rounded-xl border transition-all flex flex-col justify-between items-center text-center ${
+                                  isSelected
+                                    ? 'border-2 border-slate-900 bg-amber-50/20 shadow-xs'
+                                    : 'border-gray-200 bg-white hover:border-gray-300'
+                                }`}
+                              >
+                                <div className="mb-2 w-full">
+                                  <span className="text-xs font-bold text-gray-800 block truncate">
+                                    {opt.label || (opt as any).name}
+                                  </span>
+                                  {modifierText && (
+                                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded mt-0.5 inline-block">
+                                      {modifierText}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Stepper Controls inside each inline box */}
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={handleDecrement}
+                                    disabled={currentQty <= 0}
+                                    aria-label={`Decrease ${opt.label} quantity`}
+                                    className="w-7 h-7 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-700 font-bold disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer text-xs"
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={currentQty}
+                                    onChange={handleDirectChange}
+                                    className="w-10 text-center font-bold text-xs border-none bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-gray-900"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={handleIncrement}
+                                    aria-label={`Increase ${opt.label} quantity`}
+                                    className="w-7 h-7 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-700 font-bold cursor-pointer text-xs"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Summary footer showing allocated count only */}
+                      <div className="bg-gray-50 px-4 py-2.5 border-t border-gray-200 text-xs text-gray-600">
+                        <span>
+                          Total {group.name} Allocated: <strong className="text-gray-900 font-bold">{groupSum}</strong> of <strong className="text-gray-900 font-bold">{selectedQuantity}</strong>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Error Message Placement */}
+                    {!isValid && (
+                      <p className="text-red-500 text-sm mt-2 font-medium">
+                        Please adjust quantities to match the total order quantity of {selectedQuantity}. (Variant quantities ({groupSum}) do not match total order quantity ({selectedQuantity}).)
+                      </p>
                     )}
                   </div>
                 );
@@ -2680,14 +2918,30 @@ function detectIsDesignServiceSelected(
             {/* PRIMARY & SECONDARY CTA BUTTONS                        */}
             {/* ====================================================== */}
             <div className="space-y-3 pt-1">
+              {!isVariantAllocationValid && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-900 flex items-start gap-2 shadow-2xs">
+                  <RiErrorWarningLine className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-red-800">Variant Quantity Mismatch</p>
+                    <p className="text-[11px] text-red-700 leading-tight">
+                      Please adjust variant quantities to match the total order quantity of {selectedQuantity}.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={handleAddToCart}
-                disabled={isCalculatingPrice}
-                className="w-full h-12 bg-[#FFED00] hover:bg-[#F2E100] text-black font-bold text-sm rounded-xl border border-black/10 shadow-xs flex items-center justify-center gap-2 transition-transform active:scale-[0.99] cursor-pointer"
+                disabled={isCalculatingPrice || !isVariantAllocationValid}
+                className={`w-full h-12 font-bold text-sm rounded-xl border border-black/10 shadow-xs flex items-center justify-center gap-2 transition-transform active:scale-[0.99] ${
+                  !isVariantAllocationValid
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    : 'bg-[#FFED00] hover:bg-[#F2E100] text-black cursor-pointer'
+                }`}
               >
                 <RiShoppingCart2Line className="w-5 h-5" />
-                <span>Add to Cart</span>
+                <span>{!isVariantAllocationValid ? 'Adjust Variants to Proceed' : 'Add to Cart'}</span>
               </button>
 
               <div>
@@ -3015,11 +3269,15 @@ function detectIsDesignServiceSelected(
             <button
               type="button"
               onClick={handleAddToCart}
-              disabled={isCalculatingPrice}
-              className="h-11 sm:h-12 px-5 sm:px-7 bg-[#FFED00] hover:bg-[#F2E100] text-black font-bold text-xs sm:text-sm rounded-xl border border-black/10 shadow-xs flex items-center justify-center gap-2 transition-transform active:scale-95 cursor-pointer disabled:opacity-50 shrink-0"
+              disabled={isCalculatingPrice || !isVariantAllocationValid}
+              className={`h-11 sm:h-12 px-5 sm:px-7 font-bold text-xs sm:text-sm rounded-xl border border-black/10 shadow-xs flex items-center justify-center gap-2 transition-transform active:scale-95 shrink-0 ${
+                !isVariantAllocationValid
+                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  : 'bg-[#FFED00] hover:bg-[#F2E100] text-black cursor-pointer'
+              }`}
             >
               <RiShoppingCart2Line className="w-4 h-4" />
-              <span>Add to Cart</span>
+              <span>{!isVariantAllocationValid ? 'Distribute Qty' : 'Add to Cart'}</span>
             </button>
           </div>
         </div>

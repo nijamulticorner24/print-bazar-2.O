@@ -143,122 +143,11 @@ export default function CustomerAccountPage() {
         });
         setOrders(formatted);
       } else {
-        // Fallback default rich demo dataset for demonstration if new customer has 0 orders
-        setOrders([
-          {
-            id: 'ord-pb-01',
-            orderNumber: 'PB-2026-0001',
-            createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-            dueAt: new Date(Date.now() + 86400000 * 1).toISOString(),
-            status: 'CUSTOMER_APPROVAL_REQUIRED',
-            customerStatus: 'APPROVAL_REQUIRED',
-            totalAmount: 1475.0,
-            paidAmount: 1475.0,
-            balanceAmount: 0.0,
-            paymentStatus: 'PAID',
-            deliveryMethod: 'STORE_PICKUP',
-            proofRequired: true,
-            items: [
-              {
-                id: 'it-1',
-                productId: 'prod-visiting-cards',
-                productName: 'Premium Business Visiting Cards (400 GSM Velvet)',
-                sku: 'PB-CRD-001',
-                quantity: 500,
-                unitPrice: 2.5,
-                totalPrice: 1250.0,
-                specifications: {
-                  paperGsm: '400 GSM Velvet Touch Board',
-                  finish: 'Gold Foil Stamping + Velvet Matte',
-                  dimensions: '3.5 x 2.0 inches',
-                  sides: 'Double Sided Full Color',
-                },
-                product: {
-                  id: 'prod-visiting-cards',
-                  slug: 'premium-visiting-cards',
-                  name: 'Premium Business Visiting Cards',
-                  basePrice: 1250,
-                },
-              },
-            ],
-          },
-          {
-            id: 'ord-pb-02',
-            orderNumber: 'PB-2026-0002',
-            createdAt: new Date(Date.now() - 86400000 * 6).toISOString(),
-            dueAt: new Date(Date.now() + 86400000 * 2).toISOString(),
-            status: 'PRINTING',
-            customerStatus: 'IN_PRODUCTION',
-            totalAmount: 3776.0,
-            paidAmount: 1888.0,
-            balanceAmount: 1888.0,
-            paymentStatus: 'PARTIALLY_PAID',
-            deliveryMethod: 'COURIER',
-            proofRequired: false,
-            items: [
-              {
-                id: 'it-2',
-                productId: 'prod-standee',
-                productName: 'Deluxe Roll-Up Banner Standee (1440 DPI UV)',
-                sku: 'PB-STN-002',
-                quantity: 2,
-                unitPrice: 1600.0,
-                totalPrice: 3200.0,
-                specifications: {
-                  substrate: 'Non-tearable PET Film 240 Micron',
-                  finish: 'High Density 1440 DPI UV Matte',
-                  dimensions: '2.5 x 6.0 ft Base',
-                },
-                product: {
-                  id: 'prod-standee',
-                  slug: 'roll-up-banner-standee',
-                  name: 'Deluxe Roll-Up Banner Standee',
-                  basePrice: 1600,
-                },
-              },
-            ],
-          },
-          {
-            id: 'ord-pb-03',
-            orderNumber: 'PB-2026-0003',
-            createdAt: new Date(Date.now() - 86400000 * 18).toISOString(),
-            dueAt: new Date(Date.now() - 86400000 * 14).toISOString(),
-            status: 'DELIVERED',
-            customerStatus: 'DELIVERED',
-            totalAmount: 8950.0,
-            paidAmount: 8950.0,
-            balanceAmount: 0.0,
-            paymentStatus: 'PAID',
-            deliveryMethod: 'COURIER',
-            proofRequired: false,
-            items: [
-              {
-                id: 'it-3',
-                productId: 'prod-rigid-box',
-                productName: 'Luxury Corporate Rigid Gift Boxes (Custom Kappa)',
-                sku: 'PB-BOX-003',
-                quantity: 100,
-                unitPrice: 75.85,
-                totalPrice: 7585.0,
-                specifications: {
-                  board: '1200 GSM Kappa Board',
-                  outerWrap: 'Soft-Touch Matte Laminated Art Paper',
-                  finish: 'Embossed Metallic Gold Logo',
-                  dimensions: '8 x 8 x 3 inches',
-                },
-                product: {
-                  id: 'prod-rigid-box',
-                  slug: 'rigid-gift-boxes',
-                  name: 'Luxury Corporate Rigid Gift Boxes',
-                  basePrice: 7585,
-                },
-              },
-            ],
-          },
-        ]);
+        setOrders([]);
       }
     } catch (err) {
       console.warn('Could not load orders from server:', err);
+      setOrders([]);
     } finally {
       setLoadingOrders(false);
     }
@@ -970,32 +859,42 @@ export default function CustomerAccountPage() {
               </div>
             </div>
 
-            <div className="divide-y divide-slate-100">
-              {orders.map((ord) => (
-                <div key={ord.id} className="py-3.5 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
-                      <RiFileTextLine className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-slate-900 block">
-                        INV-{ord.orderNumber}
-                      </span>
-                      <span className="text-[11px] text-slate-500 font-mono">
-                        Date: {formatDate(ord.createdAt)} • Amount: {formatCurrency(ord.totalAmount)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <Link href={`/invoices/${ord.orderNumber}`}>
-                    <Button variant="outline" size="sm" className="font-bold flex items-center gap-1.5">
-                      <RiFileTextLine className="h-3.5 w-3.5" />
-                      <span>View & Print Invoice</span>
-                    </Button>
-                  </Link>
+            {orders.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-500 space-y-2">
+                <div className="h-10 w-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center mx-auto">
+                  <RiFileTextLine className="h-5 w-5" />
                 </div>
-              ))}
-            </div>
+                <h4 className="text-sm font-bold text-slate-800">No Invoices Yet</h4>
+                <p>Tax invoices will automatically appear here once you place and complete your first print order.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {orders.map((ord) => (
+                  <div key={ord.id} className="py-3.5 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+                        <RiFileTextLine className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-slate-900 block">
+                          INV-{ord.orderNumber}
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-mono">
+                          Date: {formatDate(ord.createdAt)} • Amount: {formatCurrency(ord.totalAmount)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <Link href={`/invoices/${ord.orderNumber}`}>
+                      <Button variant="outline" size="sm" className="font-bold flex items-center gap-1.5">
+                        <RiFileTextLine className="h-3.5 w-3.5" />
+                        <span>View & Print Invoice</span>
+                      </Button>
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -1008,19 +907,20 @@ export default function CustomerAccountPage() {
               <span className="text-[10px] font-mono font-bold uppercase text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full inline-block">
                 PRIMARY BUSINESS PROFILE
               </span>
-              <h4 className="text-sm font-bold text-slate-900">{user?.fullName}</h4>
+              <h4 className="text-sm font-bold text-slate-900">{user?.fullName || 'Registered Customer'}</h4>
               <div className="space-y-1.5 text-xs text-slate-600">
                 <div>
-                  <strong>Registered Email:</strong> <span className="font-mono">{user?.email}</span>
+                  <strong>Registered Email:</strong> <span className="font-mono">{user?.email || '—'}</span>
                 </div>
                 <div>
-                  <strong>Phone:</strong> <span className="font-mono">{user?.phone || '+91 98765 43210'}</span>
+                  <strong>Phone:</strong> <span className="font-mono">{user?.phone || 'Not provided'}</span>
                 </div>
                 <div>
-                  <strong>Company:</strong> Acme Tech Systems Pvt Ltd
+                  <strong>Company:</strong> {(user as any)?.companyName || 'Individual Customer'}
                 </div>
                 <div>
-                  <strong>GSTIN Tax ID:</strong> <span className="font-mono font-bold">27AADCB2230M1ZT</span>
+                  <strong>GSTIN Tax ID:</strong>{' '}
+                  <span className="font-mono">{(user as any)?.gstin || 'Consumer / Unregistered'}</span>
                 </div>
               </div>
             </div>
@@ -1029,9 +929,9 @@ export default function CustomerAccountPage() {
               <span className="text-[10px] font-mono font-bold uppercase text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full inline-block">
                 DEFAULT SHIPPING ADDRESS
               </span>
-              <h4 className="text-sm font-bold text-slate-900">Acme Corporate HQ</h4>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Plot 42, Andheri East Industrial Area, Near MIDC Cross Road, Mumbai, Maharashtra 400093, India
+              <h4 className="text-sm font-bold text-slate-900">{user?.fullName || 'Shipping Location'}</h4>
+              <p className="text-xs text-slate-500 leading-relaxed italic">
+                No delivery address saved yet. Your shipping address is automatically saved during checkout for seamless future reorders.
               </p>
               <div className="pt-2 text-[11px] text-slate-400 font-mono">
                 Verified delivery location • Fast-track courier dispatch active

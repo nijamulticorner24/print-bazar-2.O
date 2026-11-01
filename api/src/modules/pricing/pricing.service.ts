@@ -38,8 +38,11 @@ const IGNORED_COMBO_KEYS = [
 export interface VariantLineInput {
   id?: string;
   sku?: string;
-  combination: Record<string, string>;
-  quantity: number;
+  code?: string;
+  optionCode?: string;
+  combination?: Record<string, string>;
+  quantity?: number;
+  qty?: number;
   artworkUrl?: string;
   artworkStorageKey?: string;
   artworkFile?: any;
@@ -989,16 +992,36 @@ export class PricingService {
       }> = [];
 
       for (const line of rawLines) {
-        const qty = Math.floor(Number(line.quantity));
+        const qty = Math.floor(Number((line as any).quantity ?? (line as any).qty));
         if (isNaN(qty) || qty <= 0) {
           throw new BadRequestException('Each variant line must have a quantity of at least 1.');
         }
-        if (!line.combination || Object.keys(line.combination).length === 0) {
+
+        let combo = line.combination;
+        if (!combo || Object.keys(combo).length === 0) {
+          const optVal = (line as any).code || (line as any).optionCode;
+          if (optVal) {
+            const matchedGrp = product.optionGroups?.find((g: any) =>
+              g.options?.some(
+                (o: any) =>
+                  String(o.value).toLowerCase() === String(optVal).toLowerCase() ||
+                  String(o.label).toLowerCase() === String(optVal).toLowerCase()
+              )
+            );
+            if (matchedGrp) {
+              combo = { [matchedGrp.code]: String(optVal) };
+            } else {
+              combo = { variant: String(optVal) };
+            }
+          }
+        }
+
+        if (!combo || Object.keys(combo).length === 0) {
           throw new BadRequestException('Each variant line must have a valid option combination.');
         }
 
         const normCombo: Record<string, string> = {};
-        for (const [k, v] of Object.entries(line.combination)) {
+        for (const [k, v] of Object.entries(combo)) {
           const groupCode = k.trim();
           const valCode = String(v).trim();
           normCombo[groupCode] = valCode;

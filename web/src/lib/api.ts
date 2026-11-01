@@ -642,8 +642,11 @@ export const api = {
     variantLines?: Array<{
       id?: string;
       sku?: string;
-      combination: Record<string, string>;
-      quantity: number;
+      code?: string;
+      optionCode?: string;
+      combination?: Record<string, string>;
+      quantity?: number;
+      qty?: number;
       artworkUrl?: string;
       artworkFile?: any;
     }>;

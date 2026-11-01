@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import {
   RiCompass3Line,
   RiAddLine,
-  RiUploadCloud2Line,
   RiDownload2Line,
   RiSearch2Line,
   RiFilter3Line,
@@ -37,7 +36,6 @@ export default function ShippingPincodesPage() {
 
   // Modals
   const [isSingleModalOpen, setIsSingleModalOpen] = useState(false);
-  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [editingPincode, setEditingPincode] = useState<any | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
@@ -49,10 +47,6 @@ export default function ShippingPincodesPage() {
   const [formZoneId, setFormZoneId] = useState('');
   const [formCodAllowed, setFormCodAllowed] = useState(true);
   const [formServiceable, setFormServiceable] = useState(true);
-
-  // Bulk Import State
-  const [csvText, setCsvText] = useState('');
-  const [bulkResult, setBulkResult] = useState<any | null>(null);
 
   const fetchZones = async () => {
     try {
@@ -169,47 +163,6 @@ export default function ShippingPincodesPage() {
     }
   };
 
-  const handleBulkImport = async () => {
-    if (!csvText.trim()) return;
-    setIsSaving(true);
-    setBulkResult(null);
-    setModalError(null);
-    try {
-      // Parse CSV lines: pincode,city,state,zoneCode,codAllowed
-      const lines = csvText.trim().split('\n');
-      const parsedItems = [];
-      for (const line of lines) {
-        const parts = line.split(',').map((p) => p.trim());
-        if (parts.length >= 4) {
-          const [pincode, city, state, zoneCode, cod] = parts;
-          const matchedZone = zones.find((z) => z.zoneCode?.toUpperCase() === zoneCode.toUpperCase());
-          if (pincode && matchedZone) {
-            parsedItems.push({
-              pincode,
-              city,
-              state,
-              zoneId: matchedZone.id,
-              isCodAvailable: cod ? cod.toLowerCase() !== 'false' && cod !== '0' : true,
-              isServiceable: true,
-            });
-          }
-        }
-      }
-
-      if (parsedItems.length === 0) {
-        throw new Error('No valid rows found. Format: pincode,city,state,zoneCode');
-      }
-
-      const res = await api.bulkImportShippingPincodes(parsedItems);
-      setBulkResult(res);
-      fetchPincodes();
-    } catch (err: any) {
-      setModalError(err?.message || 'Bulk import failed');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const handleExportCsv = () => {
     if (pincodes.length === 0) return;
     const header = 'PIN Code,City,State,Zone Code,Zone Name,COD Available,Serviceable\n';
@@ -242,18 +195,6 @@ export default function ShippingPincodesPage() {
           >
             <RiDownload2Line className="w-4 h-4" />
             Export CSV
-          </button>
-          <button
-            onClick={() => {
-              setCsvText('');
-              setBulkResult(null);
-              setModalError(null);
-              setIsBulkModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
-          >
-            <RiUploadCloud2Line className="w-4 h-4 text-sky-600" />
-            Bulk CSV Import
           </button>
           <button
             onClick={openAddSingle}
@@ -546,66 +487,6 @@ export default function ShippingPincodesPage() {
         </form>
       </Modal>
 
-      {/* Bulk CSV Import Modal */}
-      <Modal
-        isOpen={isBulkModalOpen}
-        onClose={() => setIsBulkModalOpen(false)}
-        title="Bulk Import PIN Codes via CSV"
-      >
-        <div className="space-y-4 text-xs">
-          <p className="text-slate-600">
-            Paste CSV rows with format: <code>pincode,city,state,zoneCode,codAllowed</code>
-          </p>
-
-          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 font-mono text-[11px] text-slate-600">
-            400001,Mumbai,Maharashtra,NATIONAL,true<br />
-            560001,Bengaluru,Karnataka,NATIONAL,true<br />
-            160017,Chandigarh,Punjab,LOCAL,true<br />
-            190001,Srinagar,Jammu and Kashmir,REMOTE,false
-          </div>
-
-          <textarea
-            rows={8}
-            placeholder="Paste your CSV data here..."
-            value={csvText}
-            onChange={(e) => setCsvText(e.target.value)}
-            className="w-full p-3 font-mono text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-          />
-
-          {bulkResult && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg flex items-center gap-2">
-              <RiCheckboxCircleLine className="w-5 h-5 text-emerald-600 shrink-0" />
-              <span>
-                Import complete! Added {bulkResult.imported ?? bulkResult.count ?? 'successfully'}.
-              </span>
-            </div>
-          )}
-
-          {modalError && (
-            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg">
-              {modalError}
-            </div>
-          )}
-
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
-            <button
-              type="button"
-              onClick={() => setIsBulkModalOpen(false)}
-              className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition"
-            >
-              Close
-            </button>
-            <button
-              type="button"
-              disabled={isSaving || !csvText.trim()}
-              onClick={handleBulkImport}
-              className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg transition disabled:opacity-50"
-            >
-              {isSaving ? 'Importing...' : 'Start Import'}
-            </button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

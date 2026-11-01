@@ -92,6 +92,7 @@ export interface CartDrawerItem {
   balanceAmount?: number;
   shippingFee?: number;
   shippingSnapshot?: any;
+  variantLines?: any[];
   quote?: any;
 }
 
