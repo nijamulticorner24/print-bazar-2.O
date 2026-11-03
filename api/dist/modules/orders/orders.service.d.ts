@@ -1,6 +1,7 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingService, OptionSelectionDto } from '../pricing/pricing.service';
 import { ShippingGstService } from '../shipping-gst/shipping-gst.service';
+import { ShippingCalculatorService } from '../shipping/shipping-calculator.service';
 import { AuditService } from '../audit/audit.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { OrderStatus, OrderChannel, DeliveryMethod, PaymentStatus, Priority, SlaStatus, Prisma } from '@prisma/client';
@@ -137,11 +138,12 @@ export declare class OrdersService {
     private readonly prisma;
     private readonly pricingService;
     private readonly shippingGstService;
+    private readonly shippingCalculatorService;
     private readonly auditService;
     private readonly eventEmitter;
     private readonly personalizationService;
     private readonly logger;
-    constructor(prisma: PrismaService, pricingService: PricingService, shippingGstService: ShippingGstService, auditService: AuditService, eventEmitter: EventEmitter2, personalizationService: PersonalizationTemplateService);
+    constructor(prisma: PrismaService, pricingService: PricingService, shippingGstService: ShippingGstService, shippingCalculatorService: ShippingCalculatorService, auditService: AuditService, eventEmitter: EventEmitter2, personalizationService: PersonalizationTemplateService);
     createOrder(dto: CreateOrderDto, creatorUserId?: string): Promise<{
         customer: {
             id: string;
@@ -163,12 +165,12 @@ export declare class OrdersService {
             isDefault: boolean;
             type: string;
             postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
             city: string;
             state: string;
             country: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
         } | null;
         items: {
             id: string;
@@ -228,14 +230,14 @@ export declare class OrdersService {
                     storageKey: string;
                     orderItemId: string;
                     customerNotes: string | null;
+                    widthMm: Prisma.Decimal | null;
+                    heightMm: Prisma.Decimal | null;
                     originalFileName: string;
                     versionNumber: number;
                     mimeType: string;
                     fileSize: number;
                     checksum: string;
                     resolutionDpi: number | null;
-                    widthMm: Prisma.Decimal | null;
-                    heightMm: Prisma.Decimal | null;
                     widthPixels: number | null;
                     heightPixels: number | null;
                     actualMegapixels: number | null;
@@ -357,12 +359,12 @@ export declare class OrdersService {
             isDefault: boolean;
             type: string;
             postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
             city: string;
             state: string;
             country: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
         } | null;
         billingAddress: {
             id: string;
@@ -373,12 +375,12 @@ export declare class OrdersService {
             isDefault: boolean;
             type: string;
             postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
             city: string;
             state: string;
             country: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
         } | null;
         items: ({
             artworkVersions: {
@@ -388,14 +390,14 @@ export declare class OrdersService {
                 storageKey: string;
                 orderItemId: string;
                 customerNotes: string | null;
+                widthMm: Prisma.Decimal | null;
+                heightMm: Prisma.Decimal | null;
                 originalFileName: string;
                 versionNumber: number;
                 mimeType: string;
                 fileSize: number;
                 checksum: string;
                 resolutionDpi: number | null;
-                widthMm: Prisma.Decimal | null;
-                heightMm: Prisma.Decimal | null;
                 widthPixels: number | null;
                 heightPixels: number | null;
                 actualMegapixels: number | null;
@@ -467,6 +469,17 @@ export declare class OrdersService {
                 orderItemId: string;
                 combination: Prisma.JsonValue;
                 artworkUrl: string | null;
+            }[];
+            personalizationRecords: {
+                id: string;
+                createdAt: Date;
+                updatedAt: Date;
+                status: string;
+                itemIndex: number;
+                orderItemId: string;
+                variantCombination: Prisma.JsonValue | null;
+                fieldValues: Prisma.JsonValue;
+                sharedValues: Prisma.JsonValue | null;
             }[];
         } & {
             id: string;

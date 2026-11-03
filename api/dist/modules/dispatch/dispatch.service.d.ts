@@ -1,6 +1,7 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ShippingCalculatorService } from '../shipping/shipping-calculator.service';
 export interface CourierHandoverDto {
     orderId: string;
     courierName: string;
@@ -19,8 +20,9 @@ export declare class DispatchService {
     private readonly prisma;
     private readonly auditService;
     private readonly eventEmitter;
+    private readonly shippingCalculatorService;
     private readonly logger;
-    constructor(prisma: PrismaService, auditService: AuditService, eventEmitter: EventEmitter2);
+    constructor(prisma: PrismaService, auditService: AuditService, eventEmitter: EventEmitter2, shippingCalculatorService: ShippingCalculatorService);
     confirmCourierHandover(dto: CourierHandoverDto, staffId: string): Promise<{
         id: string;
         createdAt: Date;
@@ -98,5 +100,37 @@ export declare class DispatchService {
         internalNotes: string | null;
         shippingAddressId: string | null;
         billingAddressId: string | null;
+    }>;
+    getOrderDispatchDetails(orderId: string): Promise<{
+        orderId: string;
+        orderNumber: string;
+        destinationPincode: any;
+        productQuantity: number;
+        productName: string;
+        configuredProductWeightGrams: number;
+        packagingWeightGrams: number;
+        actualShipmentWeightGrams: number;
+        volumetricWeightGrams: number | null;
+        billableWeightGrams: number;
+        expectedCourierShippingAmount: number;
+        zoneCode: string;
+        measuredGrossWeightGrams: number | null;
+        weightVarianceGrams: number;
+        recalculatedShippingAmount: any;
+        isVarianceDetected: boolean;
+    }>;
+    adjustDispatchWeight(orderId: string, dto: {
+        measuredWeightGrams: number;
+        reason?: string;
+    }, staffId: string): Promise<{
+        success: boolean;
+        orderId: string;
+        orderNumber: string;
+        estimatedWeightGrams: number;
+        measuredWeightGrams: number;
+        varianceGrams: number;
+        estimatedCourierCharge: number;
+        recalculatedCourierCharge: number;
+        reason: string;
     }>;
 }

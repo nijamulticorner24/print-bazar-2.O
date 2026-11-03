@@ -21,8 +21,8 @@ const workflow_state_service_1 = require("../workflow/workflow-state.service");
 const OE_STATUS_GROUPS = {
     NEW_UNASSIGNED: [client_1.OrderStatus.ORDER_CREATED, client_1.OrderStatus.PAYMENT_PENDING, client_1.OrderStatus.PAYMENT_CONFIRMED],
     REQUIREMENT_REVIEW: [client_1.OrderStatus.ORDER_REVIEW],
-    DESIGN: [client_1.OrderStatus.ARTWORK_REVIEW, client_1.OrderStatus.DESIGN_REQUIRED, client_1.OrderStatus.ARTWORK_APPROVED, client_1.OrderStatus.CUSTOMER_APPROVAL_REQUIRED],
-    PRODUCTION: [client_1.OrderStatus.PRODUCTION_QUEUE, client_1.OrderStatus.PRINTING],
+    DESIGN: [client_1.OrderStatus.ARTWORK_REVIEW, client_1.OrderStatus.DESIGN_REQUIRED, client_1.OrderStatus.CUSTOMER_APPROVAL_REQUIRED],
+    PRODUCTION: [client_1.OrderStatus.ARTWORK_APPROVED, client_1.OrderStatus.PRODUCTION_QUEUE, client_1.OrderStatus.PRINTING],
     FINISHING: [client_1.OrderStatus.FINISHING],
     FINAL_QC: [client_1.OrderStatus.QUALITY_CHECK],
     PACKING: [client_1.OrderStatus.PACKING],
@@ -95,7 +95,7 @@ let OperationsService = OperationsService_1 = class OperationsService {
             }),
             this.prisma.order.count({
                 where: {
-                    status: { in: [client_1.OrderStatus.PRODUCTION_QUEUE] },
+                    status: { in: [client_1.OrderStatus.ARTWORK_APPROVED, client_1.OrderStatus.PRODUCTION_QUEUE] },
                     assignments: {
                         none: {
                             taskType: client_1.AssignmentTaskType.PRODUCTION,
@@ -181,7 +181,7 @@ let OperationsService = OperationsService_1 = class OperationsService {
             };
         }
         if (filters.unassignedProduction === 'true') {
-            where.status = { in: [client_1.OrderStatus.PRODUCTION_QUEUE] };
+            where.status = { in: [client_1.OrderStatus.ARTWORK_APPROVED, client_1.OrderStatus.PRODUCTION_QUEUE] };
             where.assignments = {
                 none: {
                     taskType: client_1.AssignmentTaskType.PRODUCTION,
@@ -864,6 +864,7 @@ let OperationsService = OperationsService_1 = class OperationsService {
                 id: true,
                 fullName: true,
                 email: true,
+                role: true,
                 department: true,
                 isActive: true,
                 assignedTasks: {
@@ -876,6 +877,7 @@ let OperationsService = OperationsService_1 = class OperationsService {
             id: d.id,
             fullName: d.fullName,
             email: d.email,
+            role: d.role,
             department: d.department,
             isActive: d.isActive,
             activeAssignments: d.assignedTasks.length,
@@ -888,6 +890,7 @@ let OperationsService = OperationsService_1 = class OperationsService {
                 id: true,
                 fullName: true,
                 email: true,
+                role: true,
                 department: true,
                 isActive: true,
                 assignedJobs: {
@@ -904,6 +907,7 @@ let OperationsService = OperationsService_1 = class OperationsService {
             id: o.id,
             fullName: o.fullName,
             email: o.email,
+            role: o.role,
             department: o.department,
             isActive: o.isActive,
             activeJobCards: o.assignedJobs.length,

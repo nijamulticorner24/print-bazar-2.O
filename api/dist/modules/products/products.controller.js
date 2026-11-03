@@ -21,11 +21,14 @@ let ProductsController = class ProductsController {
     constructor(productsService) {
         this.productsService = productsService;
     }
-    async listProducts(categoryId, search) {
-        return this.productsService.listProducts(categoryId, search);
+    async listProducts(categoryId, search, featured) {
+        return this.productsService.listProducts(categoryId, search, featured === 'true' ? true : undefined);
     }
     async listCategories() {
         return this.productsService.listCategories();
+    }
+    async getSiteSettings() {
+        return this.productsService.getSiteSettings();
     }
     async getProductBySlug(slug) {
         return this.productsService.getProductBySlug(slug);
@@ -37,8 +40,9 @@ __decorate([
     (0, swagger_1.ApiOperation)({ summary: 'List all published products in catalog' }),
     __param(0, (0, common_1.Query)('categoryId')),
     __param(1, (0, common_1.Query)('search')),
+    __param(2, (0, common_1.Query)('featured')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:paramtypes", [String, String, String]),
     __metadata("design:returntype", Promise)
 ], ProductsController.prototype, "listProducts", null);
 __decorate([
@@ -48,6 +52,13 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], ProductsController.prototype, "listCategories", null);
+__decorate([
+    (0, common_1.Get)('site-settings'),
+    (0, swagger_1.ApiOperation)({ summary: 'Get public storefront site settings (hero image & header marquee)' }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], ProductsController.prototype, "getSiteSettings", null);
 __decorate([
     (0, common_1.Get)(':slug'),
     (0, swagger_1.ApiOperation)({ summary: 'Get published product configuration schema and dynamic fields by slug' }),

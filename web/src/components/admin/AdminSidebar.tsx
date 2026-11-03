@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { getVisibleAdminNavigation } from './navigation';
@@ -22,10 +23,10 @@ export function AdminSidebar({ isOpen = false, onClose }: AdminSidebarProps) {
   const { user, logout } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Compute authorized sections strictly from backend permissions
+  // Compute authorized sections strictly from backend permissions and role
   const authorizedSections = useMemo(() => {
-    return getVisibleAdminNavigation(user?.permissions || []);
-  }, [user?.permissions]);
+    return getVisibleAdminNavigation(user?.permissions || [], user?.role);
+  }, [user?.permissions, user?.role]);
 
   // Filter sections and items based on search query
   const filteredSections = useMemo(() => {
@@ -65,26 +66,21 @@ export function AdminSidebar({ isOpen = false, onClose }: AdminSidebarProps) {
       {/* Top Header & Navigation Section */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Brand Identity Header */}
-        <div className="p-4 border-b border-[#E5E5E5] bg-[#F8F8F8] flex items-center justify-between flex-shrink-0">
-          <Link href="/admin/dashboard" className="flex items-center gap-3 group">
-            <div className="h-8 w-8 rounded-[8px] bg-[#FFED00] text-black flex items-center justify-center font-bold text-xs border border-neutral-300 shadow-xs flex-shrink-0 transition-transform group-hover:scale-105">
-              <RiPrinterLine className="h-4 w-4" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="font-semibold text-[14px] tracking-tight text-black">
-                  PRINT BAZZAR
-                </span>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-black text-[#FFED00]">
-                  2.0 OS
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#166534]" />
-                <span className="text-[10px] font-mono tracking-wider text-[#737373] font-medium uppercase">
-                  PLANT OPERATING SYSTEM
-                </span>
-              </div>
+        <div className="p-3.5 sm:p-4 border-b border-[#E5E5E5] bg-[#F8F8F8] flex items-center justify-between flex-shrink-0">
+          <Link href="/admin/dashboard" className="flex flex-col gap-1.5 group min-w-0" aria-label="Print Bazzar Admin">
+            <Image
+              src="/brand-logo.png"
+              alt="Print Bazzar"
+              width={180}
+              height={34}
+              priority
+              className="h-7 sm:h-8 w-auto object-contain transition-transform duration-200 group-hover:scale-102"
+            />
+            <div className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#166534]" />
+              <span className="text-[10px] font-mono tracking-wider text-[#737373] font-medium uppercase">
+                PLANT OPERATING SYSTEM 2.0
+              </span>
             </div>
           </Link>
 

@@ -1183,6 +1183,7 @@ export class OperationsService {
         id: true,
         fullName: true,
         email: true,
+        role: true,
         department: true,
         isActive: true,
         assignedTasks: {
@@ -1196,6 +1197,7 @@ export class OperationsService {
       id: d.id,
       fullName: d.fullName,
       email: d.email,
+      role: d.role,
       department: d.department,
       isActive: d.isActive,
       activeAssignments: d.assignedTasks.length,
@@ -1209,6 +1211,7 @@ export class OperationsService {
         id: true,
         fullName: true,
         email: true,
+        role: true,
         department: true,
         isActive: true,
         assignedJobs: {
@@ -1226,6 +1229,7 @@ export class OperationsService {
       id: o.id,
       fullName: o.fullName,
       email: o.email,
+      role: o.role,
       department: o.department,
       isActive: o.isActive,
       activeJobCards: o.assignedJobs.length,

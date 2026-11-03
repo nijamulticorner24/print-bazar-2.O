@@ -68,6 +68,49 @@ export class QualityControlService {
     const outcome: QCOutcome = hasFailure ? QCOutcome.FAIL : QCOutcome.PASS;
     const inspectionType = QCInspectionType.FINAL_QC;
 
+    // Normalize defect codes to valid Prisma DefectCategory enum values
+    const validDefectCategories = new Set<string>(Object.values(DefectCategory));
+    const mapToDefectCategory = (raw: string): DefectCategory => {
+      const upper = String(raw || '').toUpperCase().trim();
+      if (validDefectCategories.has(upper)) {
+        return upper as DefectCategory;
+      }
+      if (upper.includes('COLOR') || upper.includes('RGB') || upper.includes('DELTA')) {
+        return DefectCategory.COLOR_MISMATCH;
+      }
+      if (upper.includes('CUT') || upper.includes('TRIM') || upper.includes('BLEED') || upper.includes('DIMENSION')) {
+        return DefectCategory.BLEED_CUTTING_FAULT;
+      }
+      if (upper.includes('LAMINAT') || upper.includes('BUBBLE')) {
+        return DefectCategory.LAMINATION_BUBBLE;
+      }
+      if (upper.includes('STREAK') || upper.includes('SMUDGE') || upper.includes('SCRATCH')) {
+        return DefectCategory.PRINT_STREAKS;
+      }
+      if (upper.includes('REGISTRAT') || upper.includes('ALIGN') || upper.includes('FOLD')) {
+        return DefectCategory.REGISTRATION_ERROR;
+      }
+      if (upper.includes('COUNT') || upper.includes('QTY') || upper.includes('QUANTITY')) {
+        return DefectCategory.QUANTITY_SHORT;
+      }
+      if (upper.includes('PAPER') || upper.includes('STOCK') || upper.includes('GSM')) {
+        return DefectCategory.WRONG_PAPER_STOCK;
+      }
+      if (upper.includes('FILE') || upper.includes('RESOLUTION') || upper.includes('DPI')) {
+        return DefectCategory.CUSTOMER_FILE_ERROR;
+      }
+      if (upper.includes('DAMAGE') || upper.includes('EDGE')) {
+        return DefectCategory.DAMAGED_EDGES;
+      }
+      return DefectCategory.OTHER;
+    };
+
+    const normalizedDefects: DefectCategory[] = Array.isArray(dto.defects)
+      ? Array.from(new Set(dto.defects.map(mapToDefectCategory)))
+      : outcome === QCOutcome.FAIL
+      ? [ mapToDefectCategory(dto.generalNotes || 'OTHER') ]
+      : [];
+
     // 1. Create QC checklist record atomically
     const checklist = await this.prisma.$transaction(async (tx) => {
       const created = await tx.qCChecklist.create({
@@ -78,7 +121,7 @@ export class QualityControlService {
           outcome,
           inspectorId,
           items: dto.items as unknown as Prisma.InputJsonValue,
-          defects: dto.defects || [],
+          defects: normalizedDefects,
           notes: dto.generalNotes,
         },
       });

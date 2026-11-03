@@ -77,7 +77,8 @@ export function AdminShell({ children }: AdminShellProps) {
   // 2. CHECK ROUTE-LEVEL AUTHORIZATION FOR CURRENT INTERNAL USER
   const { isAuthorized, requiredPermissions } = checkRouteAuthorization(
     pathname,
-    user?.permissions || []
+    user?.permissions || [],
+    user?.role
   );
 
   const roleDestination = getRoleDestination(user?.role);

@@ -18,6 +18,7 @@ import { diskStorage } from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
 import { AdminCatalogueService } from './admin-catalogue.service';
+import { ProductsService, SiteSettingsDto } from './products.service';
 import { JwtAuthGuard, RolesGuard } from '../../common/guards/auth.guard';
 import { Roles, CurrentUser } from '../../common/decorators/auth.decorator';
 import { UserRole, JwtPayload } from '../../common/types/roles';
@@ -76,7 +77,26 @@ const productImageStorage = diskStorage({
   UserRole.ACCOUNTS,
 )
 export class AdminCatalogueController {
-  constructor(private readonly catalogueService: AdminCatalogueService) {}
+  constructor(
+    private readonly catalogueService: AdminCatalogueService,
+    private readonly productsService: ProductsService,
+  ) {}
+
+  // ==========================================
+  // SITE SETTINGS (HERO IMAGE & HEADER MARQUEE)
+  // ==========================================
+
+  @Get('site-settings')
+  @Roles(UserRole.ADMIN_MANAGER)
+  async getSiteSettings() {
+    return this.productsService.getSiteSettings();
+  }
+
+  @Put('site-settings')
+  @Roles(UserRole.ADMIN_MANAGER)
+  async updateSiteSettings(@Body() dto: Partial<SiteSettingsDto>) {
+    return this.productsService.updateSiteSettings(dto);
+  }
 
   // ==========================================
   // CATEGORIES
@@ -195,6 +215,15 @@ export class AdminCatalogueController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.catalogueService.archiveProduct(id, user?.sub);
+  }
+
+  @Patch('catalogue/products/:id/feature')
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
+  async toggleFeatured(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.catalogueService.toggleFeatured(id, user?.sub);
   }
 
   @Delete('catalogue/products/:id')

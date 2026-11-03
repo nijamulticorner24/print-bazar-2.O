@@ -98,8 +98,10 @@ export default function OperationalOrderDetailPage({
       setReadiness(readinessData);
       setTimeline(Array.isArray(timelineData) ? timelineData : ((timelineData as any)?.data || []));
       setSelectedPriority(orderData?.priority || 'NORMAL');
-      setDesigners(Array.isArray(eligibleDesigners) ? eligibleDesigners : ((eligibleDesigners as any)?.data || []));
-      setOperators(Array.isArray(eligibleOperators) ? eligibleOperators : ((eligibleOperators as any)?.data || []));
+      const rawDesigners = Array.isArray(eligibleDesigners) ? eligibleDesigners : ((eligibleDesigners as any)?.data || []);
+      const rawOperators = Array.isArray(eligibleOperators) ? eligibleOperators : ((eligibleOperators as any)?.data || []);
+      setDesigners(rawDesigners.filter((d: any) => !d.role || d.role === 'DESIGNER_PREPRESS'));
+      setOperators(rawOperators.filter((o: any) => !o.role || o.role === 'PRODUCTION_OPERATOR'));
     } catch (err) {
       console.error('Failed to load operational order detail:', err);
     } finally {
@@ -1138,10 +1140,14 @@ export default function OperationalOrderDetailPage({
                 required
                 className="w-full h-10 px-3 border border-slate-300 rounded-lg text-xs bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FFED00]"
               >
-                <option value="">-- Choose Staff Member --</option>
+                <option value="">
+                  {assignmentModalType === 'DESIGN'
+                    ? '-- Choose Prepress Designer --'
+                    : '-- Choose Production Operator --'}
+                </option>
                 {(assignmentModalType === 'DESIGN' ? designers : operators).map((staff) => (
                   <option key={staff.id} value={staff.id}>
-                    {staff.fullName} ({staff.activeLoad} active jobs)
+                    {staff.fullName} — {assignmentModalType === 'DESIGN' ? 'Prepress Designer' : 'Production Operator'} ({staff.activeAssignments ?? staff.activeJobCards ?? staff.activeLoad ?? 0} active jobs)
                   </option>
                 ))}
               </select>

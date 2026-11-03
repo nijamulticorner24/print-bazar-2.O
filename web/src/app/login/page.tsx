@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Printer,
@@ -770,22 +771,22 @@ export default function LoginPage() {
     <div className="min-h-screen bg-[#F8F8F8] flex flex-col justify-center py-10 sm:px-6 lg:px-8 blueprint-grid">
       {/* Top Header & Branding */}
       <div className="sm:mx-auto sm:w-full sm:max-w-4xl text-center mb-8">
-        <Link href="/" className="inline-flex items-center gap-3 group">
-          <div className="h-10 w-10 rounded-[8px] bg-[#FFED00] text-black flex items-center justify-center font-bold border border-neutral-300 shadow-xs transition-transform group-hover:scale-105">
-            <Printer className="h-5 w-5" />
-          </div>
-          <div className="text-left">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[20px] font-semibold tracking-tight text-black font-sans">
-                PRINT BAZZAR
-              </span>
-              <span className="bg-black text-[#FFED00] text-[10px] font-mono font-bold px-1.5 py-0.5 rounded">
-                2.0
-              </span>
-            </div>
-            <p className="text-[10px] font-mono font-semibold text-[#737373] uppercase tracking-widest">
+        <Link href="/" className="inline-flex flex-col items-center gap-2 group" aria-label="Print Bazzar Home">
+          <Image
+            src="/brand-logo.png"
+            alt="Print Bazzar"
+            width={240}
+            height={46}
+            priority
+            className="h-10 sm:h-12 w-auto object-contain transition-transform duration-200 group-hover:scale-102"
+          />
+          <div className="flex items-center gap-2">
+            <span className="bg-black text-[#FFED00] text-[10px] font-mono font-bold px-1.5 py-0.5 rounded">
+              2.0
+            </span>
+            <span className="text-[10px] font-mono font-semibold text-[#737373] uppercase tracking-widest">
               Unified Authentication Hub
-            </p>
+            </span>
           </div>
         </Link>
       </div>

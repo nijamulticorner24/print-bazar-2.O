@@ -834,6 +834,9 @@ class CreateProductDto {
     designServicePrice;
     shippingChargeType;
     unitWeightGrams;
+    bulkTierWeights;
+    packagingProfileId;
+    isShippable;
     courierCharge;
     perAdditionalQtyRate;
     freeShippingThreshold;
@@ -869,7 +872,7 @@ __decorate([
 ], CreateProductDto.prototype, "slug", void 0);
 __decorate([
     (0, class_validator_1.IsString)(),
-    (0, class_validator_1.IsNotEmpty)(),
+    (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
 ], CreateProductDto.prototype, "sku", void 0);
 __decorate([
@@ -1012,6 +1015,20 @@ __decorate([
     __metadata("design:type", Number)
 ], CreateProductDto.prototype, "unitWeightGrams", void 0);
 __decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Array)
+], CreateProductDto.prototype, "bulkTierWeights", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], CreateProductDto.prototype, "packagingProfileId", void 0);
+__decorate([
+    (0, class_validator_1.IsBoolean)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
+], CreateProductDto.prototype, "isShippable", void 0);
+__decorate([
     (0, class_validator_1.IsNumber)(),
     (0, class_validator_1.Min)(0),
     (0, class_validator_1.IsOptional)(),
@@ -1135,6 +1152,9 @@ class UpdateProductDto {
     designServicePrice;
     shippingChargeType;
     unitWeightGrams;
+    bulkTierWeights;
+    packagingProfileId;
+    isShippable;
     courierCharge;
     perAdditionalQtyRate;
     freeShippingThreshold;
@@ -1317,6 +1337,20 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Number)
 ], UpdateProductDto.prototype, "unitWeightGrams", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Array)
+], UpdateProductDto.prototype, "bulkTierWeights", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], UpdateProductDto.prototype, "packagingProfileId", void 0);
+__decorate([
+    (0, class_validator_1.IsBoolean)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
+], UpdateProductDto.prototype, "isShippable", void 0);
 __decorate([
     (0, class_validator_1.IsNumber)(),
     (0, class_validator_1.Min)(0),

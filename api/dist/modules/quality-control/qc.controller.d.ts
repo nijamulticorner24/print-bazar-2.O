@@ -57,14 +57,14 @@ export declare class QualityControlController {
                 storageKey: string;
                 orderItemId: string;
                 customerNotes: string | null;
+                widthMm: import("@prisma/client/runtime/library").Decimal | null;
+                heightMm: import("@prisma/client/runtime/library").Decimal | null;
                 originalFileName: string;
                 versionNumber: number;
                 mimeType: string;
                 fileSize: number;
                 checksum: string;
                 resolutionDpi: number | null;
-                widthMm: import("@prisma/client/runtime/library").Decimal | null;
-                heightMm: import("@prisma/client/runtime/library").Decimal | null;
                 widthPixels: number | null;
                 heightPixels: number | null;
                 actualMegapixels: number | null;

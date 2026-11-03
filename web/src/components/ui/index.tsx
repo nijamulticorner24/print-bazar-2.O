@@ -349,5 +349,6 @@ export function Skeleton({
 export * from './Modal';
 export * from './Tabs';
 export * from './ProductCard';
+export * from './BrandLogo';
 
 

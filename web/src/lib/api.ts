@@ -624,13 +624,18 @@ export const api = {
   getOrderById: (id: string) => fetchApi<any>(`/orders/${id}`),
 
   // Storefront Public APIs
-  getProducts: (categoryId?: string, search?: string) => {
+  getProducts: (categoryId?: string, search?: string, featured?: boolean) => {
     const params = new URLSearchParams();
     if (categoryId) params.append('categoryId', categoryId);
     if (search) params.append('search', search);
+    if (featured !== undefined) params.append('featured', String(featured));
     return fetchApi<DynamicProduct[]>(`/products?${params.toString()}`);
   },
   getCategories: () => fetchApi<ProductCategoryItem[]>('/products/categories'),
+  getSiteSettings: () => fetchApi<any>('/products/site-settings'),
+  adminGetSiteSettings: () => fetchApi<any>('/admin/site-settings'),
+  adminUpdateSiteSettings: (data: any) =>
+    fetchApi<any>('/admin/site-settings', { method: 'PUT', body: JSON.stringify(data) }),
   getProductBySlug: (slug: string) => fetchApi<DynamicProduct>(`/products/${slug}`),
 
   // Authoritative Pricing Quote
@@ -737,6 +742,8 @@ export const api = {
     fetchApi<DynamicProduct>(`/admin/catalogue/products/${id}/publish`, { method: 'PATCH' }),
   adminArchiveProduct: (id: string) =>
     fetchApi<DynamicProduct>(`/admin/catalogue/products/${id}/archive`, { method: 'PATCH' }),
+  adminToggleFeaturedProduct: (id: string) =>
+    fetchApi<DynamicProduct>(`/admin/catalogue/products/${id}/feature`, { method: 'PATCH' }),
   adminDeleteProduct: (id: string) =>
     fetchApi<{ success: boolean; message: string }>(`/admin/catalogue/products/${id}`, { method: 'DELETE' }),
 

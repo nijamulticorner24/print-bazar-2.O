@@ -86,8 +86,11 @@ let ArtworkController = class ArtworkController {
     async requestRevision(body, user) {
         return this.artworkService.requestRevision(body, user.sub);
     }
-    async getDesignQueue(search, user) {
-        return this.artworkService.getDesignQueue(search, user);
+    async getDesignQueue(search, tab, scope, user) {
+        return this.artworkService.getDesignQueue(search, user, tab, scope);
+    }
+    async getPassedDesignQueue(search, scope, user) {
+        return this.artworkService.getDesignQueue(search, user, 'passed', scope);
     }
     async claimDesignJob(orderId, user) {
         return this.artworkService.claimDesignJob(orderId, user);
@@ -171,11 +174,24 @@ __decorate([
     (0, auth_decorator_1.Roles)(roles_1.UserRole.DESIGNER_PREPRESS, roles_1.UserRole.OPERATIONAL_MANAGER, roles_1.UserRole.ADMIN_MANAGER),
     (0, swagger_1.ApiOperation)({ summary: 'Get personal design queue for authenticated designer, or full queue for OE/Admin' }),
     __param(0, (0, common_1.Query)('search')),
-    __param(1, (0, auth_decorator_1.CurrentUser)()),
+    __param(1, (0, common_1.Query)('tab')),
+    __param(2, (0, common_1.Query)('scope')),
+    __param(3, (0, auth_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:paramtypes", [String, String, String, Object]),
     __metadata("design:returntype", Promise)
 ], ArtworkController.prototype, "getDesignQueue", null);
+__decorate([
+    (0, common_1.Get)('passed-queue'),
+    (0, auth_decorator_1.Roles)(roles_1.UserRole.DESIGNER_PREPRESS, roles_1.UserRole.OPERATIONAL_MANAGER, roles_1.UserRole.ADMIN_MANAGER),
+    (0, swagger_1.ApiOperation)({ summary: 'Get designs passed to production / QC' }),
+    __param(0, (0, common_1.Query)('search')),
+    __param(1, (0, common_1.Query)('scope')),
+    __param(2, (0, auth_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", Promise)
+], ArtworkController.prototype, "getPassedDesignQueue", null);
 __decorate([
     (0, common_1.Post)('design/:orderId/claim'),
     (0, auth_decorator_1.Roles)(roles_1.UserRole.DESIGNER_PREPRESS, roles_1.UserRole.ADMIN_MANAGER),
@@ -189,7 +205,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)('design/:orderId/complete'),
     (0, auth_decorator_1.Roles)(roles_1.UserRole.DESIGNER_PREPRESS, roles_1.UserRole.OPERATIONAL_MANAGER, roles_1.UserRole.ADMIN_MANAGER),
-    (0, swagger_1.ApiOperation)({ summary: 'Designer submits completed design, creating approved artwork and releasing order to Pre-Production QC' }),
+    (0, swagger_1.ApiOperation)({ summary: 'Designer submits completed design, creating approved artwork and routing order to OE for Production Assignment' }),
     __param(0, (0, common_1.Param)('orderId')),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, auth_decorator_1.CurrentUser)()),

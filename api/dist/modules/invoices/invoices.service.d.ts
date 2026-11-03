@@ -24,12 +24,12 @@ export declare class InvoicesService {
                 isDefault: boolean;
                 type: string;
                 postalCode: string;
-                contactName: string;
-                street: string;
-                landmark: string | null;
                 city: string;
                 state: string;
                 country: string;
+                contactName: string;
+                street: string;
+                landmark: string | null;
             } | null;
             billingAddress: {
                 id: string;
@@ -40,12 +40,12 @@ export declare class InvoicesService {
                 isDefault: boolean;
                 type: string;
                 postalCode: string;
-                contactName: string;
-                street: string;
-                landmark: string | null;
                 city: string;
                 state: string;
                 country: string;
+                contactName: string;
+                street: string;
+                landmark: string | null;
             } | null;
             items: {
                 id: string;

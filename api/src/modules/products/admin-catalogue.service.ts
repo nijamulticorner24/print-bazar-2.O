@@ -1012,6 +1012,27 @@ export class AdminCatalogueService {
     return updated;
   }
 
+  async toggleFeatured(id: string, actorId?: string) {
+    const product = await this.getProductById(id);
+    const updated = await this.prisma.product.update({
+      where: { id },
+      data: {
+        isFeatured: !product.isFeatured,
+      },
+    });
+
+    await this.auditService.log({
+      actorId,
+      action: updated.isFeatured ? 'PRODUCT_FEATURED' : 'PRODUCT_UNFEATURED',
+      entity: 'Product',
+      entityId: id,
+      previousState: { isFeatured: product.isFeatured },
+      newState: { isFeatured: updated.isFeatured },
+    });
+
+    return updated;
+  }
+
   async deleteProduct(id: string, actorId?: string) {
     const product = await this.getProductById(id);
 

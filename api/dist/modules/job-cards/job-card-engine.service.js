@@ -255,6 +255,45 @@ let JobCardEngineService = JobCardEngineService_1 = class JobCardEngineService {
         }
         return updated;
     }
+    async getJobCardById(id) {
+        const job = await this.prisma.jobCard.findFirst({
+            where: {
+                OR: [{ id }, { jobNumber: id }],
+            },
+            include: {
+                order: {
+                    include: {
+                        customer: true,
+                        shippingAddress: true,
+                        qcChecklists: true,
+                        items: true,
+                    },
+                },
+                orderItem: {
+                    include: {
+                        product: {
+                            include: {
+                                category: true,
+                            },
+                        },
+                        artworkVersions: {
+                            orderBy: { versionNumber: 'desc' },
+                        },
+                    },
+                },
+                machine: true,
+                operator: true,
+                issues: {
+                    where: { isResolved: false },
+                    orderBy: { createdAt: 'desc' },
+                },
+            },
+        });
+        if (!job) {
+            throw new common_1.NotFoundException(`JobCard '${id}' not found`);
+        }
+        return job;
+    }
 };
 exports.JobCardEngineService = JobCardEngineService;
 exports.JobCardEngineService = JobCardEngineService = JobCardEngineService_1 = __decorate([

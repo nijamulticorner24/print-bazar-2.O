@@ -244,7 +244,7 @@ function ProductsCatalogueContent() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FFFFFF] pb-24 w-full max-w-full overflow-x-hidden font-sans">
+    <div className="min-h-screen bg-[#FFFFFF] pb-24 w-full max-w-full overflow-x-clip font-sans">
       <div className="mx-auto max-w-[1400px] px-3.5 sm:px-6 lg:px-8 pt-5 sm:pt-7">
         {/* 1. CATALOGUE HERO SECTION */}
         <div className="relative overflow-hidden rounded-[14px] sm:rounded-2xl bg-gradient-to-r from-[#FAF8F5] via-[#FFFDF7] to-[#FDFBF7] border border-[#EBE8DF] p-5 sm:p-7 lg:p-9 mb-7 shadow-xs">
@@ -284,7 +284,7 @@ function ProductsCatalogueContent() {
         </div>
 
         {/* 2. MOBILE CATEGORY SELECTOR & FILTER TRIGGER */}
-        <div className="lg:hidden mb-5">
+        <div className="lg:hidden mb-5 sticky top-[120px] z-20 bg-white/95 backdrop-blur-xs py-2 -mx-3.5 px-3.5 border-b border-[#E5E7EB]">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -352,9 +352,9 @@ function ProductsCatalogueContent() {
         </div>
 
         {/* 3. TWO-COLUMN CATALOGUE LAYOUT */}
-        <div className="grid grid-cols-1 lg:grid-cols-[250px_1fr] gap-6 lg:gap-8 items-start">
-          {/* ================= LEFT COLUMN: SIDEBAR ================= */}
-          <aside className="hidden lg:block space-y-4 sticky top-24">
+        <div className="grid grid-cols-1 lg:grid-cols-[250px_1fr] gap-6 lg:gap-8 items-start relative">
+          {/* ================= LEFT COLUMN: STICKY CATEGORIES SIDEBAR ================= */}
+          <aside className="hidden lg:block space-y-4 sticky top-[136px] self-start max-h-[calc(100vh-146px)] overflow-y-auto no-scrollbar pb-6 z-20">
             {/* A. CATEGORIES CARD */}
             <div className="bg-white rounded-[14px] border border-[#E5E7EB] p-2.5 shadow-2xs">
               <div className="flex items-center gap-2 px-3 py-2 text-[14px] font-bold text-[#111827] border-b border-[#F1F5F9] pb-2.5">

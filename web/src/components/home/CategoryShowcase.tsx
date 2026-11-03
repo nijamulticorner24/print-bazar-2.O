@@ -1,112 +1,189 @@
 'use client';
 
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { api, ProductCategoryItem, resolveImageUrl } from '@/lib/api';
 
-const CATEGORY_ITEMS = [
-  {
-    name: 'Visiting Cards',
-    spec: '350 - 450 GSM',
-    href: '/products/premium-visiting-cards',
-    image: 'https://images.unsplash.com/photo-1589330694653-ded6df03f754?w=600&auto=format&fit=crop&q=80',
-    fallback: '/images/home/cat-cards.jpg',
-  },
-  {
-    name: 'Roll-Up Standees',
-    spec: 'Matte / Gloss Vinyl',
-    href: '/products/roll-up-luxury-standee',
-    image: 'https://images.unsplash.com/photo-1542744095-fcf48d80b0fd?w=600&auto=format&fit=crop&q=80',
-    fallback: '/images/home/cat-signs.jpg',
-  },
-  {
-    name: 'Rigid Boxes',
-    spec: 'Custom Kappa Board',
-    href: '/products',
-    image: 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=600&auto=format&fit=crop&q=80',
-    fallback: '/images/home/cat-boxes.jpg',
-  },
-  {
-    name: 'Flyers & Leaflets',
-    spec: 'Art Paper 130-170 GSM',
-    href: '/products',
-    image: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=600&auto=format&fit=crop&q=80',
-    fallback: '/images/home/cat-labels.jpg',
-  },
-  {
-    name: 'Corporate Apparel',
-    spec: '220 GSM Cotton Bio-Wash',
-    href: '/products',
-    image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=600&auto=format&fit=crop&q=80',
-    fallback: '/images/home/cat-apparel.jpg',
-  },
-  {
-    name: 'Letterheads',
-    spec: 'Executive Bond 100 GSM',
-    href: '/products',
-    image: 'https://images.unsplash.com/photo-1586075010923-2dd4570fb338?w=600&auto=format&fit=crop&q=80',
-    fallback: '/images/home/cat-stationery.jpg',
-  },
-  {
-    name: 'Corporate Gifts',
-    spec: 'Custom Laser / Screen',
-    href: '/products',
-    image: 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=600&auto=format&fit=crop&q=80',
-    fallback: '/images/home/cat-gifts.jpg',
-  },
-];
+const DEFAULT_CATEGORY_FALLBACKS: Record<string, string> = {
+  'visiting-cards': '/images/home/prod-cards.jpg',
+  'signs-banners': '/images/home/prod-banners.jpg',
+  'rigid-presentation-boxes': '/images/home/prod-boxes.jpg',
+  'mono-cartons': '/images/home/prod-boxes.jpg',
+  'corrugated-mailers': '/images/home/prod-boxes.jpg',
+  'roll-up-standees-sub': '/images/home/prod-banners.jpg',
+  'vinyl-flex-banners': '/images/home/prod-banners.jpg',
+  'marketing-materials': '/images/home/prod-flyers.jpg',
+  'packaging': '/images/home/prod-boxes.jpg',
+  'business-cards': '/images/home/prod-cards.jpg',
+  'corporate-gifts': '/images/home/cat-gifts.jpg',
+  'corporate-apparel': '/images/home/prod-tshirts.jpg',
+  'stickers': '/images/home/prod-stickers.jpg',
+};
 
 export function CategoryShowcase() {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+  const [categories, setCategories] = useState<ProductCategoryItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    api
+      .getCategories()
+      .then((data) => {
+        if (!isMounted) return;
+        const list = Array.isArray(data) ? data : [];
+        // Only show active categories
+        const activeList = list.filter((c) => c.isActive !== false);
+        setCategories(activeList);
+      })
+      .catch((err) => {
+        console.warn('Failed to load categories for showcase:', err);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const checkScroll = () => {
+    if (scrollRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+      setCanScrollLeft(scrollLeft > 10);
+      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 10);
+    }
+  };
+
+  useEffect(() => {
+    checkScroll();
+    const el = scrollRef.current;
+    if (el) {
+      el.addEventListener('scroll', checkScroll, { passive: true });
+      window.addEventListener('resize', checkScroll);
+      return () => {
+        el.removeEventListener('scroll', checkScroll);
+        window.removeEventListener('resize', checkScroll);
+      };
+    }
+  }, [categories]);
+
+  const scroll = (direction: 'left' | 'right') => {
+    if (scrollRef.current) {
+      const containerWidth = scrollRef.current.clientWidth;
+      const scrollAmount = direction === 'left' ? -containerWidth * 0.75 : containerWidth * 0.75;
+      scrollRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
+
+  if (!isLoading && categories.length === 0) {
+    return null;
+  }
+
   return (
-    <section className="bg-white border-b border-[#E5E7EB] py-6 sm:py-8 w-full max-w-full overflow-hidden">
+    <section className="bg-[#FAFAFA] border-b border-neutral-200/70 py-10 sm:py-14 lg:py-16 w-full max-w-full overflow-hidden">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between mb-4 sm:mb-5">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#FFED00]" />
-            <h2 className="text-xs font-mono font-bold text-[#64748B] uppercase tracking-wider">
-              PRINT PRODUCT CATEGORIES
+        {/* Section Header: "Shop by Category" & "View all categories →" */}
+        <div className="flex items-center justify-between mb-6 sm:mb-8">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 tracking-tight font-sans">
+              Shop by Category
             </h2>
+            <p className="text-xs text-neutral-500 mt-0.5">
+              Explore our full printing and custom packaging categories
+            </p>
           </div>
-          <Link
-            href="/products"
-            className="text-xs font-bold text-black hover:text-[#854D0E] transition-colors flex items-center gap-1 group"
-          >
-            <span>View All Categories</span>
-            <ArrowUpRight className="h-3.5 w-3.5 text-black group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-          </Link>
+
+          <div className="flex items-center gap-3">
+            <Link
+              href="/products"
+              className="group inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-neutral-600 hover:text-black transition-colors"
+            >
+              <span>View all categories</span>
+              <ArrowRight className="w-3.5 h-3.5 stroke-[2.2] transition-transform duration-150 group-hover:translate-x-0.5" />
+            </Link>
+
+            {/* Desktop Left/Right Navigation Arrows */}
+            {categories.length > 4 && (
+              <div className="hidden sm:flex items-center gap-1 ml-2">
+                <button
+                  type="button"
+                  onClick={() => scroll('left')}
+                  disabled={!canScrollLeft}
+                  aria-label="Scroll left"
+                  className={`w-7 h-7 rounded-full flex items-center justify-center border transition-all ${
+                    canScrollLeft
+                      ? 'border-neutral-300 text-neutral-800 hover:bg-neutral-100 hover:border-neutral-400 active:scale-95 cursor-pointer'
+                      : 'border-neutral-200 text-neutral-300 cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  <ChevronLeft className="w-4 h-4 stroke-[2.2]" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => scroll('right')}
+                  disabled={!canScrollRight}
+                  aria-label="Scroll right"
+                  className={`w-7 h-7 rounded-full flex items-center justify-center border transition-all ${
+                    canScrollRight
+                      ? 'border-neutral-300 text-neutral-800 hover:bg-neutral-100 hover:border-neutral-400 active:scale-95 cursor-pointer'
+                      : 'border-neutral-200 text-neutral-300 cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  <ChevronRight className="w-4 h-4 stroke-[2.2]" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 sm:gap-3.5">
-          {CATEGORY_ITEMS.map((item, idx) => (
-            <Link
-              key={idx}
-              href={item.href}
-              className="group relative flex flex-col items-center justify-between p-2 sm:p-2.5 rounded-xl border border-[#E5E7EB] bg-white hover:border-black hover:shadow-md hover:shadow-black/5 transition-all duration-200 touch-manipulation overflow-hidden"
-            >
-              {/* Full-Cover Category Image Canvas */}
-              <div className="relative w-full aspect-[4/3] mb-2.5 overflow-hidden rounded-lg bg-[#F7F7F5] border border-[#E5E7EB]/70">
-                <img
-                  src={item.image}
-                  alt={item.name}
-                  className="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-108 motion-reduce:transform-none"
-                  loading="lazy"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = item.fallback;
-                  }}
-                />
-              </div>
+        {/* Horizontal Scrollable Row */}
+        <div
+          ref={scrollRef}
+          className="flex items-start gap-3 sm:gap-4 overflow-x-auto scrollbar-none scroll-smooth pb-2 pt-1 touch-pan-x"
+          style={{
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+          }}
+        >
+          {categories.map((cat) => {
+            const fallbackImg =
+              DEFAULT_CATEGORY_FALLBACKS[cat.slug] || '/images/home/prod-cards.jpg';
+            const resolvedImg = cat.image?.trim()
+              ? resolveImageUrl(cat.image)
+              : fallbackImg;
 
-              {/* Title & Spec */}
-              <div className="text-center w-full px-1 pb-1">
-                <h3 className="text-[12px] sm:text-[13px] font-bold text-black group-hover:text-black transition-colors leading-snug truncate font-sans">
-                  {item.name}
-                </h3>
-                <span className="text-[10px] text-[#64748B] font-mono block mt-0.5 truncate">
-                  {item.spec}
+            return (
+              <Link
+                key={cat.id}
+                href={`/products?category=${encodeURIComponent(cat.slug || cat.id)}`}
+                className="group flex flex-col items-center flex-shrink-0 w-[105px] min-w-[105px] sm:w-[calc((100%-4*12px)/5)] sm:min-w-[calc((100%-4*12px)/5)] md:w-[calc((100%-5*14px)/6)] md:min-w-[calc((100%-5*14px)/6)] lg:w-[calc((100%-7*16px)/8)] lg:min-w-[calc((100%-7*16px)/8)] lg:max-w-[calc((100%-7*16px)/8)] touch-manipulation select-none cursor-pointer"
+              >
+                {/* Card Container: Soft gray rounded square container */}
+                <div className="relative w-full aspect-square rounded-2xl sm:rounded-[18px] bg-[#F6F7F9] p-2 sm:p-2.5 flex items-center justify-center overflow-hidden border border-neutral-200/50 group-hover:bg-[#ECEEF2] group-hover:border-neutral-300/80 group-hover:shadow-xs transition-all duration-300">
+                  <img
+                    src={resolvedImg}
+                    alt={cat.name}
+                    className="w-full h-full object-cover rounded-xl transition-transform duration-300 ease-out group-hover:scale-106 motion-reduce:transform-none"
+                    loading="lazy"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = fallbackImg;
+                    }}
+                  />
+                </div>
+
+                {/* Category Name Centered Underneath */}
+                <span className="block text-center mt-2 sm:mt-2.5 text-xs sm:text-[13px] font-semibold text-neutral-800 group-hover:text-black leading-snug truncate w-full font-sans transition-colors">
+                  {cat.name}
                 </span>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       </div>
     </section>

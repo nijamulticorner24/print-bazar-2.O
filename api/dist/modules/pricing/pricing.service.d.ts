@@ -1,5 +1,6 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { ShippingGstService } from '../shipping-gst/shipping-gst.service';
+import { ShippingCalculatorService } from '../shipping/shipping-calculator.service';
 export interface OptionSelectionDto {
     optionCode: string;
     valueCode: string;
@@ -7,8 +8,11 @@ export interface OptionSelectionDto {
 export interface VariantLineInput {
     id?: string;
     sku?: string;
-    combination: Record<string, string>;
-    quantity: number;
+    code?: string;
+    optionCode?: string;
+    combination?: Record<string, string>;
+    quantity?: number;
+    qty?: number;
     artworkUrl?: string;
     artworkStorageKey?: string;
     artworkFile?: any;
@@ -23,6 +27,8 @@ export interface VariantLineQuote {
         valueName: string;
         valueCode: string;
         priceModifier: number;
+        matchedTier?: string;
+        flatAddonAmount?: number;
         additionalUnitPrice?: number;
         additionalChargeTotal?: number;
     }>;
@@ -83,6 +89,7 @@ export interface QuoteItemBreakdown {
     courierCharge: number;
     freeShippingThreshold: number;
     estimatedShipping: number;
+    shipping?: any;
     matchedZone?: {
         id: string;
         zoneName: string;
@@ -120,6 +127,8 @@ export interface QuoteItemBreakdown {
         valueName: string;
         valueCode: string;
         priceModifier: number;
+        matchedTier?: string;
+        flatAddonAmount?: number;
         additionalUnitPrice?: number;
         additionalChargeTotal?: number;
     }>;
@@ -128,7 +137,8 @@ export interface QuoteItemBreakdown {
 export declare class PricingService {
     private readonly prisma;
     private readonly shippingGstService;
-    constructor(prisma: PrismaService, shippingGstService: ShippingGstService);
+    private readonly shippingCalculatorService;
+    constructor(prisma: PrismaService, shippingGstService: ShippingGstService, shippingCalculatorService: ShippingCalculatorService);
     evaluateCombinationPricing(product: any, initialSelections: Record<string, any>, effectiveOrderQty: number, lineQty: number): {
         startingReferenceRate: number;
         unitPrice: number;
@@ -141,6 +151,8 @@ export declare class PricingService {
             valueName: string;
             valueCode: string;
             priceModifier: number;
+            matchedTier?: string;
+            flatAddonAmount?: number;
             additionalUnitPrice?: number;
             additionalChargeTotal?: number;
         }[];
@@ -171,5 +183,6 @@ export declare class PricingService {
         originalBasePrice: number;
         userSelections: Record<string, any>;
     };
+    private checkDesignServiceRequested;
     calculateQuote(dto: QuoteCalculationRequestDto): Promise<QuoteItemBreakdown>;
 }

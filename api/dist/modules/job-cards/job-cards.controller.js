@@ -27,6 +27,9 @@ let JobCardsController = class JobCardsController {
     async listJobCards(status, station, user) {
         return this.jobCardEngine.listJobCards({ status, station, user });
     }
+    async getJobCard(id) {
+        return this.jobCardEngine.getJobCardById(id);
+    }
     async generateJobCard(orderItemId, user) {
         return this.jobCardEngine.generateJobCardForOrderItem(orderItemId, user.sub);
     }
@@ -54,6 +57,14 @@ __decorate([
     __metadata("design:paramtypes", [String, String, Object]),
     __metadata("design:returntype", Promise)
 ], JobCardsController.prototype, "listJobCards", null);
+__decorate([
+    (0, common_1.Get)(':id'),
+    (0, swagger_1.ApiOperation)({ summary: 'Get single job card details by ID or Job Number' }),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], JobCardsController.prototype, "getJobCard", null);
 __decorate([
     (0, common_1.Post)('auto-generate/:orderItemId'),
     (0, swagger_1.ApiOperation)({ summary: 'Trigger automatic Job Card generation for an approved Order Item' }),

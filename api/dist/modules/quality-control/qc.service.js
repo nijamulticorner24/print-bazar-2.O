@@ -46,6 +46,46 @@ let QualityControlService = QualityControlService_1 = class QualityControlServic
         const hasFailure = dto.items.some((item) => item.result === 'FAIL');
         const outcome = hasFailure ? client_1.QCOutcome.FAIL : client_1.QCOutcome.PASS;
         const inspectionType = client_1.QCInspectionType.FINAL_QC;
+        const validDefectCategories = new Set(Object.values(client_1.DefectCategory));
+        const mapToDefectCategory = (raw) => {
+            const upper = String(raw || '').toUpperCase().trim();
+            if (validDefectCategories.has(upper)) {
+                return upper;
+            }
+            if (upper.includes('COLOR') || upper.includes('RGB') || upper.includes('DELTA')) {
+                return client_1.DefectCategory.COLOR_MISMATCH;
+            }
+            if (upper.includes('CUT') || upper.includes('TRIM') || upper.includes('BLEED') || upper.includes('DIMENSION')) {
+                return client_1.DefectCategory.BLEED_CUTTING_FAULT;
+            }
+            if (upper.includes('LAMINAT') || upper.includes('BUBBLE')) {
+                return client_1.DefectCategory.LAMINATION_BUBBLE;
+            }
+            if (upper.includes('STREAK') || upper.includes('SMUDGE') || upper.includes('SCRATCH')) {
+                return client_1.DefectCategory.PRINT_STREAKS;
+            }
+            if (upper.includes('REGISTRAT') || upper.includes('ALIGN') || upper.includes('FOLD')) {
+                return client_1.DefectCategory.REGISTRATION_ERROR;
+            }
+            if (upper.includes('COUNT') || upper.includes('QTY') || upper.includes('QUANTITY')) {
+                return client_1.DefectCategory.QUANTITY_SHORT;
+            }
+            if (upper.includes('PAPER') || upper.includes('STOCK') || upper.includes('GSM')) {
+                return client_1.DefectCategory.WRONG_PAPER_STOCK;
+            }
+            if (upper.includes('FILE') || upper.includes('RESOLUTION') || upper.includes('DPI')) {
+                return client_1.DefectCategory.CUSTOMER_FILE_ERROR;
+            }
+            if (upper.includes('DAMAGE') || upper.includes('EDGE')) {
+                return client_1.DefectCategory.DAMAGED_EDGES;
+            }
+            return client_1.DefectCategory.OTHER;
+        };
+        const normalizedDefects = Array.isArray(dto.defects)
+            ? Array.from(new Set(dto.defects.map(mapToDefectCategory)))
+            : outcome === client_1.QCOutcome.FAIL
+                ? [mapToDefectCategory(dto.generalNotes || 'OTHER')]
+                : [];
         const checklist = await this.prisma.$transaction(async (tx) => {
             const created = await tx.qCChecklist.create({
                 data: {
@@ -55,7 +95,7 @@ let QualityControlService = QualityControlService_1 = class QualityControlServic
                     outcome,
                     inspectorId,
                     items: dto.items,
-                    defects: dto.defects || [],
+                    defects: normalizedDefects,
                     notes: dto.generalNotes,
                 },
             });

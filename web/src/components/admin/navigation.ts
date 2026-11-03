@@ -93,7 +93,7 @@ export const CANONICAL_ADMIN_NAV: AdminNavItem[] = [
     label: 'Products & Field Builder',
     href: '/admin/products',
     icon: RiArchiveDrawerLine,
-    requiredPermissions: ['orders.read', 'production.read'],
+    requiredPermissions: ['orders.write', 'pricing.write'],
     matchMode: 'any',
     section: 'CATALOGUE_INVENTORY',
     order: 15,
@@ -106,7 +106,7 @@ export const CANONICAL_ADMIN_NAV: AdminNavItem[] = [
     label: 'Option Groups Library',
     href: '/admin/option-groups',
     icon: RiListSettingsLine,
-    requiredPermissions: ['orders.read', 'production.read'],
+    requiredPermissions: ['orders.write', 'pricing.write'],
     matchMode: 'any',
     section: 'CATALOGUE_INVENTORY',
     order: 16,
@@ -119,7 +119,7 @@ export const CANONICAL_ADMIN_NAV: AdminNavItem[] = [
     label: 'Personalization Templates',
     href: '/admin/personalization-templates',
     icon: RiFileList3Line,
-    requiredPermissions: ['orders.read', 'production.read'],
+    requiredPermissions: ['orders.write', 'pricing.write'],
     matchMode: 'any',
     section: 'CATALOGUE_INVENTORY',
     order: 17,
@@ -132,7 +132,7 @@ export const CANONICAL_ADMIN_NAV: AdminNavItem[] = [
     label: 'Categories & Taxonomies',
     href: '/admin/categories',
     icon: RiFoldersLine,
-    requiredPermissions: ['orders.read', 'production.read'],
+    requiredPermissions: ['orders.write', 'pricing.write'],
     matchMode: 'any',
     section: 'CATALOGUE_INVENTORY',
     order: 18,
@@ -358,6 +358,19 @@ export const CANONICAL_ADMIN_NAV: AdminNavItem[] = [
     description: 'Operator permissions, shift rotas & access audit',
   },
   {
+    id: 'site-settings',
+    label: 'Site Settings',
+    href: '/admin/site-settings',
+    icon: RiStore2Line,
+    requiredPermissions: ['settings.read'],
+    matchMode: 'all',
+    section: 'GOVERNANCE',
+    order: 115,
+    badge: 'STORE',
+    badgeVariant: 'yellow',
+    description: 'Home page hero image & header marquee announcements',
+  },
+  {
     id: 'settings',
     label: 'Factory Plant Settings',
     href: '/admin/settings',
@@ -402,15 +415,24 @@ export function isNavItemAuthorized(item: AdminNavItem, userPermissions: string[
  * Centralized, permission-aware navigation builder.
  * Filters canonical navigation against backend permissions and eliminates empty sections.
  */
-export function getVisibleAdminNavigation(userPermissions: string[]): AdminNavSection[] {
+export function getVisibleAdminNavigation(
+  userPermissions: string[],
+  userRole?: string
+): AdminNavSection[] {
   if (!userPermissions || !Array.isArray(userPermissions)) {
     return [];
   }
 
-  // 1. Filter authorized items
-  const authorizedItems = CANONICAL_ADMIN_NAV.filter((item) =>
-    isNavItemAuthorized(item, userPermissions)
-  );
+  // 1. Filter authorized items (and enforce role-level section exclusions for PRODUCTION_OPERATOR)
+  const authorizedItems = CANONICAL_ADMIN_NAV.filter((item) => {
+    if (
+      userRole === 'PRODUCTION_OPERATOR' &&
+      (item.section === 'OPERATIONS_COORDINATION' || item.section === 'CATALOGUE_INVENTORY')
+    ) {
+      return false;
+    }
+    return isNavItemAuthorized(item, userPermissions);
+  });
 
   // 2. Group by section
   const sectionMap = new Map<string, AdminNavItem[]>();
@@ -448,7 +470,8 @@ export function getVisibleAdminNavigation(userPermissions: string[]): AdminNavSe
  */
 export function checkRouteAuthorization(
   pathname: string,
-  userPermissions: string[]
+  userPermissions: string[],
+  userRole?: string
 ): { isAuthorized: boolean; requiredPermissions: string[] } {
   const matchingItem = [...CANONICAL_ADMIN_NAV]
     .sort((a, b) => b.href.length - a.href.length)
@@ -456,6 +479,16 @@ export function checkRouteAuthorization(
 
   if (!matchingItem) {
     return { isAuthorized: true, requiredPermissions: [] };
+  }
+
+  if (
+    userRole === 'PRODUCTION_OPERATOR' &&
+    (matchingItem.section === 'OPERATIONS_COORDINATION' || matchingItem.section === 'CATALOGUE_INVENTORY')
+  ) {
+    return {
+      isAuthorized: false,
+      requiredPermissions: matchingItem.requiredPermissions,
+    };
   }
 
   const authorized = isNavItemAuthorized(matchingItem, userPermissions);

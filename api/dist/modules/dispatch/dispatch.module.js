@@ -10,11 +10,13 @@ exports.DispatchModule = void 0;
 const common_1 = require("@nestjs/common");
 const dispatch_service_1 = require("./dispatch.service");
 const dispatch_controller_1 = require("./dispatch.controller");
+const shipping_module_1 = require("../shipping/shipping.module");
 let DispatchModule = class DispatchModule {
 };
 exports.DispatchModule = DispatchModule;
 exports.DispatchModule = DispatchModule = __decorate([
     (0, common_1.Module)({
+        imports: [shipping_module_1.ShippingModule],
         controllers: [dispatch_controller_1.DispatchController],
         providers: [dispatch_service_1.DispatchService],
         exports: [dispatch_service_1.DispatchService],

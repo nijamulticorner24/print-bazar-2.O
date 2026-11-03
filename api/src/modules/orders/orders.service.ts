@@ -554,6 +554,10 @@ export class OrdersService {
       destinationPincode: dto.shippingAddress?.postalCode,
       orderSubtotal: subtotal,
       deliveryMethod: deliveryMethod === 'STORE_PICKUP' ? 'STORE_PICKUP' : 'COURIER',
+      items: evaluatedItems.map((it) => ({
+        productId: it.productId,
+        quantity: it.quantity || 1,
+      })),
     });
 
     const shipTaxCalc = await this.shippingGstService.calculateShippingAndTax(

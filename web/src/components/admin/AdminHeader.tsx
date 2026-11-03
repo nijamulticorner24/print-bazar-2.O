@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
 import { Breadcrumbs } from './Breadcrumbs';
 import { UserMenu } from './UserMenu';
 import {
@@ -26,14 +28,22 @@ export function AdminHeader({ onToggleSidebar }: AdminHeaderProps) {
           <RiMenu2Line className="h-5 w-5" />
         </button>
 
-        <div className="hidden lg:flex items-center gap-2 border-r border-[#E5E5E5] pr-3 mr-1">
-          <div className="h-6 w-6 rounded-[6px] bg-[#FFED00] border border-neutral-300 flex items-center justify-center font-bold text-[10px] text-black">
-            <RiPrinterLine className="h-3.5 w-3.5" />
-          </div>
-          <span className="font-mono text-xs font-bold tracking-tight text-black">
+        <Link
+          href="/admin/dashboard"
+          className="flex items-center gap-2 border-r border-[#E5E5E5] pr-3 mr-1 group"
+          title="Print Bazzar Plant OS"
+        >
+          <Image
+            src="/logo-icon.png"
+            alt="Print Bazzar"
+            width={24}
+            height={24}
+            className="h-6 w-6 object-contain rounded-full transition-transform group-hover:scale-105"
+          />
+          <span className="hidden sm:inline font-mono text-xs font-bold tracking-tight text-black">
             PLANT OS
           </span>
-        </div>
+        </Link>
 
         {/* Contextual Breadcrumbs */}
         <div className="overflow-hidden">

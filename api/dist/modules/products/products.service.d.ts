@@ -1,8 +1,52 @@
 import { PrismaService } from '../prisma/prisma.service';
+export interface SiteMarqueeItemDto {
+    id: string;
+    text: string;
+    icon: 'truck' | 'shield' | 'clock' | 'sparkles' | 'tag' | 'award';
+    isActive: boolean;
+}
+export interface SiteHeroImageDto {
+    id: string;
+    imageUrl: string;
+    altText?: string;
+    badgeText?: string;
+    linkHref?: string;
+    isActive: boolean;
+}
+export interface SiteSettingsDto {
+    heroImageUrl: string;
+    heroAltText: string;
+    heroBadgeText: string;
+    heroTitle: string;
+    heroHighlightText: string;
+    heroTitleSuffix: string;
+    heroDescription: string;
+    heroPrimaryBtnText: string;
+    heroPrimaryBtnHref: string;
+    heroSecondaryBtnText: string;
+    heroSecondaryBtnHref: string;
+    heroBannerLinkHref: string;
+    showHeroTextOverlay: boolean;
+    showHeroBadge: boolean;
+    showHeroHeading: boolean;
+    showHeroDescription: boolean;
+    showHeroPrimaryBtn: boolean;
+    showHeroSecondaryBtn: boolean;
+    showHeroTrustPillars: boolean;
+    heroAutoSlide: boolean;
+    heroSlideIntervalSeconds: number;
+    heroStartingPrice: string;
+    heroStartingSubtitle: string;
+    heroSlaTitle: string;
+    heroSlaSubtitle: string;
+    heroImages: SiteHeroImageDto[];
+    marqueeItems: SiteMarqueeItemDto[];
+    updatedAt?: string;
+}
 export declare class ProductsService {
     private readonly prisma;
     constructor(prisma: PrismaService);
-    listProducts(categoryId?: string, search?: string): Promise<({
+    listProducts(categoryId?: string, search?: string, isFeatured?: boolean): Promise<({
         category: {
             parent: {
                 id: string;
@@ -11,35 +55,36 @@ export declare class ProductsService {
             } | null;
         } & {
             id: string;
-            createdAt: Date;
             name: string;
-            isActive: boolean;
-            updatedAt: Date;
-            description: string | null;
             slug: string;
+            description: string | null;
             sortOrder: number;
+            isActive: boolean;
+            createdAt: Date;
+            updatedAt: Date;
             image: string | null;
             parentId: string | null;
         };
         images: {
             id: string;
+            sortOrder: number;
             createdAt: Date;
             updatedAt: Date;
-            sortOrder: number;
             isPrimary: boolean;
-            url: string;
+            productId: string;
             storageKey: string | null;
+            url: string;
             altText: string | null;
             caption: string | null;
-            productId: string;
         }[];
         optionGroups: ({
             options: {
                 id: string;
-                createdAt: Date;
-                isActive: boolean;
-                updatedAt: Date;
                 sortOrder: number;
+                isActive: boolean;
+                createdAt: Date;
+                updatedAt: Date;
+                groupId: string;
                 label: string;
                 value: string;
                 priceModifierType: string;
@@ -48,31 +93,31 @@ export declare class ProductsService {
                 fileCount: number | null;
                 fileSlotLabels: string[];
                 minMegapixels: number | null;
-                groupId: string;
             }[];
         } & {
             id: string;
-            createdAt: Date;
             name: string;
-            isActive: boolean;
-            updatedAt: Date;
             description: string | null;
             sortOrder: number;
+            isActive: boolean;
+            createdAt: Date;
+            updatedAt: Date;
             isCustomerVisible: boolean;
-            code: string;
+            productId: string;
             reusableGroupId: string | null;
+            code: string;
             inputType: string;
             isRequired: boolean;
             enableAdditionalPricing: boolean;
             selectionBehavior: string;
-            productId: string;
         })[];
         configurationRules: {
             id: string;
-            createdAt: Date;
             name: string;
             isActive: boolean;
+            createdAt: Date;
             updatedAt: Date;
+            productId: string;
             conditionGroupCode: string;
             conditionOperator: string;
             conditionOptionValue: string;
@@ -80,19 +125,18 @@ export declare class ProductsService {
             targetGroupCode: string | null;
             targetOptionValue: string | null;
             actionPayload: import("@prisma/client/runtime/library").JsonValue | null;
-            productId: string;
         }[];
         pricingSource: {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            productId: string;
             sourceType: string;
             spreadsheetId: string | null;
             worksheetName: string | null;
             apiKey: string | null;
-            columnMapping: import("@prisma/client/runtime/library").JsonValue | null;
-            productId: string;
             schemaVersion: string;
+            columnMapping: import("@prisma/client/runtime/library").JsonValue | null;
             lastSyncAt: Date | null;
             syncStatus: string;
             syncMessage: string | null;
@@ -101,15 +145,11 @@ export declare class ProductsService {
         } | null;
     } & {
         id: string;
-        createdAt: Date;
-        name: string;
-        isActive: boolean;
-        updatedAt: Date;
-        tags: string[];
-        description: string | null;
         categoryId: string;
+        name: string;
         slug: string;
         sku: string;
+        description: string | null;
         status: import(".prisma/client").$Enums.ProductStatus;
         pricingModel: string;
         basePrice: import("@prisma/client/runtime/library").Decimal;
@@ -119,11 +159,13 @@ export declare class ProductsService {
         productionDays: number;
         sortOrder: number;
         isFeatured: boolean;
+        tags: string[];
         seoTitle: string | null;
         seoDescription: string | null;
         trackInventory: boolean;
         stockQuantity: number;
         lowStockAlert: number;
+        isActive: boolean;
         defaultSize: string | null;
         artworkRequirement: import(".prisma/client").$Enums.ProductOptionRequirement;
         artworkPrice: import("@prisma/client/runtime/library").Decimal | null;
@@ -134,6 +176,7 @@ export declare class ProductsService {
         designServicePrice: import("@prisma/client/runtime/library").Decimal | null;
         shippingChargeType: string;
         unitWeightGrams: number | null;
+        weightPerItemGrams: number | null;
         courierCharge: import("@prisma/client/runtime/library").Decimal | null;
         perAdditionalQtyRate: import("@prisma/client/runtime/library").Decimal | null;
         freeShippingThreshold: import("@prisma/client/runtime/library").Decimal | null;
@@ -149,36 +192,13 @@ export declare class ProductsService {
         variantDimensions: string[];
         personalizationTemplateId: string | null;
         personalizationConfig: import("@prisma/client/runtime/library").JsonValue | null;
+        packagingProfileId: string | null;
+        isShippable: boolean;
+        bulkTierWeights: import("@prisma/client/runtime/library").JsonValue | null;
+        createdAt: Date;
+        updatedAt: Date;
     })[]>;
     getProductBySlug(slugOrId: string): Promise<{
-        personalizationTemplate: ({
-            fields: {
-                id: string;
-                createdAt: Date;
-                name: string;
-                updatedAt: Date;
-                sortOrder: number;
-                code: string;
-                inputType: string;
-                isRequired: boolean;
-                options: import("@prisma/client/runtime/library").JsonValue | null;
-                scope: string;
-                placeholder: string | null;
-                helperText: string | null;
-                defaultValue: string | null;
-                validationRules: import("@prisma/client/runtime/library").JsonValue | null;
-                templateId: string;
-            }[];
-        } & {
-            id: string;
-            createdAt: Date;
-            name: string;
-            isActive: boolean;
-            updatedAt: Date;
-            description: string | null;
-            category: string | null;
-            code: string;
-        }) | null;
         category: {
             parent: {
                 id: string;
@@ -187,35 +207,64 @@ export declare class ProductsService {
             } | null;
         } & {
             id: string;
-            createdAt: Date;
             name: string;
-            isActive: boolean;
-            updatedAt: Date;
-            description: string | null;
             slug: string;
+            description: string | null;
             sortOrder: number;
+            isActive: boolean;
+            createdAt: Date;
+            updatedAt: Date;
             image: string | null;
             parentId: string | null;
         };
-        images: {
+        personalizationTemplate: ({
+            fields: {
+                id: string;
+                name: string;
+                sortOrder: number;
+                createdAt: Date;
+                updatedAt: Date;
+                code: string;
+                inputType: string;
+                isRequired: boolean;
+                options: import("@prisma/client/runtime/library").JsonValue | null;
+                templateId: string;
+                scope: string;
+                placeholder: string | null;
+                helperText: string | null;
+                defaultValue: string | null;
+                validationRules: import("@prisma/client/runtime/library").JsonValue | null;
+            }[];
+        } & {
             id: string;
+            name: string;
+            description: string | null;
+            isActive: boolean;
             createdAt: Date;
             updatedAt: Date;
+            category: string | null;
+            code: string;
+        }) | null;
+        images: {
+            id: string;
             sortOrder: number;
+            createdAt: Date;
+            updatedAt: Date;
             isPrimary: boolean;
-            url: string;
+            productId: string;
             storageKey: string | null;
+            url: string;
             altText: string | null;
             caption: string | null;
-            productId: string;
         }[];
         optionGroups: ({
             options: {
                 id: string;
-                createdAt: Date;
-                isActive: boolean;
-                updatedAt: Date;
                 sortOrder: number;
+                isActive: boolean;
+                createdAt: Date;
+                updatedAt: Date;
+                groupId: string;
                 label: string;
                 value: string;
                 priceModifierType: string;
@@ -224,31 +273,31 @@ export declare class ProductsService {
                 fileCount: number | null;
                 fileSlotLabels: string[];
                 minMegapixels: number | null;
-                groupId: string;
             }[];
         } & {
             id: string;
-            createdAt: Date;
             name: string;
-            isActive: boolean;
-            updatedAt: Date;
             description: string | null;
             sortOrder: number;
+            isActive: boolean;
+            createdAt: Date;
+            updatedAt: Date;
             isCustomerVisible: boolean;
-            code: string;
+            productId: string;
             reusableGroupId: string | null;
+            code: string;
             inputType: string;
             isRequired: boolean;
             enableAdditionalPricing: boolean;
             selectionBehavior: string;
-            productId: string;
         })[];
         configurationRules: {
             id: string;
-            createdAt: Date;
             name: string;
             isActive: boolean;
+            createdAt: Date;
             updatedAt: Date;
+            productId: string;
             conditionGroupCode: string;
             conditionOperator: string;
             conditionOptionValue: string;
@@ -256,19 +305,18 @@ export declare class ProductsService {
             targetGroupCode: string | null;
             targetOptionValue: string | null;
             actionPayload: import("@prisma/client/runtime/library").JsonValue | null;
-            productId: string;
         }[];
         pricingSource: {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            productId: string;
             sourceType: string;
             spreadsheetId: string | null;
             worksheetName: string | null;
             apiKey: string | null;
-            columnMapping: import("@prisma/client/runtime/library").JsonValue | null;
-            productId: string;
             schemaVersion: string;
+            columnMapping: import("@prisma/client/runtime/library").JsonValue | null;
             lastSyncAt: Date | null;
             syncStatus: string;
             syncMessage: string | null;
@@ -278,16 +326,18 @@ export declare class ProductsService {
         pricingMatrices: {
             id: string;
             createdAt: Date;
+            productId: string;
             minQty: number;
             maxQty: number;
-            unitPrice: import("@prisma/client/runtime/library").Decimal;
             attributeCombination: import("@prisma/client/runtime/library").JsonValue;
-            productId: string;
+            unitPrice: import("@prisma/client/runtime/library").Decimal;
+            totalProductWeightGrams: number | null;
         }[];
         additionalPricings: {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            productId: string;
             minQty: number;
             optionValue: string;
             groupCode: string;
@@ -295,19 +345,14 @@ export declare class ProductsService {
             unitPrice: import("@prisma/client/runtime/library").Decimal;
             chargeBasis: string;
             isExcluded: boolean;
-            productId: string;
         }[];
     } & {
         id: string;
-        createdAt: Date;
-        name: string;
-        isActive: boolean;
-        updatedAt: Date;
-        tags: string[];
-        description: string | null;
         categoryId: string;
+        name: string;
         slug: string;
         sku: string;
+        description: string | null;
         status: import(".prisma/client").$Enums.ProductStatus;
         pricingModel: string;
         basePrice: import("@prisma/client/runtime/library").Decimal;
@@ -317,11 +362,13 @@ export declare class ProductsService {
         productionDays: number;
         sortOrder: number;
         isFeatured: boolean;
+        tags: string[];
         seoTitle: string | null;
         seoDescription: string | null;
         trackInventory: boolean;
         stockQuantity: number;
         lowStockAlert: number;
+        isActive: boolean;
         defaultSize: string | null;
         artworkRequirement: import(".prisma/client").$Enums.ProductOptionRequirement;
         artworkPrice: import("@prisma/client/runtime/library").Decimal | null;
@@ -332,6 +379,7 @@ export declare class ProductsService {
         designServicePrice: import("@prisma/client/runtime/library").Decimal | null;
         shippingChargeType: string;
         unitWeightGrams: number | null;
+        weightPerItemGrams: number | null;
         courierCharge: import("@prisma/client/runtime/library").Decimal | null;
         perAdditionalQtyRate: import("@prisma/client/runtime/library").Decimal | null;
         freeShippingThreshold: import("@prisma/client/runtime/library").Decimal | null;
@@ -347,6 +395,11 @@ export declare class ProductsService {
         variantDimensions: string[];
         personalizationTemplateId: string | null;
         personalizationConfig: import("@prisma/client/runtime/library").JsonValue | null;
+        packagingProfileId: string | null;
+        isShippable: boolean;
+        bulkTierWeights: import("@prisma/client/runtime/library").JsonValue | null;
+        createdAt: Date;
+        updatedAt: Date;
     }>;
     listCategories(): Promise<({
         _count: {
@@ -354,14 +407,17 @@ export declare class ProductsService {
         };
     } & {
         id: string;
-        createdAt: Date;
         name: string;
-        isActive: boolean;
-        updatedAt: Date;
-        description: string | null;
         slug: string;
+        description: string | null;
         sortOrder: number;
+        isActive: boolean;
+        createdAt: Date;
+        updatedAt: Date;
         image: string | null;
         parentId: string | null;
     })[]>;
+    private getSiteSettingsFilePath;
+    getSiteSettings(): Promise<SiteSettingsDto>;
+    updateSiteSettings(dto: Partial<SiteSettingsDto>): Promise<SiteSettingsDto>;
 }

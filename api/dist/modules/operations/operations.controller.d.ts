@@ -53,24 +53,9 @@ export declare class OperationsController {
                 fullName: string;
                 role: import(".prisma/client").$Enums.UserRole;
             } | null;
-            customer: {
-                id: string;
-                email: string;
-                fullName: string;
-                phone: string;
-                companyName: string | null;
-            };
             id: string;
-            createdAt: Date;
-            status: import(".prisma/client").$Enums.OrderStatus;
-            jobCards: {
-                id: string;
-                status: import(".prisma/client").$Enums.JobCardStatus;
-                jobNumber: string;
-                currentStation: string;
-                operatorId: string | null;
-            }[];
             orderNumber: string;
+            status: import(".prisma/client").$Enums.OrderStatus;
             customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
             deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
             totalAmount: import("@prisma/client/runtime/library").Decimal;
@@ -80,18 +65,26 @@ export declare class OperationsController {
             priority: import(".prisma/client").$Enums.Priority;
             slaStatus: import(".prisma/client").$Enums.SlaStatus;
             dueAt: Date | null;
+            createdAt: Date;
+            customer: {
+                id: string;
+                fullName: string;
+                email: string;
+                phone: string;
+                companyName: string | null;
+            };
             items: {
                 id: string;
-                quantity: number;
                 productName: string;
+                quantity: number;
                 specifications: import("@prisma/client/runtime/library").JsonValue;
                 approvedArtworkVersionId: string | null;
                 artworkVersions: {
                     id: string;
                     status: import(".prisma/client").$Enums.ArtworkStatus;
+                    versionNumber: number;
                     storageKey: string;
                     originalFileName: string;
-                    versionNumber: number;
                     mimeType: string;
                     fileSize: number;
                     widthPixels: number | null;
@@ -104,6 +97,13 @@ export declare class OperationsController {
             packages: {
                 id: string;
                 status: import(".prisma/client").$Enums.PackageStatus;
+            }[];
+            jobCards: {
+                id: string;
+                status: import(".prisma/client").$Enums.JobCardStatus;
+                jobNumber: string;
+                currentStation: string;
+                operatorId: string | null;
             }[];
             qcChecklists: {
                 id: string;
@@ -162,24 +162,9 @@ export declare class OperationsController {
                 fullName: string;
                 role: import(".prisma/client").$Enums.UserRole;
             } | null;
-            customer: {
-                id: string;
-                email: string;
-                fullName: string;
-                phone: string;
-                companyName: string | null;
-            };
             id: string;
-            createdAt: Date;
-            status: import(".prisma/client").$Enums.OrderStatus;
-            jobCards: {
-                id: string;
-                status: import(".prisma/client").$Enums.JobCardStatus;
-                jobNumber: string;
-                currentStation: string;
-                operatorId: string | null;
-            }[];
             orderNumber: string;
+            status: import(".prisma/client").$Enums.OrderStatus;
             customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
             deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
             totalAmount: import("@prisma/client/runtime/library").Decimal;
@@ -189,18 +174,26 @@ export declare class OperationsController {
             priority: import(".prisma/client").$Enums.Priority;
             slaStatus: import(".prisma/client").$Enums.SlaStatus;
             dueAt: Date | null;
+            createdAt: Date;
+            customer: {
+                id: string;
+                fullName: string;
+                email: string;
+                phone: string;
+                companyName: string | null;
+            };
             items: {
                 id: string;
-                quantity: number;
                 productName: string;
+                quantity: number;
                 specifications: import("@prisma/client/runtime/library").JsonValue;
                 approvedArtworkVersionId: string | null;
                 artworkVersions: {
                     id: string;
                     status: import(".prisma/client").$Enums.ArtworkStatus;
+                    versionNumber: number;
                     storageKey: string;
                     originalFileName: string;
-                    versionNumber: number;
                     mimeType: string;
                     fileSize: number;
                     widthPixels: number | null;
@@ -213,6 +206,13 @@ export declare class OperationsController {
             packages: {
                 id: string;
                 status: import(".prisma/client").$Enums.PackageStatus;
+            }[];
+            jobCards: {
+                id: string;
+                status: import(".prisma/client").$Enums.JobCardStatus;
+                jobNumber: string;
+                currentStation: string;
+                operatorId: string | null;
             }[];
             qcChecklists: {
                 id: string;
@@ -271,24 +271,9 @@ export declare class OperationsController {
                 fullName: string;
                 role: import(".prisma/client").$Enums.UserRole;
             } | null;
-            customer: {
-                id: string;
-                email: string;
-                fullName: string;
-                phone: string;
-                companyName: string | null;
-            };
             id: string;
-            createdAt: Date;
-            status: import(".prisma/client").$Enums.OrderStatus;
-            jobCards: {
-                id: string;
-                status: import(".prisma/client").$Enums.JobCardStatus;
-                jobNumber: string;
-                currentStation: string;
-                operatorId: string | null;
-            }[];
             orderNumber: string;
+            status: import(".prisma/client").$Enums.OrderStatus;
             customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
             deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
             totalAmount: import("@prisma/client/runtime/library").Decimal;
@@ -298,18 +283,26 @@ export declare class OperationsController {
             priority: import(".prisma/client").$Enums.Priority;
             slaStatus: import(".prisma/client").$Enums.SlaStatus;
             dueAt: Date | null;
+            createdAt: Date;
+            customer: {
+                id: string;
+                fullName: string;
+                email: string;
+                phone: string;
+                companyName: string | null;
+            };
             items: {
                 id: string;
-                quantity: number;
                 productName: string;
+                quantity: number;
                 specifications: import("@prisma/client/runtime/library").JsonValue;
                 approvedArtworkVersionId: string | null;
                 artworkVersions: {
                     id: string;
                     status: import(".prisma/client").$Enums.ArtworkStatus;
+                    versionNumber: number;
                     storageKey: string;
                     originalFileName: string;
-                    versionNumber: number;
                     mimeType: string;
                     fileSize: number;
                     widthPixels: number | null;
@@ -322,6 +315,13 @@ export declare class OperationsController {
             packages: {
                 id: string;
                 status: import(".prisma/client").$Enums.PackageStatus;
+            }[];
+            jobCards: {
+                id: string;
+                status: import(".prisma/client").$Enums.JobCardStatus;
+                jobNumber: string;
+                currentStation: string;
+                operatorId: string | null;
             }[];
             qcChecklists: {
                 id: string;
@@ -380,24 +380,9 @@ export declare class OperationsController {
                 fullName: string;
                 role: import(".prisma/client").$Enums.UserRole;
             } | null;
-            customer: {
-                id: string;
-                email: string;
-                fullName: string;
-                phone: string;
-                companyName: string | null;
-            };
             id: string;
-            createdAt: Date;
-            status: import(".prisma/client").$Enums.OrderStatus;
-            jobCards: {
-                id: string;
-                status: import(".prisma/client").$Enums.JobCardStatus;
-                jobNumber: string;
-                currentStation: string;
-                operatorId: string | null;
-            }[];
             orderNumber: string;
+            status: import(".prisma/client").$Enums.OrderStatus;
             customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
             deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
             totalAmount: import("@prisma/client/runtime/library").Decimal;
@@ -407,18 +392,26 @@ export declare class OperationsController {
             priority: import(".prisma/client").$Enums.Priority;
             slaStatus: import(".prisma/client").$Enums.SlaStatus;
             dueAt: Date | null;
+            createdAt: Date;
+            customer: {
+                id: string;
+                fullName: string;
+                email: string;
+                phone: string;
+                companyName: string | null;
+            };
             items: {
                 id: string;
-                quantity: number;
                 productName: string;
+                quantity: number;
                 specifications: import("@prisma/client/runtime/library").JsonValue;
                 approvedArtworkVersionId: string | null;
                 artworkVersions: {
                     id: string;
                     status: import(".prisma/client").$Enums.ArtworkStatus;
+                    versionNumber: number;
                     storageKey: string;
                     originalFileName: string;
-                    versionNumber: number;
                     mimeType: string;
                     fileSize: number;
                     widthPixels: number | null;
@@ -431,6 +424,13 @@ export declare class OperationsController {
             packages: {
                 id: string;
                 status: import(".prisma/client").$Enums.PackageStatus;
+            }[];
+            jobCards: {
+                id: string;
+                status: import(".prisma/client").$Enums.JobCardStatus;
+                jobNumber: string;
+                currentStation: string;
+                operatorId: string | null;
             }[];
             qcChecklists: {
                 id: string;
@@ -489,24 +489,9 @@ export declare class OperationsController {
                 fullName: string;
                 role: import(".prisma/client").$Enums.UserRole;
             } | null;
-            customer: {
-                id: string;
-                email: string;
-                fullName: string;
-                phone: string;
-                companyName: string | null;
-            };
             id: string;
-            createdAt: Date;
-            status: import(".prisma/client").$Enums.OrderStatus;
-            jobCards: {
-                id: string;
-                status: import(".prisma/client").$Enums.JobCardStatus;
-                jobNumber: string;
-                currentStation: string;
-                operatorId: string | null;
-            }[];
             orderNumber: string;
+            status: import(".prisma/client").$Enums.OrderStatus;
             customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
             deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
             totalAmount: import("@prisma/client/runtime/library").Decimal;
@@ -516,18 +501,26 @@ export declare class OperationsController {
             priority: import(".prisma/client").$Enums.Priority;
             slaStatus: import(".prisma/client").$Enums.SlaStatus;
             dueAt: Date | null;
+            createdAt: Date;
+            customer: {
+                id: string;
+                fullName: string;
+                email: string;
+                phone: string;
+                companyName: string | null;
+            };
             items: {
                 id: string;
-                quantity: number;
                 productName: string;
+                quantity: number;
                 specifications: import("@prisma/client/runtime/library").JsonValue;
                 approvedArtworkVersionId: string | null;
                 artworkVersions: {
                     id: string;
                     status: import(".prisma/client").$Enums.ArtworkStatus;
+                    versionNumber: number;
                     storageKey: string;
                     originalFileName: string;
-                    versionNumber: number;
                     mimeType: string;
                     fileSize: number;
                     widthPixels: number | null;
@@ -540,6 +533,13 @@ export declare class OperationsController {
             packages: {
                 id: string;
                 status: import(".prisma/client").$Enums.PackageStatus;
+            }[];
+            jobCards: {
+                id: string;
+                status: import(".prisma/client").$Enums.JobCardStatus;
+                jobNumber: string;
+                currentStation: string;
+                operatorId: string | null;
             }[];
             qcChecklists: {
                 id: string;
@@ -570,8 +570,8 @@ export declare class OperationsController {
         activeDesignAssignment: ({
             assignedUser: {
                 id: string;
-                email: string;
                 fullName: string;
+                email: string;
                 role: import(".prisma/client").$Enums.UserRole;
                 department: import(".prisma/client").$Enums.Department | null;
             };
@@ -582,22 +582,22 @@ export declare class OperationsController {
             };
         } & {
             id: string;
-            reason: string | null;
-            createdAt: Date;
-            orderId: string;
-            updatedAt: Date;
             status: import(".prisma/client").$Enums.AssignmentStatus;
-            completedAt: Date | null;
+            createdAt: Date;
+            updatedAt: Date;
             taskType: import(".prisma/client").$Enums.AssignmentTaskType;
+            orderId: string;
             assignedUserId: string;
             assignedByUserId: string;
             assignedAt: Date;
+            completedAt: Date | null;
+            reason: string | null;
         }) | null;
         activeProductionAssignment: ({
             assignedUser: {
                 id: string;
-                email: string;
                 fullName: string;
+                email: string;
                 role: import(".prisma/client").$Enums.UserRole;
                 department: import(".prisma/client").$Enums.Department | null;
             };
@@ -608,22 +608,22 @@ export declare class OperationsController {
             };
         } & {
             id: string;
-            reason: string | null;
-            createdAt: Date;
-            orderId: string;
-            updatedAt: Date;
             status: import(".prisma/client").$Enums.AssignmentStatus;
-            completedAt: Date | null;
+            createdAt: Date;
+            updatedAt: Date;
             taskType: import(".prisma/client").$Enums.AssignmentTaskType;
+            orderId: string;
             assignedUserId: string;
             assignedByUserId: string;
             assignedAt: Date;
+            completedAt: Date | null;
+            reason: string | null;
         }) | null;
         assignmentHistory: ({
             assignedUser: {
                 id: string;
-                email: string;
                 fullName: string;
+                email: string;
                 role: import(".prisma/client").$Enums.UserRole;
                 department: import(".prisma/client").$Enums.Department | null;
             };
@@ -634,102 +634,136 @@ export declare class OperationsController {
             };
         } & {
             id: string;
-            reason: string | null;
-            createdAt: Date;
-            orderId: string;
-            updatedAt: Date;
             status: import(".prisma/client").$Enums.AssignmentStatus;
-            completedAt: Date | null;
+            createdAt: Date;
+            updatedAt: Date;
             taskType: import(".prisma/client").$Enums.AssignmentTaskType;
+            orderId: string;
             assignedUserId: string;
             assignedByUserId: string;
             assignedAt: Date;
+            completedAt: Date | null;
+            reason: string | null;
         })[];
         customer: {
             addresses: {
                 id: string;
-                createdAt: Date;
-                phone: string;
-                updatedAt: Date;
                 customerId: string;
-                isDefault: boolean;
+                createdAt: Date;
+                updatedAt: Date;
+                phone: string;
                 type: string;
-                postalCode: string;
                 contactName: string;
                 street: string;
                 landmark: string | null;
                 city: string;
                 state: string;
+                postalCode: string;
                 country: string;
+                isDefault: boolean;
             }[];
         } & {
             id: string;
             createdAt: Date;
-            email: string;
-            fullName: string;
-            phone: string;
             updatedAt: Date;
+            userId: string | null;
+            fullName: string;
+            email: string;
+            phone: string;
             companyName: string | null;
             gstin: string | null;
-            userId: string | null;
         };
-        operationalNotes: {
-            id: string;
-            createdAt: Date;
-            orderId: string;
-            content: string;
-            authorId: string;
-            authorName: string;
-            authorRole: import(".prisma/client").$Enums.UserRole;
-        }[];
         shippingAddress: {
             id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
             customerId: string;
-            isDefault: boolean;
+            createdAt: Date;
+            updatedAt: Date;
+            phone: string;
             type: string;
-            postalCode: string;
             contactName: string;
             street: string;
             landmark: string | null;
             city: string;
             state: string;
+            postalCode: string;
             country: string;
+            isDefault: boolean;
         } | null;
         billingAddress: {
             id: string;
-            createdAt: Date;
-            phone: string;
-            updatedAt: Date;
             customerId: string;
-            isDefault: boolean;
+            createdAt: Date;
+            updatedAt: Date;
+            phone: string;
             type: string;
-            postalCode: string;
             contactName: string;
             street: string;
             landmark: string | null;
             city: string;
             state: string;
+            postalCode: string;
             country: string;
+            isDefault: boolean;
         } | null;
         items: ({
+            jobCards: ({
+                machine: {
+                    id: string;
+                    type: string;
+                    name: string;
+                    code: string;
+                } | null;
+                operator: {
+                    id: string;
+                    fullName: string;
+                    role: import(".prisma/client").$Enums.UserRole;
+                } | null;
+                issues: {
+                    id: string;
+                    createdAt: Date;
+                    jobCardId: string;
+                    description: string;
+                    reasonCode: string;
+                    reportedBy: string;
+                    isResolved: boolean;
+                    resolvedBy: string | null;
+                    resolvedAt: Date | null;
+                }[];
+            } & {
+                id: string;
+                status: import(".prisma/client").$Enums.JobCardStatus;
+                priority: import(".prisma/client").$Enums.Priority;
+                dueAt: Date;
+                createdAt: Date;
+                updatedAt: Date;
+                orderId: string;
+                approvedArtworkVersionId: string | null;
+                orderItemId: string;
+                completedAt: Date | null;
+                jobNumber: string;
+                preHoldStatus: import(".prisma/client").$Enums.JobCardStatus | null;
+                currentStation: string;
+                machineId: string | null;
+                operatorId: string | null;
+                operationSequence: import("@prisma/client/runtime/library").JsonValue;
+                technicalSpecs: import("@prisma/client/runtime/library").JsonValue;
+                startedAt: Date | null;
+            })[];
             product: {
                 id: string;
+                sku: string;
                 name: string;
                 slug: string;
-                sku: string;
             };
             artworkVersions: {
                 id: string;
-                createdAt: Date;
                 status: import(".prisma/client").$Enums.ArtworkStatus;
-                storageKey: string;
-                orderItemId: string;
                 customerNotes: string | null;
-                originalFileName: string;
+                createdAt: Date;
+                orderItemId: string;
                 versionNumber: number;
+                storageKey: string;
+                originalFileName: string;
                 mimeType: string;
                 fileSize: number;
                 checksum: string;
@@ -749,60 +783,17 @@ export declare class OperationsController {
                 uploadedBy: string;
                 approvedAt: Date | null;
             }[];
-            jobCards: ({
-                machine: {
-                    id: string;
-                    name: string;
-                    code: string;
-                    type: string;
-                } | null;
-                issues: {
-                    id: string;
-                    createdAt: Date;
-                    description: string;
-                    jobCardId: string;
-                    isResolved: boolean;
-                    reasonCode: string;
-                    reportedBy: string;
-                    resolvedBy: string | null;
-                    resolvedAt: Date | null;
-                }[];
-                operator: {
-                    id: string;
-                    fullName: string;
-                    role: import(".prisma/client").$Enums.UserRole;
-                } | null;
-            } & {
-                id: string;
-                createdAt: Date;
-                orderId: string;
-                updatedAt: Date;
-                status: import(".prisma/client").$Enums.JobCardStatus;
-                approvedArtworkVersionId: string | null;
-                orderItemId: string;
-                priority: import(".prisma/client").$Enums.Priority;
-                dueAt: Date;
-                jobNumber: string;
-                preHoldStatus: import(".prisma/client").$Enums.JobCardStatus | null;
-                currentStation: string;
-                machineId: string | null;
-                operatorId: string | null;
-                operationSequence: import("@prisma/client/runtime/library").JsonValue;
-                technicalSpecs: import("@prisma/client/runtime/library").JsonValue;
-                startedAt: Date | null;
-                completedAt: Date | null;
-            })[];
         } & {
             id: string;
             createdAt: Date;
-            orderId: string;
             updatedAt: Date;
+            orderId: string;
+            productId: string;
             sku: string;
+            productName: string;
             quantity: number;
             unitPrice: import("@prisma/client/runtime/library").Decimal;
-            productId: string;
             totalPrice: import("@prisma/client/runtime/library").Decimal;
-            productName: string;
             specifications: import("@prisma/client/runtime/library").JsonValue;
             personalizationData: import("@prisma/client/runtime/library").JsonValue | null;
             approvedArtworkVersionId: string | null;
@@ -810,17 +801,17 @@ export declare class OperationsController {
         })[];
         payments: {
             id: string;
-            createdAt: Date;
             status: import(".prisma/client").$Enums.PaymentStatus;
-            amount: import("@prisma/client/runtime/library").Decimal;
+            createdAt: Date;
             transactionId: string;
             method: import(".prisma/client").$Enums.PaymentMethod;
+            amount: import("@prisma/client/runtime/library").Decimal;
             capturedAt: Date | null;
         }[];
         invoices: {
             id: string;
-            grandTotal: import("@prisma/client/runtime/library").Decimal;
             invoiceNumber: string;
+            grandTotal: import("@prisma/client/runtime/library").Decimal;
             pdfUrl: string | null;
             issuedAt: Date;
         }[];
@@ -837,10 +828,10 @@ export declare class OperationsController {
             } | null;
         } & {
             id: string;
-            createdAt: Date;
-            orderId: string;
-            updatedAt: Date;
             status: import(".prisma/client").$Enums.PackageStatus;
+            createdAt: Date;
+            updatedAt: Date;
+            orderId: string;
             packageNumber: string;
             sequenceNumber: number;
             totalPackages: number;
@@ -860,21 +851,21 @@ export declare class OperationsController {
             } | null;
         } & {
             id: string;
-            reason: string | null;
             createdAt: Date;
             orderId: string;
+            reason: string | null;
             department: import(".prisma/client").$Enums.Department | null;
             notes: string | null;
             fromStatus: import(".prisma/client").$Enums.OrderStatus | null;
             toStatus: import(".prisma/client").$Enums.OrderStatus;
-            durationMinutes: number | null;
             changedById: string | null;
+            durationMinutes: number | null;
         })[];
         slaRecords: {
             id: string;
             createdAt: Date;
-            orderId: string;
             updatedAt: Date;
+            orderId: string;
             jobCardId: string | null;
             entityType: string;
             currentStatus: import(".prisma/client").$Enums.SlaStatus;
@@ -891,20 +882,20 @@ export declare class OperationsController {
         } & {
             id: string;
             createdAt: Date;
-            orderId: string;
-            notes: string | null;
-            type: import(".prisma/client").$Enums.QCInspectionType;
             items: import("@prisma/client/runtime/library").JsonValue;
+            orderId: string;
             jobCardId: string | null;
+            type: import(".prisma/client").$Enums.QCInspectionType;
             outcome: import(".prisma/client").$Enums.QCOutcome;
             inspectorId: string;
             defects: import(".prisma/client").$Enums.DefectCategory[];
+            notes: string | null;
         })[];
         assignments: ({
             assignedUser: {
                 id: string;
-                email: string;
                 fullName: string;
+                email: string;
                 role: import(".prisma/client").$Enums.UserRole;
                 department: import(".prisma/client").$Enums.Department | null;
             };
@@ -915,24 +906,31 @@ export declare class OperationsController {
             };
         } & {
             id: string;
-            reason: string | null;
-            createdAt: Date;
-            orderId: string;
-            updatedAt: Date;
             status: import(".prisma/client").$Enums.AssignmentStatus;
-            completedAt: Date | null;
+            createdAt: Date;
+            updatedAt: Date;
             taskType: import(".prisma/client").$Enums.AssignmentTaskType;
+            orderId: string;
             assignedUserId: string;
             assignedByUserId: string;
             assignedAt: Date;
+            completedAt: Date | null;
+            reason: string | null;
         })[];
+        operationalNotes: {
+            id: string;
+            createdAt: Date;
+            orderId: string;
+            authorId: string;
+            authorName: string;
+            authorRole: import(".prisma/client").$Enums.UserRole;
+            content: string;
+        }[];
         id: string;
-        createdAt: Date;
-        updatedAt: Date;
-        customerId: string;
-        status: import(".prisma/client").$Enums.OrderStatus;
         orderNumber: string;
+        customerId: string;
         sourceChannel: import(".prisma/client").$Enums.OrderChannel;
+        status: import(".prisma/client").$Enums.OrderStatus;
         customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
         deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
         subtotal: import("@prisma/client/runtime/library").Decimal;
@@ -950,6 +948,8 @@ export declare class OperationsController {
         internalNotes: string | null;
         shippingAddressId: string | null;
         billingAddressId: string | null;
+        createdAt: Date;
+        updatedAt: Date;
     }>;
     getTimeline(id: string): Promise<{
         statusHistory: ({
@@ -960,15 +960,15 @@ export declare class OperationsController {
             } | null;
         } & {
             id: string;
-            reason: string | null;
             createdAt: Date;
             orderId: string;
+            reason: string | null;
             department: import(".prisma/client").$Enums.Department | null;
             notes: string | null;
             fromStatus: import(".prisma/client").$Enums.OrderStatus | null;
             toStatus: import(".prisma/client").$Enums.OrderStatus;
-            durationMinutes: number | null;
             changedById: string | null;
+            durationMinutes: number | null;
         })[];
         auditLogs: ({
             actor: {
@@ -978,18 +978,18 @@ export declare class OperationsController {
             } | null;
         } & {
             id: string;
+            createdAt: Date;
+            orderId: string | null;
+            reason: string | null;
+            actorId: string | null;
             actorType: string;
             action: string;
             entity: string;
             entityId: string;
             previousState: import("@prisma/client/runtime/library").JsonValue | null;
             newState: import("@prisma/client/runtime/library").JsonValue | null;
-            reason: string | null;
             ipAddress: string | null;
             userAgent: string | null;
-            createdAt: Date;
-            actorId: string | null;
-            orderId: string | null;
         })[];
         assignments: ({
             assignedUser: {
@@ -1004,32 +1004,32 @@ export declare class OperationsController {
             };
         } & {
             id: string;
-            reason: string | null;
-            createdAt: Date;
-            orderId: string;
-            updatedAt: Date;
             status: import(".prisma/client").$Enums.AssignmentStatus;
-            completedAt: Date | null;
+            createdAt: Date;
+            updatedAt: Date;
             taskType: import(".prisma/client").$Enums.AssignmentTaskType;
+            orderId: string;
             assignedUserId: string;
             assignedByUserId: string;
             assignedAt: Date;
+            completedAt: Date | null;
+            reason: string | null;
         })[];
         notes: {
             id: string;
             createdAt: Date;
             orderId: string;
-            content: string;
             authorId: string;
             authorName: string;
             authorRole: import(".prisma/client").$Enums.UserRole;
+            content: string;
         }[];
     }>;
     assignDesigner(id: string, body: AssignDesignerDto, user: JwtPayload): Promise<{
         assignedUser: {
             id: string;
-            email: string;
             fullName: string;
+            email: string;
             role: import(".prisma/client").$Enums.UserRole;
         };
         assignedByUser: {
@@ -1039,22 +1039,22 @@ export declare class OperationsController {
         };
     } & {
         id: string;
-        reason: string | null;
-        createdAt: Date;
-        orderId: string;
-        updatedAt: Date;
         status: import(".prisma/client").$Enums.AssignmentStatus;
-        completedAt: Date | null;
+        createdAt: Date;
+        updatedAt: Date;
         taskType: import(".prisma/client").$Enums.AssignmentTaskType;
+        orderId: string;
         assignedUserId: string;
         assignedByUserId: string;
         assignedAt: Date;
+        completedAt: Date | null;
+        reason: string | null;
     }>;
     assignProductionOperator(id: string, body: AssignProductionOperatorDto, user: JwtPayload): Promise<{
         assignedUser: {
             id: string;
-            email: string;
             fullName: string;
+            email: string;
             role: import(".prisma/client").$Enums.UserRole;
         };
         assignedByUser: {
@@ -1064,25 +1064,25 @@ export declare class OperationsController {
         };
     } & {
         id: string;
-        reason: string | null;
-        createdAt: Date;
-        orderId: string;
-        updatedAt: Date;
         status: import(".prisma/client").$Enums.AssignmentStatus;
-        completedAt: Date | null;
+        createdAt: Date;
+        updatedAt: Date;
         taskType: import(".prisma/client").$Enums.AssignmentTaskType;
+        orderId: string;
         assignedUserId: string;
         assignedByUserId: string;
         assignedAt: Date;
+        completedAt: Date | null;
+        reason: string | null;
     }>;
     addNote(id: string, body: CreateOperationalNoteDto, user: JwtPayload): Promise<{
         id: string;
         createdAt: Date;
         orderId: string;
-        content: string;
         authorId: string;
         authorName: string;
         authorRole: import(".prisma/client").$Enums.UserRole;
+        content: string;
     }>;
     updatePriority(id: string, body: UpdatePriorityDto, user: JwtPayload): Promise<{
         id: string;
@@ -1093,6 +1093,7 @@ export declare class OperationsController {
         id: string;
         fullName: string;
         email: string;
+        role: import(".prisma/client").$Enums.UserRole;
         department: import(".prisma/client").$Enums.Department | null;
         isActive: boolean;
         activeAssignments: number;
@@ -1101,6 +1102,7 @@ export declare class OperationsController {
         id: string;
         fullName: string;
         email: string;
+        role: import(".prisma/client").$Enums.UserRole;
         department: import(".prisma/client").$Enums.Department | null;
         isActive: boolean;
         activeJobCards: number;
@@ -1115,14 +1117,15 @@ export declare class OperationsController {
         sizeValidation: import("./operations.service").SizeValidationResult;
         jobCards: {
             id: string;
-            createdAt: Date;
-            orderId: string;
-            updatedAt: Date;
             status: import(".prisma/client").$Enums.JobCardStatus;
-            approvedArtworkVersionId: string | null;
-            orderItemId: string;
             priority: import(".prisma/client").$Enums.Priority;
             dueAt: Date;
+            createdAt: Date;
+            updatedAt: Date;
+            orderId: string;
+            approvedArtworkVersionId: string | null;
+            orderItemId: string;
+            completedAt: Date | null;
             jobNumber: string;
             preHoldStatus: import(".prisma/client").$Enums.JobCardStatus | null;
             currentStation: string;
@@ -1131,7 +1134,6 @@ export declare class OperationsController {
             operationSequence: import("@prisma/client/runtime/library").JsonValue;
             technicalSpecs: import("@prisma/client/runtime/library").JsonValue;
             startedAt: Date | null;
-            completedAt: Date | null;
         }[];
         releasedBy: string;
     }>;

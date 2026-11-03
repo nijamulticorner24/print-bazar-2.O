@@ -20,17 +20,9 @@ import { Button } from '@/components/ui';
 
 const FINAL_QC_COLUMNS: QCColumnDefinitionDto[] = [
   {
-    id: 'final-incoming',
-    key: 'QUEUED',
-    name: '1. From Finishing',
-    description: 'Awaiting Final Physical Check',
-    color: '#F59E0B',
-    type: 'SYSTEM',
-  },
-  {
     id: 'final-inspection',
     key: 'IN_INSPECTION',
-    name: '2. In Physical Test',
+    name: '1. In Physical Test',
     description: 'Color Density & Cut Squareness',
     color: '#06B6D4',
     type: 'SYSTEM',
@@ -38,7 +30,7 @@ const FINAL_QC_COLUMNS: QCColumnDefinitionDto[] = [
   {
     id: 'final-rework',
     key: 'ON_HOLD',
-    name: '3. Rework & Defects',
+    name: '2. Rework & Defects',
     description: 'Rejected / Repress Required',
     color: '#EF4444',
     type: 'HOLD',
@@ -46,7 +38,7 @@ const FINAL_QC_COLUMNS: QCColumnDefinitionDto[] = [
   {
     id: 'final-approved',
     key: 'APPROVED',
-    name: '4. Passed to Packing',
+    name: '3. Passed to Packing',
     description: 'Physical 100% Sign-Off',
     color: '#10B981',
     type: 'APPROVED',
@@ -131,30 +123,25 @@ export function QCBoard() {
     const artworkVersion = item?.artworkVersions?.[0];
 
     const checklists = order.qcChecklists || [];
-    const hasPassed = checklists.some(
-      (c: any) => c.type === 'FINAL_QC' && c.outcome === 'PASS',
-    );
+    const latestFinalQc = checklists.find((c: any) => c.type === 'FINAL_QC');
+    const hasPassed = latestFinalQc?.outcome === 'PASS';
     const isPassedToPacking =
-      hasPassed ||
-      order.status === 'PACKING' ||
-      order.status === 'READY_FOR_DISPATCH' ||
-      order.status === 'OUT_FOR_DELIVERY' ||
-      order.status === 'DELIVERED' ||
-      order.jobCards?.some((j: any) => j.currentStation === 'PACKING' || j.status === 'PASSED');
+      order.status !== 'ON_HOLD' &&
+      (hasPassed ||
+        order.status === 'PACKING' ||
+        order.status === 'READY_FOR_DISPATCH' ||
+        order.status === 'OUT_FOR_DELIVERY' ||
+        order.status === 'DELIVERED' ||
+        order.jobCards?.some((j: any) => j.currentStation === 'PACKING' || j.status === 'PASSED'));
 
     const override = localCardOverrides[order.id];
-    let cardStatus = 'QUEUED';
-    if (isPassedToPacking && (!override || override.status !== 'ON_HOLD')) {
-      cardStatus = 'APPROVED';
-    } else if (override) {
-      cardStatus = override.status;
-    } else if (order.status === 'ON_HOLD') {
+    let cardStatus = 'IN_INSPECTION';
+    if (override) {
+      cardStatus = override.status === 'QUEUED' ? 'IN_INSPECTION' : override.status;
+    } else if (order.status === 'ON_HOLD' || latestFinalQc?.outcome === 'FAIL') {
       cardStatus = 'ON_HOLD';
-    } else {
-      const activeJob = order.jobCards?.find((j: any) => j.status === 'QC_INSPECTION');
-      if (activeJob) {
-        cardStatus = 'IN_INSPECTION';
-      }
+    } else if (isPassedToPacking) {
+      cardStatus = 'APPROVED';
     }
 
     const artworkFile =
@@ -375,8 +362,8 @@ export function QCBoard() {
         orderId: card.orderId,
         type: card.type,
         items: [{ code: 'HOLD_FLAG', name: reason, result: 'FAIL' }],
-        defects: ['DEFECT_FLAGGED'],
-        generalNotes: `${reason} - ${notes || ''}`,
+        defects: ['OTHER'],
+        generalNotes: notes ? `${reason} - ${notes}` : reason,
       });
 
       setLocalCardOverrides((prev) => ({

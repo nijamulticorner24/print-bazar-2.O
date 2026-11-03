@@ -91,14 +91,14 @@ export declare class QualityControlService {
                 storageKey: string;
                 orderItemId: string;
                 customerNotes: string | null;
+                widthMm: Prisma.Decimal | null;
+                heightMm: Prisma.Decimal | null;
                 originalFileName: string;
                 versionNumber: number;
                 mimeType: string;
                 fileSize: number;
                 checksum: string;
                 resolutionDpi: number | null;
-                widthMm: Prisma.Decimal | null;
-                heightMm: Prisma.Decimal | null;
                 widthPixels: number | null;
                 heightPixels: number | null;
                 actualMegapixels: number | null;

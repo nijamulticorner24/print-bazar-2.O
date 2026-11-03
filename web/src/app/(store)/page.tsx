@@ -1,26 +1,38 @@
 import { HeroSection } from '@/components/home/HeroSection';
 import { CategoryShowcase } from '@/components/home/CategoryShowcase';
 import { FeaturedProducts } from '@/components/home/FeaturedProducts';
-import { HowItWorks } from '@/components/home/HowItWorks';
-import { TrustSection } from '@/components/home/TrustSection';
+import { CustomTshirtBanner } from '@/components/home/CustomTshirtBanner';
+import { BestSellers } from '@/components/home/BestSellers';
+import { TrustFeaturesBar } from '@/components/home/TrustFeaturesBar';
+import { CustomerReviews } from '@/components/home/CustomerReviews';
+import { FAQSection } from '@/components/home/FAQSection';
 
 export default function HomePage() {
   return (
-    <div className="flex flex-col bg-white w-full max-w-full overflow-x-hidden">
-      {/* 1. Hero Section (Reference Composition) */}
+    <div className="flex flex-col bg-white w-full max-w-full overflow-x-clip">
+      {/* 1. Hero Section */}
       <HeroSection />
 
-      {/* 2. 7-Item Category Showcase Strip */}
+      {/* 2. Shop by Category (Horizontal Scrollable, 8 in a row) */}
       <CategoryShowcase />
 
-      {/* 3. 6 Featured Product Cards Grid */}
+      {/* 3. Trending Products */}
       <FeaturedProducts />
 
-      {/* 4. Dark Industrial "How It Works" & 5-Step Process */}
-      <HowItWorks />
+      {/* 4. Custom T-Shirts Special Offer Banner (Exactly below Trending Products) */}
+      <CustomTshirtBanner />
 
-      {/* 5. "Why Businesses Trust Us", 4 Business Metrics & Printed Magazine */}
-      <TrustSection />
+      {/* 5. Best Sellers */}
+      <BestSellers />
+
+      {/* 6. Trust / Value Proposition Features Bar (Exactly below Best Sellers) */}
+      <TrustFeaturesBar />
+
+      {/* 7. Customer Reviews (Google Reviews Carousel - Auto-scroll 5s) */}
+      <CustomerReviews />
+
+      {/* 8. Frequently Asked Questions (FAQ Section) */}
+      <FAQSection />
     </div>
   );
 }

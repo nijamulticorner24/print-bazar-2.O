@@ -82,9 +82,6 @@ export const ROLE_PERMISSIONS: Partial<Record<UserRole, string[]>> = {
     'production.pause',
     'production.complete',
     'jobcard.read',
-    'operations.read',
-    'operations.write',
-    'operations.assign',
   ],
   [UserRole.FINAL_QC_INSPECTOR]: [
     'qc.final.read',

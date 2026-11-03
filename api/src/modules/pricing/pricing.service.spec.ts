@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 import { ShippingGstService } from '../shipping-gst/shipping-gst.service';
+import { ShippingCalculatorService } from '../shipping/shipping-calculator.service';
 
 describe('PricingService (Authoritative Server Pricing Engine)', () => {
   let service: PricingService;
@@ -505,12 +506,39 @@ describe('PricingService (Authoritative Server Pricing Engine)', () => {
     getSetting: jest.fn().mockResolvedValue({ defaultCourierCharge: 100, freeShippingThreshold: 1000, defaultGstRate: 18 }),
   };
 
+  const mockShippingCalculatorService = {
+    calculateShipping: jest.fn().mockImplementation((dto: any) => {
+      const subtotal = Number(dto.orderSubtotal || 0);
+      const isFree = subtotal >= 1000;
+      return Promise.resolve({
+        shippingAmount: isFree ? 0 : 100,
+        baseShippingCharge: 100,
+        additionalWeightCharge: 0,
+        zoneSurcharge: 0,
+        pincodeSurcharge: 0,
+        packagingCharge: 0,
+        billableWeightGrams: 500,
+        actualWeightGrams: 500,
+        volumetricWeightGrams: 0,
+        isFreeShipping: isFree,
+        freeShippingThreshold: 1000,
+        isServiceable: true,
+        destinationPincode: dto.destinationPincode || '110001',
+        shippingMethod: 'STANDARD',
+        estimatedDeliveryDays: '3-5 business days',
+        calculationBasis: 'Standard test calculation',
+      });
+    }),
+    checkServiceability: jest.fn().mockResolvedValue({ isServiceable: true }),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PricingService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: ShippingGstService, useValue: mockShippingGstService },
+        { provide: ShippingCalculatorService, useValue: mockShippingCalculatorService },
       ],
     }).compile();
 

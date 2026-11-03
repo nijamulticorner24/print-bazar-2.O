@@ -12,14 +12,21 @@ export class ProductsController {
   async listProducts(
     @Query('categoryId') categoryId?: string,
     @Query('search') search?: string,
+    @Query('featured') featured?: string,
   ) {
-    return this.productsService.listProducts(categoryId, search);
+    return this.productsService.listProducts(categoryId, search, featured === 'true' ? true : undefined);
   }
 
   @Get('categories')
   @ApiOperation({ summary: 'List published product categories' })
   async listCategories() {
     return this.productsService.listCategories();
+  }
+
+  @Get('site-settings')
+  @ApiOperation({ summary: 'Get public storefront site settings (hero image & header marquee)' })
+  async getSiteSettings() {
+    return this.productsService.getSiteSettings();
   }
 
   @Get(':slug')

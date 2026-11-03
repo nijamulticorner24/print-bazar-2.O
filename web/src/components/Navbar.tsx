@@ -24,6 +24,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useWishlist } from '@/lib/wishlist';
 import { SearchDrawer } from '@/components/search/SearchDrawer';
 import { Button } from '@/components/ui';
+import { TopMarqueeBar } from '@/components/TopMarqueeBar';
 
 const CATEGORIES = [
   { name: 'All Products', href: '/products', id: 'ALL' },
@@ -96,54 +97,21 @@ export function Navbar() {
 
   return (
     <div className="w-full max-w-full bg-white border-b border-[#E5E5E5] sticky top-0 z-50">
-      {/* 1. TOP UTILITY BAR (Desktop / Tablet only) */}
-      <div className="hidden sm:block bg-black text-[#F5F5F5] px-4 sm:px-8 py-1.5 text-[11px] font-sans border-b border-[#262626]">
-        <div className="mx-auto max-w-7xl flex flex-wrap items-center justify-between gap-2">
-          {/* Left: Press Status */}
-          <div className="flex items-center gap-2.5">
-            <span className="flex items-center gap-1.5 font-semibold tracking-wider text-[#FFED00] font-mono text-[10px]">
-              <span className="h-2 w-2 rounded-full bg-[#FFED00]" />
-              PRESS PLANT ONLINE
-            </span>
-            <span className="text-[#525252]">|</span>
-            <span className="text-[#D4D4D4] font-normal hidden sm:inline">
-              ISO 12647-2 Certified Commercial Offset & Digital Printing
-            </span>
-          </div>
-
-          {/* Right: Quick Links */}
-          <div className="flex items-center gap-4 text-[#D4D4D4] text-[11px]">
-            <Link
-              href="/tracking/PB-2026-0001"
-              className="hover:text-[#FFED00] transition-colors flex items-center gap-1 font-normal"
-            >
-              <Truck className="h-3.5 w-3.5 text-[#FFED00]" />
-              <span>Live Order Tracking</span>
-            </Link>
-            <span className="text-[#525252]">|</span>
-            <a
-              href="tel:+912228402100"
-              className="hover:text-[#FFED00] transition-colors flex items-center gap-1 font-normal"
-            >
-              <PhoneCall className="h-3 w-3 text-[#FFED00]" />
-              <span>B2B Desk: +91 (022) 2840-2100</span>
-            </a>
-          </div>
-        </div>
-      </div>
+      {/* 1. TOP MARQUEE BAR (Above Header, Marquee Style & Responsive for All Devices) */}
+      <TopMarqueeBar />
 
       {/* 2. MAIN STOREFRONT HEADER */}
       <header className="px-3 sm:px-8 py-2.5 sm:py-3.5 bg-white border-b border-[#E5E5E5] w-full relative z-30">
         <div className="mx-auto max-w-7xl flex items-center justify-between gap-2 sm:gap-4 lg:gap-8">
           {/* Brand Logo */}
-          <Link href="/" className="flex items-center group flex-shrink-0">
+          <Link href="/" className="flex items-center group flex-shrink-0" aria-label="Print Bazzar Home">
             <Image
               src="/brand-logo.png"
               alt="Print Bazzar"
-              width={160}
-              height={44}
+              width={212}
+              height={40}
               priority
-              className="h-9 sm:h-10 w-auto object-contain transition-transform group-hover:scale-102"
+              className="h-7 sm:h-8 md:h-9 lg:h-10 w-auto object-contain transition-transform duration-200 group-hover:scale-102"
             />
           </Link>
 

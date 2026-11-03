@@ -68,12 +68,12 @@ export declare class PackingService {
             isDefault: boolean;
             type: string;
             postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
             city: string;
             state: string;
             country: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
         } | null;
         billingAddress: {
             id: string;
@@ -84,12 +84,12 @@ export declare class PackingService {
             isDefault: boolean;
             type: string;
             postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
             city: string;
             state: string;
             country: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
         } | null;
         items: ({
             product: {
@@ -105,14 +105,14 @@ export declare class PackingService {
                 storageKey: string;
                 orderItemId: string;
                 customerNotes: string | null;
+                widthMm: Prisma.Decimal | null;
+                heightMm: Prisma.Decimal | null;
                 originalFileName: string;
                 versionNumber: number;
                 mimeType: string;
                 fileSize: number;
                 checksum: string;
                 resolutionDpi: number | null;
-                widthMm: Prisma.Decimal | null;
-                heightMm: Prisma.Decimal | null;
                 widthPixels: number | null;
                 heightPixels: number | null;
                 actualMegapixels: number | null;
@@ -275,12 +275,12 @@ export declare class PackingService {
             isDefault: boolean;
             type: string;
             postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
             city: string;
             state: string;
             country: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
         } | null;
         billingAddress: {
             id: string;
@@ -291,12 +291,12 @@ export declare class PackingService {
             isDefault: boolean;
             type: string;
             postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
             city: string;
             state: string;
             country: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
         } | null;
         items: ({
             product: {
@@ -334,6 +334,7 @@ export declare class PackingService {
                 designServicePrice: Prisma.Decimal | null;
                 shippingChargeType: string;
                 unitWeightGrams: number | null;
+                weightPerItemGrams: number | null;
                 courierCharge: Prisma.Decimal | null;
                 perAdditionalQtyRate: Prisma.Decimal | null;
                 freeShippingThreshold: Prisma.Decimal | null;
@@ -349,6 +350,9 @@ export declare class PackingService {
                 variantDimensions: string[];
                 personalizationTemplateId: string | null;
                 personalizationConfig: Prisma.JsonValue | null;
+                packagingProfileId: string | null;
+                isShippable: boolean;
+                bulkTierWeights: Prisma.JsonValue | null;
             };
             artworkVersions: {
                 id: string;
@@ -357,14 +361,14 @@ export declare class PackingService {
                 storageKey: string;
                 orderItemId: string;
                 customerNotes: string | null;
+                widthMm: Prisma.Decimal | null;
+                heightMm: Prisma.Decimal | null;
                 originalFileName: string;
                 versionNumber: number;
                 mimeType: string;
                 fileSize: number;
                 checksum: string;
                 resolutionDpi: number | null;
-                widthMm: Prisma.Decimal | null;
-                heightMm: Prisma.Decimal | null;
                 widthPixels: number | null;
                 heightPixels: number | null;
                 actualMegapixels: number | null;

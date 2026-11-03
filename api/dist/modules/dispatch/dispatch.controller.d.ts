@@ -3,6 +3,38 @@ import { JwtPayload } from '../../common/types/roles';
 export declare class DispatchController {
     private readonly dispatchService;
     constructor(dispatchService: DispatchService);
+    getOrderDispatchDetails(orderId: string): Promise<{
+        orderId: string;
+        orderNumber: string;
+        destinationPincode: any;
+        productQuantity: number;
+        productName: string;
+        configuredProductWeightGrams: number;
+        packagingWeightGrams: number;
+        actualShipmentWeightGrams: number;
+        volumetricWeightGrams: number | null;
+        billableWeightGrams: number;
+        expectedCourierShippingAmount: number;
+        zoneCode: string;
+        measuredGrossWeightGrams: number | null;
+        weightVarianceGrams: number;
+        recalculatedShippingAmount: any;
+        isVarianceDetected: boolean;
+    }>;
+    adjustDispatchWeight(orderId: string, body: {
+        measuredWeightGrams: number;
+        reason?: string;
+    }, user: JwtPayload): Promise<{
+        success: boolean;
+        orderId: string;
+        orderNumber: string;
+        estimatedWeightGrams: number;
+        measuredWeightGrams: number;
+        varianceGrams: number;
+        estimatedCourierCharge: number;
+        recalculatedCourierCharge: number;
+        reason: string;
+    }>;
     confirmCourierHandover(body: CourierHandoverDto, user: JwtPayload): Promise<{
         id: string;
         createdAt: Date;

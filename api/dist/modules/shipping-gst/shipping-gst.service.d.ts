@@ -19,7 +19,7 @@ export interface ShippingGstSettingsRecord {
 export interface ShippingZoneRecord {
     id: string;
     zoneName: string;
-    pincodePrefix: string;
+    pincodePrefix: string | null;
     shippingCharge: number;
     isActive: boolean;
     createdAt: Date;
@@ -41,7 +41,7 @@ export interface ShippingTaxCalculationResult {
     matchedZone: {
         id: string;
         zoneName: string;
-        pincodePrefix: string;
+        pincodePrefix: string | null;
         shippingCharge: number;
     } | null;
     gstRatePercent: number;

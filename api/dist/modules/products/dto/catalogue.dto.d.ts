@@ -198,7 +198,7 @@ export declare class CreateProductDto {
     categoryId: string;
     name: string;
     slug: string;
-    sku: string;
+    sku?: string;
     description?: string;
     status?: ProductStatusDto;
     pricingModel?: string;
@@ -225,6 +225,9 @@ export declare class CreateProductDto {
     designServicePrice?: number;
     shippingChargeType?: string;
     unitWeightGrams?: number;
+    bulkTierWeights?: any[];
+    packagingProfileId?: string;
+    isShippable?: boolean;
     courierCharge?: number;
     perAdditionalQtyRate?: number;
     freeShippingThreshold?: number;
@@ -274,6 +277,9 @@ export declare class UpdateProductDto {
     designServicePrice?: number;
     shippingChargeType?: string;
     unitWeightGrams?: number;
+    bulkTierWeights?: any[];
+    packagingProfileId?: string;
+    isShippable?: boolean;
     courierCharge?: number;
     perAdditionalQtyRate?: number;
     freeShippingThreshold?: number;

@@ -24,12 +24,12 @@ export declare class OrdersController {
             isDefault: boolean;
             type: string;
             postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
             city: string;
             state: string;
             country: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
         } | null;
         items: {
             id: string;
@@ -89,14 +89,14 @@ export declare class OrdersController {
                     storageKey: string;
                     orderItemId: string;
                     customerNotes: string | null;
+                    widthMm: import("@prisma/client/runtime/library").Decimal | null;
+                    heightMm: import("@prisma/client/runtime/library").Decimal | null;
                     originalFileName: string;
                     versionNumber: number;
                     mimeType: string;
                     fileSize: number;
                     checksum: string;
                     resolutionDpi: number | null;
-                    widthMm: import("@prisma/client/runtime/library").Decimal | null;
-                    heightMm: import("@prisma/client/runtime/library").Decimal | null;
                     widthPixels: number | null;
                     heightPixels: number | null;
                     actualMegapixels: number | null;
@@ -218,12 +218,12 @@ export declare class OrdersController {
             isDefault: boolean;
             type: string;
             postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
             city: string;
             state: string;
             country: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
         } | null;
         billingAddress: {
             id: string;
@@ -234,12 +234,12 @@ export declare class OrdersController {
             isDefault: boolean;
             type: string;
             postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
             city: string;
             state: string;
             country: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
         } | null;
         items: ({
             artworkVersions: {
@@ -249,14 +249,14 @@ export declare class OrdersController {
                 storageKey: string;
                 orderItemId: string;
                 customerNotes: string | null;
+                widthMm: import("@prisma/client/runtime/library").Decimal | null;
+                heightMm: import("@prisma/client/runtime/library").Decimal | null;
                 originalFileName: string;
                 versionNumber: number;
                 mimeType: string;
                 fileSize: number;
                 checksum: string;
                 resolutionDpi: number | null;
-                widthMm: import("@prisma/client/runtime/library").Decimal | null;
-                heightMm: import("@prisma/client/runtime/library").Decimal | null;
                 widthPixels: number | null;
                 heightPixels: number | null;
                 actualMegapixels: number | null;
@@ -328,6 +328,17 @@ export declare class OrdersController {
                 orderItemId: string;
                 combination: import("@prisma/client/runtime/library").JsonValue;
                 artworkUrl: string | null;
+            }[];
+            personalizationRecords: {
+                id: string;
+                createdAt: Date;
+                updatedAt: Date;
+                status: string;
+                itemIndex: number;
+                orderItemId: string;
+                variantCombination: import("@prisma/client/runtime/library").JsonValue | null;
+                fieldValues: import("@prisma/client/runtime/library").JsonValue;
+                sharedValues: import("@prisma/client/runtime/library").JsonValue | null;
             }[];
         } & {
             id: string;

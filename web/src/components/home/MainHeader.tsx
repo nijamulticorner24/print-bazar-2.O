@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   Printer,
@@ -32,23 +33,15 @@ export function MainHeader() {
     <header className="bg-white border-b border-brand-border px-4 sm:px-8 py-3 sticky top-0 z-40">
       <div className="mx-auto max-w-7xl flex items-center justify-between gap-6">
         {/* Brand Logo */}
-        <Link href="/" className="flex items-center gap-3 group flex-shrink-0">
-          <div className="h-10 w-10 rounded-[8px] bg-[#FCDD55] flex items-center justify-center text-brand-dark font-black shadow-subtle border border-[#1A1A1A] transition group-hover:bg-[#FBBF24]">
-            <Printer className="h-6 w-6 stroke-[2.5]" />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xl font-extrabold tracking-tight text-brand-dark">
-                PRINT BAZZAR
-              </span>
-              <span className="bg-[#1A1A1A] text-[#FCDD55] text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-[4px]">
-                2.0
-              </span>
-            </div>
-            <p className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
-              Industrial Print Studio
-            </p>
-          </div>
+        <Link href="/" className="flex items-center group flex-shrink-0" aria-label="Print Bazzar Home">
+          <Image
+            src="/brand-logo.png"
+            alt="Print Bazzar"
+            width={212}
+            height={40}
+            priority
+            className="h-8 sm:h-9 md:h-10 w-auto object-contain transition-transform duration-200 group-hover:scale-102"
+          />
         </Link>
 
         {/* Center Navigation Links */}

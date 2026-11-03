@@ -334,9 +334,12 @@ export default function OrderAssignmentCenterPage() {
         setOrders([]);
       }
 
-      // Update rosters if returned
+      // Update rosters if returned (strictly filtered by their respective role)
       if (Array.isArray(resDesigners) && resDesigners.length > 0) {
-        const dMapped: StaffAssignee[] = resDesigners.map((d: any, idx: number) => ({
+        const onlyDesigners = resDesigners.filter(
+          (d: any) => !d.role || d.role === 'DESIGNER_PREPRESS'
+        );
+        const dMapped: StaffAssignee[] = onlyDesigners.map((d: any, idx: number) => ({
           id: d.id,
           fullName: d.fullName,
           email: d.email,
@@ -346,11 +349,14 @@ export default function OrderAssignmentCenterPage() {
           skills: idx === 0 ? ['Branding', 'Print Design'] : ['Branding', 'Packaging'],
           recommended: idx === 0,
         }));
-        setDesigners(dMapped);
+        if (dMapped.length > 0) setDesigners(dMapped);
       }
 
       if (Array.isArray(resOperators) && resOperators.length > 0) {
-        const oMapped: StaffAssignee[] = resOperators.map((o: any, idx: number) => ({
+        const onlyOperators = resOperators.filter(
+          (o: any) => !o.role || o.role === 'PRODUCTION_OPERATOR'
+        );
+        const oMapped: StaffAssignee[] = onlyOperators.map((o: any, idx: number) => ({
           id: o.id,
           fullName: o.fullName,
           email: o.email,
@@ -360,7 +366,7 @@ export default function OrderAssignmentCenterPage() {
           skills: idx === 0 ? ['Digital Press', 'Business Cards', 'Commercial Print'] : ['Offset Press', 'Brochures'],
           recommended: idx === 0,
         }));
-        setOperators(oMapped);
+        if (oMapped.length > 0) setOperators(oMapped);
       }
     } catch (err) {
       console.error('Failed to sync OE Assignment Center data:', err);
@@ -1449,10 +1455,31 @@ export default function OrderAssignmentCenterPage() {
             <div className="p-5 border-b border-slate-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
-                    Operations Dispatch Control
-                  </span>
-                  <h2 className="text-base font-bold text-slate-900">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
+                      Operations Dispatch Control
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase border ${
+                        drawerType === 'DESIGN'
+                          ? 'bg-amber-50 text-amber-800 border-amber-200'
+                          : 'bg-blue-50 text-blue-800 border-blue-200'
+                      }`}
+                    >
+                      {drawerType === 'DESIGN' ? (
+                        <>
+                          <RiPaletteLine className="h-3 w-3 text-amber-600" />
+                          <span>DESIGNER_PREPRESS</span>
+                        </>
+                      ) : (
+                        <>
+                          <RiPrinterLine className="h-3 w-3 text-blue-600" />
+                          <span>PRODUCTION_OPERATOR</span>
+                        </>
+                      )}
+                    </span>
+                  </div>
+                  <h2 className="text-base font-bold text-slate-900 mt-0.5">
                     {drawerType === 'DESIGN' ? 'Assign Prepress Designer' : 'Assign Production Operator'}
                   </h2>
                 </div>
@@ -1464,57 +1491,6 @@ export default function OrderAssignmentCenterPage() {
                   <RiCloseLine className="h-5 w-5" />
                 </button>
               </div>
-
-              {/* Drawer Mode Switcher Tabs */}
-              <div className="mt-4 flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDrawerType('DESIGN');
-                    const rec = designers.find((d) => d.id === drawerOrder.assignedDesigner?.id) || designers.find((d) => d.recommended) || designers[0];
-                    setSelectedStaffId(rec?.id || '');
-                  }}
-                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                    drawerType === 'DESIGN'
-                      ? 'bg-white text-amber-950 shadow-xs border border-amber-200'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <RiPaletteLine className="h-3.5 w-3.5 text-amber-600" />
-                  <span>Prepress Designer</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (drawerOrder?.artworkState !== 'READY') {
-                      alert('Artwork must be approved before assigning Production Operator. The immediate next task is Prepress Design.');
-                      return;
-                    }
-                    setDrawerType('PRODUCTION');
-                    const rec = operators.find((o) => o.id === drawerOrder.assignedOperator?.id) || operators.find((o) => o.recommended) || operators[0];
-                    setSelectedStaffId(rec?.id || '');
-                  }}
-                  disabled={drawerOrder?.artworkState !== 'READY'}
-                  title={drawerOrder?.artworkState !== 'READY' ? 'Artwork must be approved before assigning Production Operator' : undefined}
-                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                    drawerOrder?.artworkState !== 'READY'
-                      ? 'opacity-40 cursor-not-allowed text-slate-400'
-                      : drawerType === 'PRODUCTION'
-                      ? 'bg-white text-blue-950 shadow-xs border border-blue-200'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <RiPrinterLine className="h-3.5 w-3.5 text-blue-600" />
-                  <span>Production Operator</span>
-                </button>
-              </div>
-
-              {drawerOrder?.artworkState !== 'READY' && (
-                <div className="mt-2.5 p-2 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-800 flex items-center gap-1.5">
-                  <RiAlertLine className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                  <span>Immediate Next Task: <strong>Prepress Design</strong>. Artwork must be approved before assigning Production Operator.</span>
-                </div>
-              )}
             </div>
 
             {/* Scrollable Content */}
@@ -1538,20 +1514,35 @@ export default function OrderAssignmentCenterPage() {
                 </div>
               </div>
 
-              {/* Current Status Overview Card */}
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-[9px] font-mono text-slate-400 uppercase font-bold block">Assigned Designer</span>
+              {/* Current Status Overview Card (Role-Specific Only) */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-[9px] font-mono text-slate-400 uppercase font-bold block">
+                    {drawerType === 'DESIGN' ? 'Currently Assigned Designer' : 'Currently Assigned Operator'}
+                  </span>
                   <div className="font-bold text-slate-900 text-xs truncate mt-0.5">
-                    {drawerOrder.assignedDesigner ? drawerOrder.assignedDesigner.fullName : <span className="text-slate-400 font-normal">Unassigned</span>}
+                    {drawerType === 'DESIGN' ? (
+                      drawerOrder.assignedDesigner ? (
+                        drawerOrder.assignedDesigner.fullName
+                      ) : (
+                        <span className="text-slate-400 font-normal">Unassigned</span>
+                      )
+                    ) : drawerOrder.assignedOperator ? (
+                      drawerOrder.assignedOperator.fullName
+                    ) : (
+                      <span className="text-slate-400 font-normal">Unassigned</span>
+                    )}
                   </div>
                 </div>
-                <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-[9px] font-mono text-slate-400 uppercase font-bold block">Assigned Operator</span>
-                  <div className="font-bold text-slate-900 text-xs truncate mt-0.5">
-                    {drawerOrder.assignedOperator ? drawerOrder.assignedOperator.fullName : <span className="text-slate-400 font-normal">Unassigned</span>}
-                  </div>
-                </div>
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border ${
+                    drawerType === 'DESIGN'
+                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                      : 'bg-blue-50 text-blue-800 border-blue-200'
+                  }`}
+                >
+                  {drawerType === 'DESIGN' ? 'Designer Role Only' : 'Production Role Only'}
+                </span>
               </div>
 
               {(!isAuthenticated || (currentUser?.role !== 'OPERATIONAL_MANAGER' && currentUser?.role !== 'ADMIN_MANAGER')) && (
@@ -1580,7 +1571,9 @@ export default function OrderAssignmentCenterPage() {
                     {drawerType === 'DESIGN' ? 'Select Prepress Designer' : 'Select Production Operator'}
                   </h3>
                   <span className="text-[11px] text-slate-400 font-mono">
-                    {drawerType === 'DESIGN' ? `${designers.length} Active` : `${operators.length} Active`}
+                    {drawerType === 'DESIGN'
+                      ? `${designers.filter((s) => s.role === 'DESIGNER_PREPRESS').length} Active Designers`
+                      : `${operators.filter((s) => s.role === 'PRODUCTION_OPERATOR').length} Active Operators`}
                   </span>
                 </div>
 
@@ -1606,7 +1599,10 @@ export default function OrderAssignmentCenterPage() {
 
                 {/* Staff Cards List */}
                 <div className="space-y-2">
-                  {(drawerType === 'DESIGN' ? designers : operators)
+                  {(drawerType === 'DESIGN'
+                    ? designers.filter((s) => s.role === 'DESIGNER_PREPRESS')
+                    : operators.filter((s) => s.role === 'PRODUCTION_OPERATOR')
+                  )
                     .filter((s) => !staffSearch || s.fullName.toLowerCase().includes(staffSearch.toLowerCase()))
                     .map((staff) => {
                       const isSelected = selectedStaffId === staff.id;
@@ -1658,13 +1654,17 @@ export default function OrderAssignmentCenterPage() {
                                   </span>
                                 )}
                               </div>
-                              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono mt-0.5">
+                              <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-mono mt-0.5">
                                 <span
                                   className={`h-1.5 w-1.5 rounded-full ${
                                     staff.status === 'AVAILABLE' ? 'bg-emerald-500' : 'bg-red-500'
                                   }`}
                                 />
                                 <span className="capitalize">{staff.status.toLowerCase()}</span>
+                                <span>•</span>
+                                <span className="text-[9px] font-semibold uppercase text-slate-600">
+                                  {staff.role === 'DESIGNER_PREPRESS' ? 'Designer' : 'Production'}
+                                </span>
                               </div>
                             </div>
                           </div>
@@ -1742,38 +1742,38 @@ export default function OrderAssignmentCenterPage() {
       {/* ─── 8. INTERACTIVE ARTWORK PROOF & ASSET VIEWER MODAL ───────────── */}
       {artworkModalOpen && viewingArtwork && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6 md:p-8 animate-in fade-in duration-200">
-          {/* Dark Glass Backdrop */}
+          {/* Light Glass Backdrop */}
           <div
-            className="fixed inset-0 bg-slate-950/80 backdrop-blur-md transition-opacity"
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
             onClick={() => setArtworkModalOpen(false)}
           />
 
-          {/* Main Modal Dialog Box */}
-          <div className="relative w-full max-w-5xl max-h-[92vh] bg-slate-900 text-slate-100 rounded-2xl shadow-2xl border border-slate-800 flex flex-col overflow-hidden z-10">
+          {/* Main Modal Dialog Box (Light Home Brand Theme) */}
+          <div className="relative w-full max-w-5xl max-h-[92vh] bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden z-10">
             {/* Header Bar */}
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/70">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="h-9 w-9 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                <div className="h-9 w-9 rounded-lg bg-[#FFED00] text-slate-950 border border-[#E3A008]/40 flex items-center justify-center shrink-0 shadow-2xs">
                   <RiShieldCheckLine className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono font-bold text-sm text-[#FFED00]">
+                    <span className="font-mono font-black text-sm text-slate-950 bg-[#FFED00]/60 px-2 py-0.5 rounded border border-[#E3A008]/30">
                       #{viewingArtwork.orderNumber}
                     </span>
-                    <span className="text-slate-500">•</span>
-                    <span className="font-bold text-sm text-slate-100 truncate">
+                    <span className="text-slate-400">•</span>
+                    <span className="font-bold text-sm text-slate-900 truncate">
                       {viewingArtwork.productName}
                     </span>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                       PREFLIGHT PASSED
                     </span>
                   </div>
-                  <div className="text-xs text-slate-400 font-mono mt-0.5 flex items-center gap-2 truncate">
-                    <span>Customer: {viewingArtwork.customerName}</span>
-                    <span>|</span>
-                    <span className="text-slate-300">{viewingArtwork.fileName}</span>
-                    <span className="bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded text-[10px]">
+                  <div className="text-xs text-slate-500 font-mono mt-1 flex items-center gap-2 truncate">
+                    <span>Customer: <strong className="text-slate-800">{viewingArtwork.customerName}</strong></span>
+                    <span className="text-slate-300">|</span>
+                    <span className="text-slate-700 truncate">{viewingArtwork.fileName}</span>
+                    <span className="bg-slate-200/80 text-slate-700 font-bold px-1.5 py-0.2 rounded text-[10px]">
                       {viewingArtwork.version}
                     </span>
                   </div>
@@ -1784,7 +1784,7 @@ export default function OrderAssignmentCenterPage() {
               <button
                 type="button"
                 onClick={() => setArtworkModalOpen(false)}
-                className="h-8 w-8 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 flex items-center justify-center transition shrink-0 ml-4"
+                className="h-8 w-8 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/70 flex items-center justify-center transition shrink-0 ml-4 cursor-pointer"
               >
                 <RiCloseLine className="h-5 w-5" />
               </button>
@@ -1793,26 +1793,26 @@ export default function OrderAssignmentCenterPage() {
             {/* Modal Body */}
             <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 min-h-0">
               {/* Left Canvas Preview Area */}
-              <div className="lg:col-span-8 bg-slate-950/60 p-6 flex flex-col items-center justify-center border-b lg:border-b-0 lg:border-r border-slate-800 relative select-none">
-                <div className="w-full max-w-md bg-slate-900 rounded-xl border border-slate-700 shadow-2xl p-5 relative overflow-hidden group">
-                  <div className="relative border-2 border-dashed border-red-500/60 rounded-lg p-3 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 aspect-[4/3] flex flex-col items-center justify-center text-center overflow-hidden">
+              <div className="lg:col-span-8 bg-slate-50/70 p-6 flex flex-col items-center justify-center border-b lg:border-b-0 lg:border-r border-slate-200 relative select-none">
+                <div className="w-full max-w-md bg-white rounded-xl border border-slate-200 shadow-md p-5 relative overflow-hidden group">
+                  <div className="relative border-2 border-dashed border-rose-400 rounded-lg p-3 bg-slate-50 aspect-[4/3] flex flex-col items-center justify-center text-center overflow-hidden">
                     {viewingArtwork.fileUrl && !artworkImageError && (viewingArtwork.fileUrl.match(/\.(jpeg|jpg|png|webp|gif|svg)(\?.*)?$/i) || viewingArtwork.mimeType?.startsWith('image/')) ? (
                       <img
                         src={viewingArtwork.fileUrl}
                         alt="Customer Artwork Proof"
                         onError={() => setArtworkImageError(true)}
-                        className="w-full h-full object-contain rounded"
+                        className="w-full h-full object-contain rounded bg-white shadow-2xs"
                       />
                     ) : (
                       <div className="space-y-3 p-4">
-                        <div className="mx-auto w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center">
+                        <div className="mx-auto w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center">
                           <RiFilePdfLine className="h-8 w-8" />
                         </div>
                         <div>
-                          <div className="text-sm font-bold text-slate-200 font-mono">
+                          <div className="text-sm font-bold text-slate-900 font-mono">
                             {viewingArtwork.fileName}
                           </div>
-                          <div className="text-xs text-slate-400 font-mono mt-1">
+                          <div className="text-xs text-slate-500 font-mono mt-1">
                             PDF/X-1a:2001 • CMYK 300 DPI Prepress
                           </div>
                         </div>
@@ -1820,18 +1820,18 @@ export default function OrderAssignmentCenterPage() {
                           <span className="h-3 w-6 rounded-xs bg-cyan-400" title="Cyan 100%" />
                           <span className="h-3 w-6 rounded-xs bg-fuchsia-500" title="Magenta 100%" />
                           <span className="h-3 w-6 rounded-xs bg-yellow-400" title="Yellow 100%" />
-                          <span className="h-3 w-6 rounded-xs bg-black border border-slate-700" title="Key (Black) 100%" />
+                          <span className="h-3 w-6 rounded-xs bg-slate-900 border border-slate-300" title="Key (Black) 100%" />
                         </div>
                       </div>
                     )}
 
-                    <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-[9px] font-mono text-slate-400 bg-slate-950/80 px-2 py-1 rounded backdrop-blur-xs border border-slate-800">
-                      <span className="flex items-center gap-1">
-                        <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                    <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-[9px] font-mono text-slate-600 bg-white/95 px-2.5 py-1 rounded shadow-xs border border-slate-200">
+                      <span className="flex items-center gap-1 font-semibold">
+                        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
                         Cut Margin (Trim Line)
                       </span>
-                      <span className="flex items-center gap-1">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      <span className="flex items-center gap-1 font-semibold">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                         Safe Zone: +3.0mm
                       </span>
                     </div>
@@ -1839,75 +1839,76 @@ export default function OrderAssignmentCenterPage() {
                 </div>
 
                 <div className="mt-4 text-center">
-                  <span className="text-[11px] font-mono text-slate-400">
+                  <span className="text-[11px] font-mono text-slate-500">
                     Press Print-Ready Vector Proof • Verified against production template
                   </span>
                 </div>
               </div>
 
               {/* Right Preflight Inspection Panel */}
-              <div className="lg:col-span-4 p-6 bg-slate-900/90 flex flex-col justify-between space-y-6">
+              <div className="lg:col-span-4 p-6 bg-white flex flex-col justify-between space-y-6">
                 <div className="space-y-5">
                   <div>
-                    <h3 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">
+                    <h3 className="text-xs font-mono font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-[#FFED00] border border-[#E3A008]" />
                       Preflight Specifications
                     </h3>
                     <div className="mt-3 space-y-2.5 font-mono text-xs">
-                      <div className="flex justify-between py-1 border-b border-slate-800">
-                        <span className="text-slate-400">Target Dimensions:</span>
-                        <span className="text-slate-100 font-semibold">{viewingArtwork.dimensions}</span>
+                      <div className="flex justify-between py-1.5 border-b border-slate-100">
+                        <span className="text-slate-500">Target Dimensions:</span>
+                        <span className="text-slate-900 font-bold">{viewingArtwork.dimensions}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-800">
-                        <span className="text-slate-400">File Format:</span>
-                        <span className="text-slate-100 font-semibold">{viewingArtwork.mimeType?.includes('pdf') ? 'PDF/X-1a (Press-Ready)' : (viewingArtwork.mimeType || 'PDF/X-1a')}</span>
+                      <div className="flex justify-between py-1.5 border-b border-slate-100">
+                        <span className="text-slate-500">File Format:</span>
+                        <span className="text-slate-900 font-bold">{viewingArtwork.mimeType?.includes('pdf') ? 'PDF/X-1a (Press-Ready)' : (viewingArtwork.mimeType || 'PDF/X-1a')}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-800">
-                        <span className="text-slate-400">Resolution:</span>
-                        <span className="text-emerald-400 font-semibold">300 DPI (High Res)</span>
+                      <div className="flex justify-between py-1.5 border-b border-slate-100">
+                        <span className="text-slate-500">Resolution:</span>
+                        <span className="text-emerald-700 font-bold">300 DPI (High Res)</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-800">
-                        <span className="text-slate-400">Color Profile:</span>
-                        <span className="text-slate-100 font-semibold">CMYK ISO Coated v2</span>
+                      <div className="flex justify-between py-1.5 border-b border-slate-100">
+                        <span className="text-slate-500">Color Profile:</span>
+                        <span className="text-slate-900 font-bold">CMYK ISO Coated v2</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-800">
-                        <span className="text-slate-400">Bleed Margin:</span>
-                        <span className="text-slate-100 font-semibold">3.0 mm standard</span>
+                      <div className="flex justify-between py-1.5 border-b border-slate-100">
+                        <span className="text-slate-500">Bleed Margin:</span>
+                        <span className="text-slate-900 font-bold">3.0 mm standard</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-800">
-                        <span className="text-slate-400">File Size:</span>
-                        <span className="text-slate-100 font-semibold">{viewingArtwork.fileSize}</span>
+                      <div className="flex justify-between py-1.5 border-b border-slate-100">
+                        <span className="text-slate-500">File Size:</span>
+                        <span className="text-slate-900 font-bold">{viewingArtwork.fileSize}</span>
                       </div>
                     </div>
                   </div>
 
                   <div>
-                    <h3 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider mb-2.5">
+                    <h3 className="text-xs font-mono font-bold text-slate-500 uppercase tracking-wider mb-2.5">
                       Automated Preflight Checks
                     </h3>
                     <div className="space-y-1.5 text-xs">
-                      <div className="flex items-center gap-2 text-emerald-400 bg-emerald-950/30 p-2 rounded-lg border border-emerald-900/40">
-                        <RiCheckboxCircleLine className="h-4 w-4 shrink-0" />
-                        <span className="font-mono text-[11px]">All typography converted to outlines</span>
+                      <div className="flex items-center gap-2 text-emerald-800 bg-emerald-50/80 p-2 rounded-lg border border-emerald-200">
+                        <RiCheckboxCircleLine className="h-4 w-4 text-emerald-600 shrink-0" />
+                        <span className="font-mono text-[11px] font-semibold">All typography converted to outlines</span>
                       </div>
-                      <div className="flex items-center gap-2 text-emerald-400 bg-emerald-950/30 p-2 rounded-lg border border-emerald-900/40">
-                        <RiCheckboxCircleLine className="h-4 w-4 shrink-0" />
-                        <span className="font-mono text-[11px]">Zero RGB color profiles detected</span>
+                      <div className="flex items-center gap-2 text-emerald-800 bg-emerald-50/80 p-2 rounded-lg border border-emerald-200">
+                        <RiCheckboxCircleLine className="h-4 w-4 text-emerald-600 shrink-0" />
+                        <span className="font-mono text-[11px] font-semibold">Zero RGB color profiles detected</span>
                       </div>
-                      <div className="flex items-center gap-2 text-emerald-400 bg-emerald-950/30 p-2 rounded-lg border border-emerald-900/40">
-                        <RiCheckboxCircleLine className="h-4 w-4 shrink-0" />
-                        <span className="font-mono text-[11px]">Cut line bleed margins aligned</span>
+                      <div className="flex items-center gap-2 text-emerald-800 bg-emerald-50/80 p-2 rounded-lg border border-emerald-200">
+                        <RiCheckboxCircleLine className="h-4 w-4 text-emerald-600 shrink-0" />
+                        <span className="font-mono text-[11px] font-semibold">Cut line bleed margins aligned</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-2 pt-4 border-t border-slate-800">
+                <div className="space-y-2 pt-4 border-t border-slate-200">
                   {viewingArtwork.fileUrl ? (
                     <a
                       href={viewingArtwork.fileUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition flex items-center justify-center gap-2 shadow-sm"
+                      className="w-full py-2.5 px-4 rounded-xl bg-[#FFED00] hover:bg-[#F2DE00] text-slate-950 font-bold text-xs transition flex items-center justify-center gap-2 shadow-xs border border-[#E3A008]/40"
                     >
                       <RiExternalLinkLine className="h-4 w-4" />
                       <span>Open High-Res Original</span>
@@ -1916,7 +1917,7 @@ export default function OrderAssignmentCenterPage() {
                     <button
                       type="button"
                       onClick={() => alert(`Opening preflight master asset for Order #${viewingArtwork.orderNumber}`)}
-                      className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition flex items-center justify-center gap-2 shadow-sm"
+                      className="w-full py-2.5 px-4 rounded-xl bg-[#FFED00] hover:bg-[#F2DE00] text-slate-950 font-bold text-xs transition flex items-center justify-center gap-2 shadow-xs border border-[#E3A008]/40 cursor-pointer"
                     >
                       <RiExternalLinkLine className="h-4 w-4" />
                       <span>Open Preflight Proof</span>
@@ -1926,7 +1927,7 @@ export default function OrderAssignmentCenterPage() {
                   <button
                     type="button"
                     onClick={() => setArtworkModalOpen(false)}
-                    className="w-full py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition text-center"
+                    className="w-full py-2 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition text-center border border-slate-200 cursor-pointer"
                   >
                     Close Viewer
                   </button>

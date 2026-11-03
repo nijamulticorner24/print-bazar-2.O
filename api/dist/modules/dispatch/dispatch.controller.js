@@ -24,6 +24,12 @@ let DispatchController = class DispatchController {
     constructor(dispatchService) {
         this.dispatchService = dispatchService;
     }
+    async getOrderDispatchDetails(orderId) {
+        return this.dispatchService.getOrderDispatchDetails(orderId);
+    }
+    async adjustDispatchWeight(orderId, body, user) {
+        return this.dispatchService.adjustDispatchWeight(orderId, body, user.sub);
+    }
     async confirmCourierHandover(body, user) {
         return this.dispatchService.confirmCourierHandover(body, user.sub);
     }
@@ -35,6 +41,26 @@ let DispatchController = class DispatchController {
     }
 };
 exports.DispatchController = DispatchController;
+__decorate([
+    (0, common_1.Get)(':orderId/weight-details'),
+    (0, auth_decorator_1.Roles)(roles_1.UserRole.DISPATCH_LOGISTICS, roles_1.UserRole.ADMIN_MANAGER, roles_1.UserRole.PACKING_OPERATOR),
+    (0, swagger_1.ApiOperation)({ summary: 'Get calculated vs measured weight and shipping charge details for an order' }),
+    __param(0, (0, common_1.Param)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], DispatchController.prototype, "getOrderDispatchDetails", null);
+__decorate([
+    (0, common_1.Post)(':orderId/adjust-weight'),
+    (0, auth_decorator_1.Roles)(roles_1.UserRole.DISPATCH_LOGISTICS, roles_1.UserRole.ADMIN_MANAGER),
+    (0, swagger_1.ApiOperation)({ summary: 'Record actual scale measured shipment weight with audited variance recalculation' }),
+    __param(0, (0, common_1.Param)('orderId')),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, auth_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], DispatchController.prototype, "adjustDispatchWeight", null);
 __decorate([
     (0, common_1.Post)('courier-handover'),
     (0, auth_decorator_1.Roles)(roles_1.UserRole.DISPATCH_LOGISTICS, roles_1.UserRole.ADMIN_MANAGER),

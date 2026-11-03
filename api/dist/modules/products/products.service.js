@@ -12,12 +12,70 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProductsService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma/prisma.service");
+const fs = require("fs");
+const path = require("path");
+const DEFAULT_SITE_SETTINGS = {
+    heroImageUrl: '/images/home/hero-products.jpg',
+    heroAltText: 'Print Bazzar Commercial Products',
+    heroBadgeText: 'COMMERCIAL PRINTING & PACKAGING OS',
+    heroTitle: 'Commercial Print Excellence,',
+    heroHighlightText: 'Engineered',
+    heroTitleSuffix: 'for Scale.',
+    heroDescription: 'Direct-to-press precision for visiting cards, luxury rigid boxes, roll-up displays, and marketing collateral. Dynamic live quoting, automated pre-flight checks, and ISO 12647 color calibration.',
+    heroPrimaryBtnText: 'START CUSTOM CONFIGURATION',
+    heroPrimaryBtnHref: '/products/premium-visiting-cards',
+    heroSecondaryBtnText: 'EXPLORE 2026 CATALOGUE',
+    heroSecondaryBtnHref: '/products',
+    heroBannerLinkHref: '/products',
+    showHeroTextOverlay: true,
+    showHeroBadge: true,
+    showHeroHeading: true,
+    showHeroDescription: true,
+    showHeroPrimaryBtn: true,
+    showHeroSecondaryBtn: true,
+    showHeroTrustPillars: true,
+    heroAutoSlide: true,
+    heroSlideIntervalSeconds: 5,
+    heroStartingPrice: '₹199',
+    heroStartingSubtitle: 'Visiting Cards (100 units)',
+    heroSlaTitle: '24-48h',
+    heroSlaSubtitle: 'Express Shop Floor Run',
+    heroImages: [
+        {
+            id: 'hero-default-1',
+            imageUrl: '/images/home/hero-products.jpg',
+            altText: 'Print Bazzar Commercial Products',
+            badgeText: 'CALIBRATED TO ISO 12647',
+            isActive: true,
+        },
+    ],
+    marqueeItems: [
+        {
+            id: 'shipping',
+            text: 'Free Shipping on Orders Over ₹999',
+            icon: 'truck',
+            isActive: true,
+        },
+        {
+            id: 'guarantee',
+            text: 'High Quality Print Guarantee',
+            icon: 'shield',
+            isActive: true,
+        },
+        {
+            id: 'turnaround',
+            text: 'Fast Turnaround (3-5 Business Days)',
+            icon: 'clock',
+            isActive: true,
+        },
+    ],
+};
 let ProductsService = class ProductsService {
     prisma;
     constructor(prisma) {
         this.prisma = prisma;
     }
-    async listProducts(categoryId, search) {
+    async listProducts(categoryId, search, isFeatured) {
         let categoryCondition = undefined;
         if (categoryId) {
             categoryCondition = { categoryId };
@@ -25,6 +83,7 @@ let ProductsService = class ProductsService {
         const where = {
             isActive: true,
             status: 'PUBLISHED',
+            ...(isFeatured !== undefined ? { isFeatured } : {}),
             ...(categoryCondition || {}),
             ...(search
                 ? {
@@ -150,6 +209,55 @@ let ProductsService = class ProductsService {
             },
             orderBy: [{ sortOrder: 'asc' }],
         });
+    }
+    getSiteSettingsFilePath() {
+        const uploadDir = path.join(process.cwd(), 'uploads');
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        return path.join(uploadDir, 'site-settings.json');
+    }
+    async getSiteSettings() {
+        try {
+            const filePath = this.getSiteSettingsFilePath();
+            if (fs.existsSync(filePath)) {
+                const raw = fs.readFileSync(filePath, 'utf-8');
+                const parsed = JSON.parse(raw);
+                return {
+                    ...DEFAULT_SITE_SETTINGS,
+                    ...parsed,
+                    heroImages: Array.isArray(parsed.heroImages) && parsed.heroImages.length > 0
+                        ? parsed.heroImages
+                        : DEFAULT_SITE_SETTINGS.heroImages,
+                    marqueeItems: Array.isArray(parsed.marqueeItems)
+                        ? parsed.marqueeItems
+                        : DEFAULT_SITE_SETTINGS.marqueeItems,
+                };
+            }
+        }
+        catch {
+        }
+        return DEFAULT_SITE_SETTINGS;
+    }
+    async updateSiteSettings(dto) {
+        const current = await this.getSiteSettings();
+        const updated = {
+            ...current,
+            ...dto,
+            heroImageUrl: dto.heroImageUrl ?? current.heroImageUrl,
+            heroAltText: dto.heroAltText ?? current.heroAltText,
+            heroBadgeText: dto.heroBadgeText ?? current.heroBadgeText,
+            heroStartingPrice: dto.heroStartingPrice ?? current.heroStartingPrice,
+            heroStartingSubtitle: dto.heroStartingSubtitle ?? current.heroStartingSubtitle,
+            heroSlaTitle: dto.heroSlaTitle ?? current.heroSlaTitle,
+            heroSlaSubtitle: dto.heroSlaSubtitle ?? current.heroSlaSubtitle,
+            heroImages: Array.isArray(dto.heroImages) ? dto.heroImages : current.heroImages,
+            marqueeItems: Array.isArray(dto.marqueeItems) ? dto.marqueeItems : current.marqueeItems,
+            updatedAt: new Date().toISOString(),
+        };
+        const filePath = this.getSiteSettingsFilePath();
+        fs.writeFileSync(filePath, JSON.stringify(updated, null, 2), 'utf-8');
+        return updated;
     }
 };
 exports.ProductsService = ProductsService;

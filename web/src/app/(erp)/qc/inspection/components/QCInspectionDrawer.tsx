@@ -43,14 +43,14 @@ const DEFAULT_FINAL_QC_CHECKS = [
 ];
 
 const DEFECT_OPTIONS = [
-  { code: 'LOW_RESOLUTION', label: 'Low Resolution / Pixelated (< 300 DPI)' },
-  { code: 'RGB_COLOR_MODE', label: 'RGB Color Space / Gamut Clipping' },
-  { code: 'MISSING_BLEED', label: 'Missing Bleed (< 3mm) or Unsafe Text Margins' },
-  { code: 'DIMENSION_MISMATCH', label: 'Trim Size Does Not Match Order Specs' },
+  { code: 'CUSTOMER_FILE_ERROR', label: 'Low Resolution / Pixelated (< 300 DPI)' },
   { code: 'COLOR_MISMATCH', label: 'Color Shift / Delta-E Variance against Proof' },
-  { code: 'INK_SMUDGE_SCRATCH', label: 'Physical Ink Smudge, Scratches or Roller Marks' },
-  { code: 'CUTTING_ERROR', label: 'Crooked Cut or Off-Registration Trimming' },
-  { code: 'LAMINATION_DEFECT', label: 'Lamination Peeling, Creasing or Air Bubbles' },
+  { code: 'BLEED_CUTTING_FAULT', label: 'Crooked Cut, Missing Bleed or Trim Mismatch' },
+  { code: 'PRINT_STREAKS', label: 'Physical Ink Smudge, Scratches or Roller Marks' },
+  { code: 'REGISTRATION_ERROR', label: 'Off-Registration or Folding Alignment Error' },
+  { code: 'LAMINATION_BUBBLE', label: 'Lamination Peeling, Creasing or Air Bubbles' },
+  { code: 'WRONG_PAPER_STOCK', label: 'Incorrect Paper GSM or Substrate Stock' },
+  { code: 'QUANTITY_SHORT', label: 'Physical Piece Count Shortage' },
 ];
 
 interface QCInspectionDrawerProps {
@@ -78,7 +78,7 @@ export function QCInspectionDrawer({
     if (card) {
       setChecks(DEFAULT_PRE_PROD_CHECKS);
       setFinalChecks(DEFAULT_FINAL_QC_CHECKS);
-      setSelectedDefects(card.holdReason ? ['DIMENSION_MISMATCH'] : []);
+      setSelectedDefects(card.holdReason ? ['BLEED_CUTTING_FAULT'] : []);
       setGeneralNotes(card.holdReason || '');
     }
   }, [card]);
@@ -116,7 +116,7 @@ export function QCInspectionDrawer({
     try {
       await onSubmitFail(
         card,
-        selectedDefects.length > 0 ? selectedDefects : ['DEFECT_FLAGGED'],
+        selectedDefects.length > 0 ? selectedDefects : ['OTHER'],
         generalNotes || 'Quality defects detected during final inspection. Sent for rework.',
       );
       onClose();

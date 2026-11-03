@@ -54,6 +54,11 @@ export interface KanbanCard {
         printMode?: string;
         dimensions?: string;
         sides?: string;
+        selectedOptions?: Array<{
+            label: string;
+            value: string;
+        }>;
+        customerNotes?: string;
         raw?: Record<string, unknown>;
     };
     machine?: {

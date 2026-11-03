@@ -16,15 +16,18 @@ const prisma_service_1 = require("../prisma/prisma.service");
 const audit_service_1 = require("../audit/audit.service");
 const event_emitter_1 = require("@nestjs/event-emitter");
 const client_1 = require("@prisma/client");
+const shipping_calculator_service_1 = require("../shipping/shipping-calculator.service");
 let DispatchService = DispatchService_1 = class DispatchService {
     prisma;
     auditService;
     eventEmitter;
+    shippingCalculatorService;
     logger = new common_1.Logger(DispatchService_1.name);
-    constructor(prisma, auditService, eventEmitter) {
+    constructor(prisma, auditService, eventEmitter, shippingCalculatorService) {
         this.prisma = prisma;
         this.auditService = auditService;
         this.eventEmitter = eventEmitter;
+        this.shippingCalculatorService = shippingCalculatorService;
     }
     async confirmCourierHandover(dto, staffId) {
         const order = await this.prisma.order.findFirst({
@@ -173,12 +176,127 @@ let DispatchService = DispatchService_1 = class DispatchService {
             return updated;
         });
     }
+    async getOrderDispatchDetails(orderId) {
+        const order = await this.prisma.order.findFirst({
+            where: {
+                OR: [{ id: orderId }, { orderNumber: orderId }],
+            },
+            include: {
+                customer: true,
+                shippingAddress: true,
+                items: {
+                    include: {
+                        product: {
+                            include: { packagingProfile: true },
+                        },
+                    },
+                },
+                packages: {
+                    include: { shipment: true },
+                },
+            },
+        });
+        if (!order) {
+            throw new common_1.NotFoundException(`Order '${orderId}' not found`);
+        }
+        const firstItem = order.items[0];
+        const product = firstItem?.product;
+        const qty = firstItem?.quantity || 1;
+        const destinationPincode = order.shippingAddress?.postalCode || order.shippingPincode || '600001';
+        const calc = await this.shippingCalculatorService.calculateShipping({
+            productId: product?.id,
+            quantity: qty,
+            destinationPincode,
+            orderSubtotal: Number(order.subtotal || 0),
+            deliveryMethod: order.deliveryMethod === 'STORE_PICKUP' ? 'STORE_PICKUP' : 'COURIER',
+        });
+        const measuredGrossWeightGrams = order.packages.reduce((sum, p) => sum + (Number(p.grossWeightGrams) || 0), 0);
+        const hasMeasured = measuredGrossWeightGrams > 0;
+        let recalculatedCourier = null;
+        let weightVarianceGrams = 0;
+        if (hasMeasured) {
+            weightVarianceGrams = measuredGrossWeightGrams - calc.actualWeightGrams;
+            recalculatedCourier = await this.shippingCalculatorService.calculateShipping({
+                productId: product?.id,
+                quantity: 1,
+                customUnitWeightGrams: Math.max(1, measuredGrossWeightGrams - (calc.packaging.weightGrams || 0)),
+                destinationPincode,
+                orderSubtotal: Number(order.subtotal || 0),
+                deliveryMethod: order.deliveryMethod === 'STORE_PICKUP' ? 'STORE_PICKUP' : 'COURIER',
+            });
+        }
+        return {
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            destinationPincode,
+            productQuantity: qty,
+            productName: product?.name || 'Printed Item',
+            configuredProductWeightGrams: calc.productWeightGrams,
+            packagingWeightGrams: calc.packaging.weightGrams,
+            actualShipmentWeightGrams: calc.actualWeightGrams,
+            volumetricWeightGrams: calc.volumetricWeightGrams,
+            billableWeightGrams: calc.billableWeightGrams,
+            expectedCourierShippingAmount: calc.finalShippingAmount,
+            zoneCode: calc.zone?.code || 'STANDARD',
+            measuredGrossWeightGrams: hasMeasured ? measuredGrossWeightGrams : null,
+            weightVarianceGrams: hasMeasured ? weightVarianceGrams : 0,
+            recalculatedShippingAmount: recalculatedCourier ? recalculatedCourier.finalShippingAmount : calc.finalShippingAmount,
+            isVarianceDetected: hasMeasured && Math.abs(weightVarianceGrams) > 10,
+        };
+    }
+    async adjustDispatchWeight(orderId, dto, staffId) {
+        const details = await this.getOrderDispatchDetails(orderId);
+        const measuredWeight = Math.max(1, Number(dto.measuredWeightGrams));
+        const varianceGrams = measuredWeight - details.actualShipmentWeightGrams;
+        const recalculated = await this.shippingCalculatorService.calculateShipping({
+            quantity: 1,
+            customUnitWeightGrams: Math.max(1, measuredWeight - details.packagingWeightGrams),
+            destinationPincode: details.destinationPincode,
+            orderSubtotal: 0,
+            deliveryMethod: 'COURIER',
+        });
+        await this.prisma.package.updateMany({
+            where: { orderId: details.orderId },
+            data: { grossWeightGrams: measuredWeight },
+        });
+        await this.auditService.log({
+            actorId: staffId,
+            action: 'DISPATCH_WEIGHT_ADJUSTED',
+            entity: 'Order',
+            entityId: details.orderId,
+            orderId: details.orderId,
+            previousState: {
+                estimatedWeightGrams: details.actualShipmentWeightGrams,
+                estimatedCourierCharge: details.expectedCourierShippingAmount,
+            },
+            newState: {
+                measuredWeightGrams: measuredWeight,
+                varianceGrams,
+                recalculatedCourierCharge: recalculated.finalShippingAmount,
+                reason: dto.reason || 'Physical scale weight measured at dispatch handover',
+                adjustedAt: new Date(),
+            },
+            reason: `Dispatch weight adjustment: ${details.actualShipmentWeightGrams}g -> ${measuredWeight}g (Variance: ${varianceGrams > 0 ? '+' : ''}${varianceGrams}g). Expected: ₹${details.expectedCourierShippingAmount}, Recalculated: ₹${recalculated.finalShippingAmount}.`,
+        });
+        return {
+            success: true,
+            orderId: details.orderId,
+            orderNumber: details.orderNumber,
+            estimatedWeightGrams: details.actualShipmentWeightGrams,
+            measuredWeightGrams: measuredWeight,
+            varianceGrams,
+            estimatedCourierCharge: details.expectedCourierShippingAmount,
+            recalculatedCourierCharge: recalculated.finalShippingAmount,
+            reason: dto.reason || 'Physical scale measurement verified',
+        };
+    }
 };
 exports.DispatchService = DispatchService;
 exports.DispatchService = DispatchService = DispatchService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         audit_service_1.AuditService,
-        event_emitter_1.EventEmitter2])
+        event_emitter_1.EventEmitter2,
+        shipping_calculator_service_1.ShippingCalculatorService])
 ], DispatchService);
 //# sourceMappingURL=dispatch.service.js.map

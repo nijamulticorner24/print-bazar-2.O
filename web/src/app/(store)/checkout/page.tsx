@@ -92,6 +92,8 @@ export interface CheckoutCartItem {
   personalization?: any;
   productionDays?: number;
   shippingPincode?: string;
+  shippingFee?: number;
+  shippingSnapshot?: any;
 }
 
 /**
@@ -166,6 +168,7 @@ export default function CheckoutPage() {
 
   // Authoritative Server Shipping & Tax Quote State
   const [shippingTaxQuote, setShippingTaxQuote] = useState<ShippingTaxCalculationResult | null>(null);
+  const [enterpriseShippingQuote, setEnterpriseShippingQuote] = useState<any | null>(null);
   const [isCalculatingQuote, setIsCalculatingQuote] = useState(false);
 
   // Load complete cart from sessionStorage or fallback to localStorage
@@ -287,28 +290,60 @@ export default function CheckoutPage() {
     ? Math.max(...cartItems.map((it) => Number(it.productionDays || it.quote?.productionDays || 2)))
     : 2;
 
-  // Recalculate shipping & GST authoritatively on delivery pincode or delivery method change
+  // Recalculate shipping (Rate Cards & Slabs) & GST authoritatively on delivery pincode or delivery method change
   useEffect(() => {
     let isCancelled = false;
     const fetchQuote = async () => {
       if (subtotal <= 0) return;
       setIsCalculatingQuote(true);
+      const cleanPin = (shippingAddress.postalCode || '').trim().replace(/[^0-9]/g, '');
       try {
-        const res = await api.calculateShippingAndTax({
-          subtotal,
-          postalCode: shippingAddress.postalCode,
-          deliveryMethod,
-          items: cartItems.map((it) => ({
-            productId: it.productId || 'custom-item',
-            productName: it.productName || 'Print Product',
-            quantity: Number(it.quantity) || 1,
-            unitPrice: Number(it.quote?.unitPrice || (it.totalPrice ? it.totalPrice / (it.quantity || 1) : 0)),
-            totalPrice: Number(it.quote?.subtotal || it.totalPrice || it.subtotal || 0),
-          })),
-          totalQuantity: totalQuantity || 1,
-        });
-        if (!isCancelled && res) {
-          setShippingTaxQuote(res);
+        const [entRes, gstRes] = await Promise.all([
+          api.calculateEnterpriseShipping({
+            productId: cartItems[0]?.productId,
+            quantity: totalQuantity || 1,
+            destinationPincode: cleanPin,
+            orderSubtotal: subtotal,
+            deliveryMethod,
+            items: cartItems.map((it) => ({
+              productId: it.productId,
+              quantity: Number(it.quantity) || 1,
+              subtotal: Number(it.quote?.subtotal || it.totalPrice || it.subtotal || 0),
+            })),
+          }).catch(() => null),
+          api.calculateShippingAndTax({
+            subtotal,
+            postalCode: cleanPin,
+            deliveryMethod,
+            items: cartItems.map((it) => ({
+              productId: it.productId || 'custom-item',
+              productName: it.productName || 'Print Product',
+              quantity: Number(it.quantity) || 1,
+              unitPrice: Number(it.quote?.unitPrice || (it.totalPrice ? it.totalPrice / (it.quantity || 1) : 0)),
+              totalPrice: Number(it.quote?.subtotal || it.totalPrice || it.subtotal || 0),
+            })),
+            totalQuantity: totalQuantity || 1,
+          }).catch(() => null),
+        ]);
+
+        if (!isCancelled) {
+          if (entRes) {
+            setEnterpriseShippingQuote(entRes);
+            // Auto-fill City & State when 6-digit PIN matches a configured Pincode record
+            if (cleanPin.length === 6 && entRes.pincodeLocation?.city && entRes.pincodeLocation?.state) {
+              setShippingAddress((prev) => ({
+                ...prev,
+                city: entRes.pincodeLocation.city || prev.city,
+                state: entRes.pincodeLocation.state || prev.state,
+              }));
+            }
+            if (cleanPin.length === 6 && typeof window !== 'undefined') {
+              localStorage.setItem('pb2_user_pincode', cleanPin);
+            }
+          }
+          if (gstRes) {
+            setShippingTaxQuote(gstRes);
+          }
         }
       } catch (err) {
         console.warn('Failed to calculate shipping/tax quote from server:', err);
@@ -326,13 +361,29 @@ export default function CheckoutPage() {
 
   const gstRatePercent = shippingTaxQuote?.gstRatePercent ?? 18;
   const tax = shippingTaxQuote?.gstAmount ?? Math.round(subtotal * (gstRatePercent / 100) * 100) / 100;
-  const shipping = deliveryMethod === 'STORE_PICKUP'
-    ? 0
-    : (shippingTaxQuote?.shippingFee ?? (Number(cart?.quote?.estimatedShipping) || 150));
-  const isFreeShippingApplied = Boolean(shippingTaxQuote?.isFreeShippingApplied);
-  const freeShippingThreshold = shippingTaxQuote?.freeShippingThreshold ?? 2000;
+  const hasValidEnterpriseQuote =
+    enterpriseShippingQuote &&
+    enterpriseShippingQuote.status !== 'PENDING' &&
+    enterpriseShippingQuote.status !== 'NON_SERVICEABLE';
+  const isNonServiceablePincode =
+    deliveryMethod === 'COURIER' && enterpriseShippingQuote?.status === 'NON_SERVICEABLE';
+
+  const shipping =
+    deliveryMethod === 'STORE_PICKUP'
+      ? 0
+      : hasValidEnterpriseQuote
+      ? Number(enterpriseShippingQuote.finalShippingAmount ?? 0)
+      : Number(cart?.shippingFee ?? cart?.shippingSnapshot?.finalShippingAmount ?? cart?.quote?.estimatedShipping ?? 0);
+
+  const isFreeShippingApplied = hasValidEnterpriseQuote
+    ? Boolean(enterpriseShippingQuote.isFreeShippingApplied)
+    : Boolean(shippingTaxQuote?.isFreeShippingApplied);
+  const freeShippingThreshold =
+    enterpriseShippingQuote?.freeShippingThreshold ?? shippingTaxQuote?.freeShippingThreshold ?? 2000;
   const isFreeShippingEnabled = shippingTaxQuote?.isFreeShippingEnabled ?? true;
-  const matchedZoneName = shippingTaxQuote?.matchedZone?.zoneName;
+  const matchedZoneName =
+    enterpriseShippingQuote?.zone?.name || shippingTaxQuote?.matchedZone?.zoneName;
+  const matchedZoneCode = enterpriseShippingQuote?.zone?.code;
   const grandTotal = Math.round((subtotal + tax + shipping) * 100) / 100;
 
   const isSplit = paymentMode === 'SPLIT_50';
@@ -462,6 +513,18 @@ export default function CheckoutPage() {
       }
       if (!shippingAddress.city?.trim() || !shippingAddress.state?.trim() || !shippingAddress.postalCode?.trim()) {
         setErrorMessage('Please complete your City, State, and Postal Code (PIN).');
+        return;
+      }
+      const cleanPin = shippingAddress.postalCode.trim().replace(/[^0-9]/g, '');
+      if (cleanPin.length !== 6) {
+        setErrorMessage('Please enter a valid 6-digit Indian Postal Code (PIN).');
+        return;
+      }
+      if (isNonServiceablePincode) {
+        setErrorMessage(
+          enterpriseShippingQuote?.serviceabilityMessage ||
+            `PIN code ${cleanPin} is currently non-serviceable for courier delivery.`
+        );
         return;
       }
     }
@@ -717,32 +780,191 @@ export default function CheckoutPage() {
                   />
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <Input
+                      label="Postal Code (PIN)"
+                      required
+                      maxLength={6}
+                      value={shippingAddress.postalCode}
+                      onChange={(e) => {
+                        const cleanVal = e.target.value.replace(/[^0-9]/g, '').slice(0, 6);
+                        setShippingAddress({ ...shippingAddress, postalCode: cleanVal });
+                      }}
+                      placeholder="e.g. 600122"
+                      hint={
+                        isCalculatingQuote
+                          ? 'Calculating rate card...'
+                          : isNonServiceablePincode
+                          ? 'Non-serviceable PIN code'
+                          : matchedZoneName
+                          ? `Matched: ${matchedZoneName} (${shipping === 0 ? 'FREE' : formatCurrency(shipping)})`
+                          : 'Enter 6-digit PIN for rate slab'
+                      }
+                    />
+                    <Input
                       label="City"
                       required
                       value={shippingAddress.city}
                       onChange={(e) => setShippingAddress({ ...shippingAddress, city: e.target.value })}
-                      placeholder="e.g. Mumbai, Bengaluru"
+                      placeholder="e.g. Chennai, Mumbai"
                     />
                     <Input
                       label="State"
                       required
                       value={shippingAddress.state}
                       onChange={(e) => setShippingAddress({ ...shippingAddress, state: e.target.value })}
-                      placeholder="e.g. Maharashtra"
-                    />
-                    <Input
-                      label="Postal Code (PIN)"
-                      required
-                      value={shippingAddress.postalCode}
-                      onChange={(e) => setShippingAddress({ ...shippingAddress, postalCode: e.target.value })}
-                      placeholder="e.g. 400013"
-                      hint={
-                        matchedZoneName
-                          ? `Matched: ${matchedZoneName} (${shipping === 0 ? 'FREE' : formatCurrency(shipping)})`
-                          : undefined
-                      }
+                      placeholder="e.g. Tamil Nadu, Maharashtra"
                     />
                   </div>
+
+                  {/* Non-Serviceable Pincode Warning */}
+                  {isNonServiceablePincode && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2">
+                      <RiAlertLine className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold">PIN Code Not Serviceable</p>
+                        <p className="text-[11px] text-rose-700 mt-0.5">
+                          {enterpriseShippingQuote?.serviceabilityMessage ||
+                            `Courier delivery is not currently available for PIN ${shippingAddress.postalCode}.`}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Replicated Rate Card & Weight Slabs Box from /admin/shipping/rates */}
+                  {hasValidEnterpriseQuote && enterpriseShippingQuote?.rateCard && (
+                    <div className="mt-3 bg-slate-50/90 border border-slate-200 rounded-xl p-4 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-200/80">
+                        <div>
+                          <div className="flex items-center flex-wrap gap-2">
+                            <span className="text-xs font-bold text-slate-900">
+                              {enterpriseShippingQuote.rateCard.name}
+                            </span>
+                            {matchedZoneCode && (
+                              <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200">
+                                {matchedZoneCode}
+                              </span>
+                            )}
+                            <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              PIN: {enterpriseShippingQuote.destinationPincode}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Zone: <strong>{matchedZoneName || 'Assigned Zone'}</strong>
+                            {enterpriseShippingQuote.pincodeLocation?.city
+                              ? ` • ${enterpriseShippingQuote.pincodeLocation.city}, ${enterpriseShippingQuote.pincodeLocation.state}`
+                              : ''}
+                            {enterpriseShippingQuote.zone?.estimatedDeliveryDays
+                              ? ` • Est. ${enterpriseShippingQuote.zone.estimatedDeliveryDays}`
+                              : ''}
+                          </p>
+                        </div>
+                        <div className="text-left sm:text-right shrink-0">
+                          <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">
+                            Applied Courier Rate
+                          </span>
+                          <span className="font-mono text-sm font-black text-slate-950">
+                            {isFreeShippingApplied || shipping === 0 ? 'FREE (₹0.00)' : formatCurrency(shipping)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Shipment Weight Calculation Strip */}
+                      <div className="grid grid-cols-3 gap-2 text-[11px] font-mono bg-white p-2.5 rounded-lg border border-slate-200/80">
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-sans block">Product Net Weight</span>
+                          <span className="font-bold text-slate-800">
+                            {Number(enterpriseShippingQuote.productWeightGrams) >= 1000
+                              ? `${(Number(enterpriseShippingQuote.productWeightGrams) / 1000).toFixed(2)} kg`
+                              : `${Number(enterpriseShippingQuote.productWeightGrams || 0)} g`}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-sans block">Packaging Box (Tare)</span>
+                          <span className="font-bold text-slate-800">
+                            +{Number(enterpriseShippingQuote.packaging?.weightGrams || 0)} g
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-sky-700 font-sans font-bold block">Billable Weight</span>
+                          <span className="font-black text-sky-800">
+                            {Number(enterpriseShippingQuote.billableWeightGrams) >= 1000
+                              ? `${(Number(enterpriseShippingQuote.billableWeightGrams) / 1000).toFixed(2)} kg (${enterpriseShippingQuote.billableWeightGrams} g)`
+                              : `${Number(enterpriseShippingQuote.billableWeightGrams || 0)} g`}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Rate Card Weight Slabs Table (replicated from /admin/shipping/rates) */}
+                      {Array.isArray(enterpriseShippingQuote.rateCard.slabs) &&
+                        enterpriseShippingQuote.rateCard.slabs.length > 0 && (
+                          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                            <table className="w-full text-xs text-left">
+                              <thead className="bg-slate-50 text-[10px] font-bold text-slate-600 uppercase tracking-wider border-b border-slate-200">
+                                <tr>
+                                  <th className="py-1.5 px-3">From Weight</th>
+                                  <th className="py-1.5 px-3">To Weight</th>
+                                  <th className="py-1.5 px-3 text-right">Base Shipping Fee</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                                {enterpriseShippingQuote.rateCard.slabs.map((slab: any, sIdx: number) => {
+                                  const minW = Number(slab.minWeightGrams ?? 0);
+                                  const maxW = Number(slab.maxWeightGrams ?? 0);
+                                  const rate = Number(slab.rate ?? 0);
+                                  const isMatchedSlab =
+                                    enterpriseShippingQuote.matchedSlab &&
+                                    (enterpriseShippingQuote.matchedSlab.id === slab.id ||
+                                      (enterpriseShippingQuote.matchedSlab.minWeightGrams === minW &&
+                                        enterpriseShippingQuote.matchedSlab.maxWeightGrams === maxW));
+
+                                  return (
+                                    <tr
+                                      key={slab.id || sIdx}
+                                      className={
+                                        isMatchedSlab
+                                          ? 'bg-amber-50/90 font-bold text-slate-950'
+                                          : 'text-slate-600 hover:bg-slate-50'
+                                      }
+                                    >
+                                      <td className="py-1.5 px-3">
+                                        {minW >= 1000 ? `${(minW / 1000).toFixed(1)} kg` : `${minW} g`}
+                                      </td>
+                                      <td className="py-1.5 px-3">
+                                        <span>
+                                          {maxW >= 1000 ? `${(maxW / 1000).toFixed(1)} kg` : `${maxW} g`}
+                                        </span>
+                                        {isMatchedSlab && (
+                                          <span className="ml-2 inline-block text-[9px] font-sans font-black uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                            Active Slab
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="py-1.5 px-3 text-right font-bold text-slate-900">
+                                        {formatCurrency(rate)}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                      {/* Excess Weight & Surcharges Footer */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600 pt-1">
+                        <span>
+                          Excess Weight Beyond Last Slab:{' '}
+                          <strong className="font-mono text-slate-900">
+                            +{formatCurrency(Number(enterpriseShippingQuote.rateCard.additionalWeightPerKg || 0))} / kg
+                          </strong>
+                        </span>
+                        {Number(enterpriseShippingQuote.additionalWeightCharge) > 0 && (
+                          <span className="font-mono font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                            Extra Weight Charge: +{formatCurrency(Number(enterpriseShippingQuote.additionalWeightCharge))}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1">
@@ -1122,15 +1344,27 @@ export default function CheckoutPage() {
                       <div className="space-y-0.5 mt-1">
                         {matchedZoneName && (
                           <span className="text-[10px] text-indigo-700 font-semibold block">
-                            Region / Zone: {matchedZoneName}
+                            Region / Zone: {matchedZoneCode ? `${matchedZoneCode} — ` : ''}{matchedZoneName}
                           </span>
                         )}
-                        {shippingTaxQuote?.calculationBasis && (
+                        {enterpriseShippingQuote?.rateCard?.name && (
+                          <span className="text-[10px] text-sky-700 font-mono font-bold block">
+                            Rate Card: {enterpriseShippingQuote.rateCard.name}
+                          </span>
+                        )}
+                        {(enterpriseShippingQuote?.calculationBasis || shippingTaxQuote?.calculationBasis) && (
                           <span className="text-[10px] text-slate-500 font-mono block">
-                            {shippingTaxQuote.calculationBasis}
+                            {enterpriseShippingQuote?.calculationBasis || shippingTaxQuote?.calculationBasis}
                           </span>
                         )}
-                        {shippingTaxQuote?.totalWeightKg ? (
+                        {enterpriseShippingQuote?.billableWeightGrams ? (
+                          <span className="text-[10px] text-slate-400 font-mono block">
+                            Billable Weight:{' '}
+                            {Number(enterpriseShippingQuote.billableWeightGrams) >= 1000
+                              ? `${(Number(enterpriseShippingQuote.billableWeightGrams) / 1000).toFixed(2)} kg (${enterpriseShippingQuote.billableWeightGrams} g)`
+                              : `${enterpriseShippingQuote.billableWeightGrams} g`}
+                          </span>
+                        ) : shippingTaxQuote?.totalWeightKg ? (
                           <span className="text-[10px] text-slate-400 font-mono block">
                             Shipment Weight: {shippingTaxQuote.totalWeightKg} kg
                           </span>
@@ -1222,10 +1456,10 @@ export default function CheckoutPage() {
               {/* Submit CTA */}
               <Button
                 type="submit"
-                variant={hasMissingArtwork ? 'secondary' : 'primary'}
+                variant={hasMissingArtwork || isNonServiceablePincode ? 'secondary' : 'primary'}
                 size="lg"
-                className={`w-full ${hasMissingArtwork ? 'opacity-60 cursor-not-allowed bg-slate-200 text-slate-500 hover:bg-slate-200' : 'shadow-brand'}`}
-                disabled={isProcessing || hasMissingArtwork}
+                className={`w-full ${hasMissingArtwork || isNonServiceablePincode ? 'opacity-60 cursor-not-allowed bg-slate-200 text-slate-500 hover:bg-slate-200' : 'shadow-brand'}`}
+                disabled={isProcessing || hasMissingArtwork || isNonServiceablePincode}
                 isLoading={isProcessing}
               >
                 {hasMissingArtwork ? (

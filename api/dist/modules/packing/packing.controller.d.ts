@@ -26,12 +26,12 @@ export declare class PackingController {
             isDefault: boolean;
             type: string;
             postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
             city: string;
             state: string;
             country: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
         } | null;
         billingAddress: {
             id: string;
@@ -42,12 +42,12 @@ export declare class PackingController {
             isDefault: boolean;
             type: string;
             postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
             city: string;
             state: string;
             country: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
         } | null;
         items: ({
             product: {
@@ -63,14 +63,14 @@ export declare class PackingController {
                 storageKey: string;
                 orderItemId: string;
                 customerNotes: string | null;
+                widthMm: import("@prisma/client/runtime/library").Decimal | null;
+                heightMm: import("@prisma/client/runtime/library").Decimal | null;
                 originalFileName: string;
                 versionNumber: number;
                 mimeType: string;
                 fileSize: number;
                 checksum: string;
                 resolutionDpi: number | null;
-                widthMm: import("@prisma/client/runtime/library").Decimal | null;
-                heightMm: import("@prisma/client/runtime/library").Decimal | null;
                 widthPixels: number | null;
                 heightPixels: number | null;
                 actualMegapixels: number | null;
@@ -234,12 +234,12 @@ export declare class PackingController {
             isDefault: boolean;
             type: string;
             postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
             city: string;
             state: string;
             country: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
         } | null;
         billingAddress: {
             id: string;
@@ -250,12 +250,12 @@ export declare class PackingController {
             isDefault: boolean;
             type: string;
             postalCode: string;
-            contactName: string;
-            street: string;
-            landmark: string | null;
             city: string;
             state: string;
             country: string;
+            contactName: string;
+            street: string;
+            landmark: string | null;
         } | null;
         items: ({
             product: {
@@ -293,6 +293,7 @@ export declare class PackingController {
                 designServicePrice: import("@prisma/client/runtime/library").Decimal | null;
                 shippingChargeType: string;
                 unitWeightGrams: number | null;
+                weightPerItemGrams: number | null;
                 courierCharge: import("@prisma/client/runtime/library").Decimal | null;
                 perAdditionalQtyRate: import("@prisma/client/runtime/library").Decimal | null;
                 freeShippingThreshold: import("@prisma/client/runtime/library").Decimal | null;
@@ -308,6 +309,9 @@ export declare class PackingController {
                 variantDimensions: string[];
                 personalizationTemplateId: string | null;
                 personalizationConfig: import("@prisma/client/runtime/library").JsonValue | null;
+                packagingProfileId: string | null;
+                isShippable: boolean;
+                bulkTierWeights: import("@prisma/client/runtime/library").JsonValue | null;
             };
             artworkVersions: {
                 id: string;
@@ -316,14 +320,14 @@ export declare class PackingController {
                 storageKey: string;
                 orderItemId: string;
                 customerNotes: string | null;
+                widthMm: import("@prisma/client/runtime/library").Decimal | null;
+                heightMm: import("@prisma/client/runtime/library").Decimal | null;
                 originalFileName: string;
                 versionNumber: number;
                 mimeType: string;
                 fileSize: number;
                 checksum: string;
                 resolutionDpi: number | null;
-                widthMm: import("@prisma/client/runtime/library").Decimal | null;
-                heightMm: import("@prisma/client/runtime/library").Decimal | null;
                 widthPixels: number | null;
                 heightPixels: number | null;
                 actualMegapixels: number | null;

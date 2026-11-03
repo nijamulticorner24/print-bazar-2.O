@@ -20,6 +20,9 @@ import {
   RiCheckLine,
   RiSettings4Line,
   RiRefreshLine,
+  RiStarFill,
+  RiStarLine,
+  RiFireFill,
 } from 'react-icons/ri';
 import { formatCurrency } from '@/lib/utils';
 import {
@@ -45,6 +48,7 @@ export default function AdminProductsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('ALL');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('ALL');
+  const [selectedFeaturedFilter, setSelectedFeaturedFilter] = useState<'ALL' | 'FEATURED'>('ALL');
 
   // Studio Mode: Create New Product
   const [isCreatingProduct, setIsCreatingProduct] = useState(false);
@@ -104,6 +108,9 @@ export default function AdminProductsPage() {
       if (selectedStatusFilter !== 'ALL' && prod.status !== selectedStatusFilter) {
         return false;
       }
+      if (selectedFeaturedFilter === 'FEATURED' && !prod.isFeatured) {
+        return false;
+      }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchName = prod.name?.toLowerCase().includes(q);
@@ -113,9 +120,23 @@ export default function AdminProductsPage() {
       }
       return true;
     });
-  }, [products, selectedCategoryFilter, selectedStatusFilter, searchQuery]);
+  }, [products, selectedCategoryFilter, selectedStatusFilter, selectedFeaturedFilter, searchQuery]);
 
   // Actions
+  const handleToggleFeatured = async (id: string) => {
+    setActionLoadingId(id);
+    try {
+      const updated = await api.adminToggleFeaturedProduct(id);
+      setProducts((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, isFeatured: updated.isFeatured } : p))
+      );
+    } catch (err: any) {
+      alert(err?.message || 'Failed to toggle trending / featured status');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
   const handleDuplicate = async (id: string) => {
     setActionLoadingId(id);
     try {
@@ -308,6 +329,21 @@ export default function AdminProductsPage() {
             </select>
           </div>
 
+          <button
+            type="button"
+            onClick={() =>
+              setSelectedFeaturedFilter((prev) => (prev === 'ALL' ? 'FEATURED' : 'ALL'))
+            }
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border inline-flex items-center gap-1.5 transition cursor-pointer ${
+              selectedFeaturedFilter === 'FEATURED'
+                ? 'bg-[#FFED00] text-black border-black/20 shadow-2xs'
+                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            <RiFireFill className={selectedFeaturedFilter === 'FEATURED' ? 'text-amber-600' : 'text-slate-400'} />
+            <span>Trending ({products.filter((p) => p.isFeatured).length})</span>
+          </button>
+
           {(selectedCategoryFilter !== 'ALL' || selectedStatusFilter !== 'ALL' || searchQuery.trim()) && (
             <button
               type="button"
@@ -377,13 +413,14 @@ export default function AdminProductsPage() {
             <table className="w-full text-left text-xs text-slate-700 table-fixed">
               <thead className="bg-slate-50 text-[11px] text-slate-600 font-semibold uppercase tracking-wider border-b border-slate-200 sticky top-0 z-10 shadow-2xs">
                 <tr>
-                  <th className="p-3.5 w-[28%] min-w-[240px]">Product</th>
+                  <th className="p-3.5 w-[5%] min-w-[50px] text-center">Trend</th>
+                  <th className="p-3.5 w-[25%] min-w-[220px]">Product</th>
                   <th className="p-3.5 w-[14%] min-w-[120px]">SKU</th>
-                  <th className="p-3.5 w-[17%] min-w-[140px]">Category</th>
+                  <th className="p-3.5 w-[16%] min-w-[130px]">Category</th>
                   <th className="p-3.5 w-[11%] min-w-[105px]">Option Groups</th>
                   <th className="p-3.5 w-[10%] min-w-[90px]">Base Price</th>
                   <th className="p-3.5 w-[9%] min-w-[85px]">Status</th>
-                  <th className="p-3.5 w-[11%] min-w-[180px] text-right pr-4">Studio Actions</th>
+                  <th className="p-3.5 w-[10%] min-w-[170px] text-right pr-4">Studio Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono">
@@ -393,6 +430,27 @@ export default function AdminProductsPage() {
 
                   return (
                     <tr key={prod.id} className="hover:bg-slate-50/70 transition-colors">
+                      {/* Trending / Featured Checkbox Button */}
+                      <td className="p-3.5 align-middle text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleFeatured(prod.id)}
+                          disabled={actionLoadingId === prod.id}
+                          title={prod.isFeatured ? 'Trending on Home Page (Click to uncheck)' : 'Not Trending (Click to feature on Home Page)'}
+                          className={`w-7 h-7 mx-auto rounded-lg flex items-center justify-center transition cursor-pointer border ${
+                            prod.isFeatured
+                              ? 'bg-[#FFED00] text-black border-[#E3A008] shadow-2xs'
+                              : 'bg-white text-slate-300 border-slate-200 hover:text-slate-600 hover:border-slate-300'
+                          }`}
+                        >
+                          {prod.isFeatured ? (
+                            <RiStarFill className="w-4 h-4 text-amber-800" />
+                          ) : (
+                            <RiStarLine className="w-4 h-4" />
+                          )}
+                        </button>
+                      </td>
+
                       <td className="p-3.5 font-sans align-middle">
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden flex-shrink-0 flex items-center justify-center">

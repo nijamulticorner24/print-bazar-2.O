@@ -11,12 +11,13 @@ const common_1 = require("@nestjs/common");
 const pricing_service_1 = require("./pricing.service");
 const pricing_controller_1 = require("./pricing.controller");
 const shipping_gst_module_1 = require("../shipping-gst/shipping-gst.module");
+const shipping_module_1 = require("../shipping/shipping.module");
 let PricingModule = class PricingModule {
 };
 exports.PricingModule = PricingModule;
 exports.PricingModule = PricingModule = __decorate([
     (0, common_1.Module)({
-        imports: [shipping_gst_module_1.ShippingGstModule],
+        imports: [shipping_gst_module_1.ShippingGstModule, shipping_module_1.ShippingModule],
         controllers: [pricing_controller_1.PricingController],
         providers: [pricing_service_1.PricingService],
         exports: [pricing_service_1.PricingService],

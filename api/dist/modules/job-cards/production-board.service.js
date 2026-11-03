@@ -177,6 +177,64 @@ let ProductionBoardService = ProductionBoardService_1 = class ProductionBoardSer
                     proofUrl: approvedArtwork.proofUrl,
                 }
                 : null;
+            const selectedOptions = [];
+            const seenLabels = new Set();
+            const addOption = (label, value) => {
+                if (value === null || value === undefined || typeof value === 'object')
+                    return;
+                const strVal = String(value).trim();
+                if (!strVal)
+                    return;
+                const cleanLabel = String(label)
+                    .replace(/_/g, ' ')
+                    .replace(/([a-z])([A-Z])/g, '$1 $2')
+                    .trim();
+                const norm = cleanLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
+                if (seenLabels.has(norm))
+                    return;
+                const blocked = [
+                    'price', 'cost', 'fee', 'tax', 'gst', 'subtotal', 'total', 'grandtotal',
+                    'artworkrequirement', 'designservicerequirement', 'referenceimagerequirement',
+                    'workflowroute', 'artworksource', 'artworkurl', 'artworkstoragekey',
+                    'referenceimage', 'referenceimageurl', 'designnotes', 'customernotes',
+                    'ismultivariant', 'variantlines', 'specificationssnapshot', 'fieldvalues', 'raw'
+                ];
+                if (blocked.some((b) => norm.includes(b)))
+                    return;
+                seenLabels.add(norm);
+                selectedOptions.push({
+                    label: cleanLabel.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                    value: strVal,
+                });
+            };
+            const itemSpecs = job.orderItem?.specifications || rawSpecs;
+            if (Array.isArray(itemSpecs.options)) {
+                for (const opt of itemSpecs.options) {
+                    const l = opt?.fieldLabel || opt?.optionName || opt?.optionCode;
+                    const v = opt?.value || opt?.valueName || opt?.optionLabel;
+                    if (l && v)
+                        addOption(l, v);
+                }
+            }
+            if (Array.isArray(itemSpecs.selectedOptionsSummary)) {
+                for (const opt of itemSpecs.selectedOptionsSummary) {
+                    const l = opt?.fieldLabel || opt?.optionName;
+                    const v = opt?.value || opt?.valueName;
+                    if (l && v)
+                        addOption(l, v);
+                }
+            }
+            const snap = itemSpecs.specificationsSnapshot || {};
+            for (const [k, v] of Object.entries(snap)) {
+                if (typeof v === 'string' || typeof v === 'number') {
+                    addOption(k, v);
+                }
+            }
+            for (const [k, v] of Object.entries(itemSpecs)) {
+                if (typeof v === 'string' || typeof v === 'number') {
+                    addOption(k, v);
+                }
+            }
             mappedCards.push({
                 id: job.id,
                 jobNumber: job.jobNumber,
@@ -187,11 +245,13 @@ let ProductionBoardService = ProductionBoardService_1 = class ProductionBoardSer
                 productName: specs.productName || job.orderItem?.productName || 'Print Product',
                 quantity: specs.quantity || job.orderItem?.quantity || 1,
                 specifications: {
-                    paperGsm: rawSpecs['paper_gsm'] || rawSpecs['gsm'] || '350 GSM Art Card',
-                    finish: rawSpecs['lamination'] || rawSpecs['finish'] || 'Thermal Matt Lamination',
-                    printMode: rawSpecs['print_sides'] || rawSpecs['color_mode'] || '4+4 CMYK Digital',
-                    dimensions: rawSpecs['dimensions'] || rawSpecs['size'] || undefined,
+                    paperGsm: rawSpecs['paper_gsm'] || rawSpecs['gsm'] || (selectedOptions.find(o => o.label.toLowerCase().includes('paper') || o.label.toLowerCase().includes('substrate'))?.value) || undefined,
+                    finish: rawSpecs['lamination'] || rawSpecs['finish'] || (selectedOptions.find(o => o.label.toLowerCase().includes('finish') || o.label.toLowerCase().includes('lamination'))?.value) || undefined,
+                    printMode: rawSpecs['print_sides'] || rawSpecs['color_mode'] || (selectedOptions.find(o => o.label.toLowerCase().includes('print') || o.label.toLowerCase().includes('side'))?.value) || undefined,
+                    dimensions: rawSpecs['dimensions'] || rawSpecs['size'] || (selectedOptions.find(o => o.label.toLowerCase().includes('dimension') || o.label.toLowerCase().includes('size'))?.value) || undefined,
                     sides: rawSpecs['sides'] || undefined,
+                    selectedOptions,
+                    customerNotes: itemSpecs.customerNotes || itemSpecs.designNotes || job.order?.customerNotes || undefined,
                     raw: rawSpecs,
                 },
                 machine: job.machine

@@ -96,7 +96,8 @@ export default function ShippingRatesPage() {
     setFormName(card.name || '');
     setFormZoneId(card.zoneId || '');
     setFormCarrierName(card.carrierName || 'Standard Logistics');
-    setFormAdditionalWeightRate(card.additionalWeightRatePerKg !== undefined ? Number(card.additionalWeightRatePerKg) : 40);
+    const excessRate = card.additionalWeightPerKg ?? card.additionalWeightRatePerKg;
+    setFormAdditionalWeightRate(excessRate !== undefined ? Number(excessRate) : 40);
     setFormMinWeight(card.minWeightGrams || 0);
     setFormMaxWeight(card.maxWeightGrams || 100000);
     setFormIsActive(card.isActive !== false);
@@ -157,10 +158,8 @@ export default function ShippingRatesPage() {
       const payload = {
         name: formName.trim(),
         zoneId: formZoneId,
-        carrierName: formCarrierName.trim(),
-        additionalWeightRatePerKg: Number(formAdditionalWeightRate) || 0,
-        minWeightGrams: Number(formMinWeight) || 0,
-        maxWeightGrams: Number(formMaxWeight) || 100000,
+        minShippingCharge: formattedSlabs[0]?.rate ?? 40,
+        additionalWeightPerKg: Number(formAdditionalWeightRate) || 0,
         isActive: formIsActive,
         slabs: formattedSlabs,
       };
@@ -253,7 +252,7 @@ export default function ShippingRatesPage() {
                     </span>
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5">
-                    Zone: <strong>{card.zone?.name || 'Assigned Zone'}</strong> &bull; Carrier: {card.carrierName || 'Standard'}
+                    Zone: <strong>{card.zone?.zoneName || card.zone?.name || 'Assigned Zone'}</strong> &bull; Carrier: {card.carrierName || 'Standard'}
                   </div>
                 </div>
 
@@ -314,7 +313,7 @@ export default function ShippingRatesPage() {
                   Excess Weight Beyond Last Slab:
                 </div>
                 <div className="font-mono font-bold text-slate-900">
-                  +{formatCurrency(card.additionalWeightRatePerKg)} / kg
+                  +{formatCurrency(card.additionalWeightPerKg ?? card.additionalWeightRatePerKg ?? 0)} / kg
                 </div>
               </div>
             </div>
@@ -369,7 +368,7 @@ export default function ShippingRatesPage() {
               >
                 {zones.map((z) => (
                   <option key={z.id} value={z.id}>
-                    {z.zoneCode} — {z.name}
+                    {z.zoneCode} — {z.zoneName || z.name}
                   </option>
                 ))}
               </select>

@@ -15,6 +15,7 @@ const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma/prisma.service");
 const pricing_service_1 = require("../pricing/pricing.service");
 const shipping_gst_service_1 = require("../shipping-gst/shipping-gst.service");
+const shipping_calculator_service_1 = require("../shipping/shipping-calculator.service");
 const audit_service_1 = require("../audit/audit.service");
 const event_emitter_1 = require("@nestjs/event-emitter");
 const client_1 = require("@prisma/client");
@@ -25,14 +26,16 @@ let OrdersService = OrdersService_1 = class OrdersService {
     prisma;
     pricingService;
     shippingGstService;
+    shippingCalculatorService;
     auditService;
     eventEmitter;
     personalizationService;
     logger = new common_1.Logger(OrdersService_1.name);
-    constructor(prisma, pricingService, shippingGstService, auditService, eventEmitter, personalizationService) {
+    constructor(prisma, pricingService, shippingGstService, shippingCalculatorService, auditService, eventEmitter, personalizationService) {
         this.prisma = prisma;
         this.pricingService = pricingService;
         this.shippingGstService = shippingGstService;
+        this.shippingCalculatorService = shippingCalculatorService;
         this.auditService = auditService;
         this.eventEmitter = eventEmitter;
         this.personalizationService = personalizationService;
@@ -195,9 +198,24 @@ let OrdersService = OrdersService_1 = class OrdersService {
                     : null);
             const hasRefImage = Boolean(rawRef?.fileUrl);
             const designReq = product.designServiceRequirement || 'DISABLED';
-            const wantsDesign = Boolean(itemDto.selectedDesignService ||
-                itemDto.hasDesignService ||
-                designReq === 'REQUIRED');
+            const rawChoices = itemDto.options || itemDto.fieldValues || itemDto.selectedOptions || {};
+            let userDesignChoice = '';
+            if (typeof rawChoices === 'object' && rawChoices !== null) {
+                for (const [k, v] of Object.entries(rawChoices)) {
+                    const normK = String(k).toLowerCase().replace(/[^a-z0-9]/g, '');
+                    if (normK.includes('design') || normK.includes('artworkservice')) {
+                        userDesignChoice = String(v).toLowerCase().trim();
+                        break;
+                    }
+                }
+            }
+            const isExplicitNoDesign = userDesignChoice === 'no' || userDesignChoice === 'false' || userDesignChoice === 'none';
+            const isExplicitYesDesign = userDesignChoice === 'yes' || userDesignChoice === 'true' || userDesignChoice.includes('hire') || userDesignChoice.includes('assist');
+            const wantsDesign = Boolean(!isExplicitNoDesign &&
+                (itemDto.selectedDesignService ||
+                    itemDto.hasDesignService ||
+                    isExplicitYesDesign ||
+                    designReq === 'REQUIRED'));
             let artworkSource = 'CUSTOMER';
             if (wantsDesign) {
                 artworkSource = hasArtwork ? 'CUSTOMER_WITH_DESIGN_ASSISTANCE' : 'DESIGN_TEAM';
@@ -318,18 +336,39 @@ let OrdersService = OrdersService_1 = class OrdersService {
             });
         }
         const deliveryMethod = dto.deliveryMethod || 'COURIER';
+        const totalOrderQty = evaluatedItems.reduce((acc, curr) => acc + (curr.quantity || 1), 0);
+        const shippingBreakdown = await this.shippingCalculatorService.calculateShipping({
+            productId: evaluatedItems[0]?.productId,
+            quantity: totalOrderQty,
+            destinationPincode: dto.shippingAddress?.postalCode,
+            orderSubtotal: subtotal,
+            deliveryMethod: deliveryMethod === 'STORE_PICKUP' ? 'STORE_PICKUP' : 'COURIER',
+            items: evaluatedItems.map((it) => ({
+                productId: it.productId,
+                quantity: it.quantity || 1,
+            })),
+        });
         const shipTaxCalc = await this.shippingGstService.calculateShippingAndTax(subtotal, dto.shippingAddress?.postalCode, deliveryMethod === 'STORE_PICKUP' ? 'STORE_PICKUP' : 'COURIER', false);
-        shippingAmount = shipTaxCalc.shippingFee;
+        shippingAmount = dto.shippingAddress?.postalCode ? shippingBreakdown.finalShippingAmount : 0;
         totalTax = shipTaxCalc.gstAmount;
         const totalAmount = Math.round((subtotal + totalTax + shippingAmount) * 100) / 100;
         for (const it of evaluatedItems) {
             if (typeof it.specifications === 'object' && it.specifications !== null) {
                 it.specifications['_shippingGstSnapshot'] = {
                     shippingCharge: shippingAmount,
-                    isFreeShipping: shipTaxCalc.isFreeShippingApplied,
-                    matchedZone: shipTaxCalc.matchedZone,
+                    isFreeShipping: shippingBreakdown.isFreeShippingApplied,
+                    matchedZone: shippingBreakdown.zone,
                     gstRatePercent: shipTaxCalc.gstRatePercent,
                     gstAmount: totalTax,
+                    destinationPincode: shippingBreakdown.destinationPincode,
+                    productWeightGrams: shippingBreakdown.productWeightGrams,
+                    packagingWeightGrams: shippingBreakdown.packaging.weightGrams,
+                    actualWeightGrams: shippingBreakdown.actualWeightGrams,
+                    billableWeightGrams: shippingBreakdown.billableWeightGrams,
+                    rateCard: shippingBreakdown.rateCard,
+                    matchedSlab: shippingBreakdown.matchedSlab,
+                    baseShippingCharge: shippingBreakdown.baseShippingCharge,
+                    additionalWeightCharge: shippingBreakdown.additionalWeightCharge,
                 };
             }
         }
@@ -707,6 +746,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 items: {
                     include: {
                         variants: true,
+                        personalizationRecords: true,
                         artworkVersions: { orderBy: { versionNumber: 'desc' } },
                         jobCards: {
                             include: {
@@ -747,6 +787,7 @@ exports.OrdersService = OrdersService = OrdersService_1 = __decorate([
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         pricing_service_1.PricingService,
         shipping_gst_service_1.ShippingGstService,
+        shipping_calculator_service_1.ShippingCalculatorService,
         audit_service_1.AuditService,
         event_emitter_1.EventEmitter2,
         personalization_template_service_1.PersonalizationTemplateService])

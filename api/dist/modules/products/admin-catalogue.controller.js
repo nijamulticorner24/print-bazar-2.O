@@ -19,6 +19,7 @@ const multer_1 = require("multer");
 const path = require("path");
 const fs = require("fs");
 const admin_catalogue_service_1 = require("./admin-catalogue.service");
+const products_service_1 = require("./products.service");
 const auth_guard_1 = require("../../common/guards/auth.guard");
 const auth_decorator_1 = require("../../common/decorators/auth.decorator");
 const roles_1 = require("../../common/types/roles");
@@ -40,8 +41,16 @@ const productImageStorage = (0, multer_1.diskStorage)({
 });
 let AdminCatalogueController = class AdminCatalogueController {
     catalogueService;
-    constructor(catalogueService) {
+    productsService;
+    constructor(catalogueService, productsService) {
         this.catalogueService = catalogueService;
+        this.productsService = productsService;
+    }
+    async getSiteSettings() {
+        return this.productsService.getSiteSettings();
+    }
+    async updateSiteSettings(dto) {
+        return this.productsService.updateSiteSettings(dto);
     }
     async listCategories() {
         return this.catalogueService.listCategories();
@@ -67,6 +76,9 @@ let AdminCatalogueController = class AdminCatalogueController {
             limit,
         });
     }
+    async getNextProductSku() {
+        return this.catalogueService.getNextProductSku();
+    }
     async getProductById(id) {
         return this.catalogueService.getProductById(id);
     }
@@ -84,6 +96,9 @@ let AdminCatalogueController = class AdminCatalogueController {
     }
     async archiveProduct(id, user) {
         return this.catalogueService.archiveProduct(id, user?.sub);
+    }
+    async toggleFeatured(id, user) {
+        return this.catalogueService.toggleFeatured(id, user?.sub);
     }
     async deleteProduct(id, user) {
         return this.catalogueService.deleteProduct(id, user?.sub);
@@ -229,6 +244,21 @@ let AdminCatalogueController = class AdminCatalogueController {
 };
 exports.AdminCatalogueController = AdminCatalogueController;
 __decorate([
+    (0, common_1.Get)('site-settings'),
+    (0, auth_decorator_1.Roles)(roles_1.UserRole.ADMIN_MANAGER),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], AdminCatalogueController.prototype, "getSiteSettings", null);
+__decorate([
+    (0, common_1.Put)('site-settings'),
+    (0, auth_decorator_1.Roles)(roles_1.UserRole.ADMIN_MANAGER),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], AdminCatalogueController.prototype, "updateSiteSettings", null);
+__decorate([
     (0, common_1.Get)('catalogue/categories'),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
@@ -280,6 +310,12 @@ __decorate([
     __metadata("design:paramtypes", [String, String, String, Number, Number]),
     __metadata("design:returntype", Promise)
 ], AdminCatalogueController.prototype, "listProducts", null);
+__decorate([
+    (0, common_1.Get)('catalogue/products/next-sku'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], AdminCatalogueController.prototype, "getNextProductSku", null);
 __decorate([
     (0, common_1.Get)('catalogue/products/:id'),
     __param(0, (0, common_1.Param)('id')),
@@ -333,6 +369,15 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], AdminCatalogueController.prototype, "archiveProduct", null);
+__decorate([
+    (0, common_1.Patch)('catalogue/products/:id/feature'),
+    (0, auth_decorator_1.Roles)(roles_1.UserRole.ADMIN_MANAGER, roles_1.UserRole.OPERATIONAL_MANAGER),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, auth_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], AdminCatalogueController.prototype, "toggleFeatured", null);
 __decorate([
     (0, common_1.Delete)('catalogue/products/:id'),
     (0, auth_decorator_1.Roles)(roles_1.UserRole.ADMIN_MANAGER, roles_1.UserRole.OPERATIONAL_MANAGER),
@@ -725,6 +770,7 @@ exports.AdminCatalogueController = AdminCatalogueController = __decorate([
     (0, common_1.Controller)('admin'),
     (0, common_1.UseGuards)(auth_guard_1.JwtAuthGuard, auth_guard_1.RolesGuard),
     (0, auth_decorator_1.Roles)(roles_1.UserRole.ADMIN_MANAGER, roles_1.UserRole.OPERATIONAL_MANAGER, roles_1.UserRole.SALES_OFFICE, roles_1.UserRole.PRODUCTION_OPERATOR, roles_1.UserRole.DESIGNER_PREPRESS, roles_1.UserRole.FINAL_QC_INSPECTOR, roles_1.UserRole.PACKING_OPERATOR, roles_1.UserRole.DISPATCH_LOGISTICS, roles_1.UserRole.ACCOUNTS),
-    __metadata("design:paramtypes", [admin_catalogue_service_1.AdminCatalogueService])
+    __metadata("design:paramtypes", [admin_catalogue_service_1.AdminCatalogueService,
+        products_service_1.ProductsService])
 ], AdminCatalogueController);
 //# sourceMappingURL=admin-catalogue.controller.js.map
